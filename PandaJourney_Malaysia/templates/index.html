@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VisitMY Smart Planner — Prototype</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="container">
+    <header>
+      <p class="eyebrow">BMSE 3004 PROTOTYPE</p>
+      <h1>VisitMY Smart Planner</h1>
+      <p class="subtitle">Weather-aware attraction recommendation and itinerary generation for Malaysia.</p>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="message {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="post" action="{{ url_for('plan') }}" class="planner-form">
+      <section>
+        <h2>1. Trip basics</h2>
+        <div class="grid two">
+          <label>Start location
+            <input name="start" required placeholder="e.g. KL Sentral" value="{{ saved.start if saved else 'KL Sentral' }}">
+          </label>
+          <label>End location / main area
+            <input name="end" required placeholder="e.g. Bukit Bintang" value="{{ saved.end if saved else 'Bukit Bintang' }}">
+          </label>
+          <label>Travel date
+            <input type="date" name="trip_date" min="{{ today }}" required value="{{ saved.trip_date if saved else today }}">
+          </label>
+          <label>Start time
+            <input type="time" name="start_time" value="{{ saved.start_time if saved else '09:00' }}">
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <h2>2. Time and quality filters</h2>
+        <div class="grid two">
+          <label>Available hours (2–12)
+            <input type="number" name="available_hours" min="2" max="12" value="{{ saved.available_hours if saved else 6 }}">
+          </label>
+          <label>Minimum rating
+            <select name="minimum_rating">
+              {% for value in [0, 3.5, 4.0, 4.5] %}
+                <option value="{{ value }}" {% if (saved and saved.minimum_rating|string == value|string) or (not saved and value == 4.0) %}selected{% endif %}>{{ value }}{% if value == 0 %} (any rating){% else %}+{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section>
+        <h2>3. Interests</h2>
+        <p class="helper">Choose at least one. The recommendation score will be shown so that the result is explainable.</p>
+        <div class="checks">
+          {% for interest in interests %}
+            <label class="chip"><input type="checkbox" name="interests" value="{{ interest }}" {% if (saved and interest in saved.interests) or (not saved and interest in ['museum', 'culture', 'nature']) %}checked{% endif %}> {{ interest|title }}</label>
+          {% endfor %}
+        </div>
+      </section>
+
+      <button type="submit">Generate smart itinerary</button>
+    </form>
+
+    <aside class="note">
+      <strong>Prototype scope:</strong> OpenStreetMap/Nominatim resolves place names, Open-Meteo checks weather, OSRM draws a driving route, and SerpApi is used only when <code>SERPAPI_KEY</code> is configured. Without the key, the app uses a small Kuala Lumpur attraction dataset so you can still test the full flow.
+    </aside>
+  </main>
+</body>
+</html>

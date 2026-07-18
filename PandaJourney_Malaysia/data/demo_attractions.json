@@ -1,0 +1,56 @@
+[
+  {
+    "name": "Islamic Arts Museum Malaysia",
+    "latitude": 3.1419,
+    "longitude": 101.6896,
+    "tags": ["museum", "culture", "indoor"],
+    "estimated_minutes": 120,
+    "rating": 4.7,
+    "source": "Local demonstration dataset"
+  },
+  {
+    "name": "Merdeka 118 / Merdeka area",
+    "latitude": 3.1412,
+    "longitude": 101.7008,
+    "tags": ["culture", "landmark", "outdoor"],
+    "estimated_minutes": 60,
+    "rating": 4.5,
+    "source": "Local demonstration dataset"
+  },
+  {
+    "name": "Perdana Botanical Gardens",
+    "latitude": 3.1445,
+    "longitude": 101.6868,
+    "tags": ["nature", "outdoor"],
+    "estimated_minutes": 120,
+    "rating": 4.6,
+    "source": "Local demonstration dataset"
+  },
+  {
+    "name": "Central Market Kuala Lumpur",
+    "latitude": 3.1456,
+    "longitude": 101.6953,
+    "tags": ["culture", "shopping", "indoor"],
+    "estimated_minutes": 90,
+    "rating": 4.3,
+    "source": "Local demonstration dataset"
+  },
+  {
+    "name": "Petronas Twin Towers / KLCC Park",
+    "latitude": 3.1579,
+    "longitude": 101.7123,
+    "tags": ["landmark", "nature", "outdoor"],
+    "estimated_minutes": 90,
+    "rating": 4.7,
+    "source": "Local demonstration dataset"
+  },
+  {
+    "name": "National Museum of Malaysia",
+    "latitude": 3.1377,
+    "longitude": 101.6870,
+    "tags": ["museum", "culture", "indoor"],
+    "estimated_minutes": 90,
+    "rating": 4.3,
+    "source": "Local demonstration dataset"
+  }
+]
