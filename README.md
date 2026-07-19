@@ -55,11 +55,11 @@ If requirements.txt is missing, install manually: pip install flask requests pyt
 Create a .env file in the project root folder.
 
 You can copy from .env.example:
-
+```text
 SERPAPI_KEY=your_serpapi_key_here
 NOMINATIM_EMAIL=your_email@example.com
 NOMINATIM_USER_AGENT=PandaJourneyMalaysia/1.0 (your_email@example.com)
-
+```
 ## 5. Run the Flask Application
 
 Make sure the virtual environment is activated.
