@@ -46,10 +46,14 @@ If successful, the terminal should show: If successful, the terminal should show
 
 ## 3. Install Required Packages
 
-After activating the virtual environment, install the required Python packages: pip install -r requirements.txt
-
-If requirements.txt is missing, install manually: pip install flask requests python-dotenv
-
+After activating the virtual environment, install the required Python packages: 
+```text
+pip install -r requirements.txt
+```
+If requirements.txt is missing, install manually: 
+```text
+pip install flask requests python-dotenv
+```
 ## 4. Environment File Setup
 
 Create a .env file in the project root folder.
@@ -82,13 +86,13 @@ If successful, the terminal will show: Running on http://127.0.0.1:5000
 
 
 ## 6. Important Files
-
+```text
 app.py
 services.py
 templates/
 static/css/app.css
 data/demo_attractions.json
-
+```
 
 ## 7. Common Problems
 ModuleNotFoundError: No module named 'flask'
