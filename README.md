@@ -1,4 +1,6 @@
 # Testing PULL request
+# TEST 1 : Direct commit, no owner permission
+# TEST 2 : Create My branch "LCT", test commit
 
 # PandaJourney Malaysia
 
