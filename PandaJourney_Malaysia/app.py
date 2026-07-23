@@ -1,8 +1,11 @@
 from flask import Flask, render_template, request
 
-from services import make_plan
+from services.itinerary_service import make_plan
 
-app = Flask(__name__)
+app = Flask(__name__,
+    template_folder="presentation/ui",
+    static_folder="presentation/static"
+    )
 
 
 @app.route("/")

@@ -21,7 +21,7 @@ OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 SERPAPI_URL = "https://serpapi.com/search.json"
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1]
 
 # Load the local .env file before reading API-related settings. This makes the
 # service work even when app.py imports services.py before calling load_dotenv().
