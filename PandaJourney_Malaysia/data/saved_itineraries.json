@@ -1,0 +1,24 @@
+[
+    {
+        "id": 1,
+        "title": "Penang Heritage Walk",
+        "status": "Completed",
+        "destination": "Penang",
+        "date": "Jul 20, 2026",
+        "duration": "7 hrs",
+        "stop_count": 6,
+        "is_public": false,
+        "created_at": "2026-07-20 10:00:00"
+    },
+    {
+        "id": 2,
+        "title": "Cameron Highlands Nature Escape",
+        "status": "Upcoming",
+        "destination": "Pahang",
+        "date": "Aug 10, 2026",
+        "duration": "6 hrs",
+        "stop_count": 4,
+        "is_public": true,
+        "created_at": "2026-07-21 12:00:00"
+    }
+]

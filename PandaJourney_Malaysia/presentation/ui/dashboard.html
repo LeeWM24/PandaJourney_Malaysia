@@ -1,10 +1,122 @@
 {% extends "base.html" %}
 
+{% block title %}Dashboard — PandaJourney Malaysia{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_subtitle %}Welcome back, {{ current_user.display_name }}{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">✈️ Plan a Trip</a>
+{% endblock %}
+
 {% block content %}
-<section class="page-card">
-    <h2>Welcome to PandaJourney Malaysia</h2>
-    <p>
-        Select a module above to start planning your Malaysia travel itinerary.
-    </p>
-</section>
+
+<div class="hero-banner">
+  <img
+    src="https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=1400&h=400&fit=crop&auto=format"
+    alt="Malaysia travel"
+  />
+  <div class="hero-overlay"></div>
+
+  <div class="hero-content">
+    <div>
+      <p class="hero-greeting">Good morning, {{ current_user.display_name }} 👋</p>
+      <h2 class="hero-title">Where to next?</h2>
+      <a href="{{ url_for('smart_itinerary') }}" class="btn btn-accent btn-lg">✈️ Plan a Trip</a>
+    </div>
+  </div>
+
+  <div class="hero-user">
+    <div>
+      <div class="hero-user-name">{{ current_user.display_name }}</div>
+      <div class="hero-user-email">{{ current_user.email }}</div>
+    </div>
+    <a href="{{ url_for('profile') }}" class="avatar avatar-lg" style="text-decoration:none;">
+      {{ current_user.display_name[:2]|upper }}
+    </a>
+  </div>
+</div>
+
+<div class="page-inner">
+
+  <div class="summary-cards mb-6">
+    <div class="card summary-card">
+      <div class="summary-card-header">
+        <span class="summary-icon">💾</span>
+        <div class="summary-dot" style="background:#0f7a5a;"></div>
+      </div>
+      <div class="summary-value">{{ saved_count }}</div>
+      <div class="summary-label">Saved Itineraries</div>
+    </div>
+
+    <div class="card summary-card">
+      <div class="summary-card-header">
+        <span class="summary-icon">⭐</span>
+        <div class="summary-dot" style="background:#f59e0b;"></div>
+      </div>
+      <div class="summary-value">{{ favourite_count }}</div>
+      <div class="summary-label">Favourite Attractions</div>
+    </div>
+
+    <div class="card summary-card">
+      <div class="summary-card-header">
+        <span class="summary-icon">🔗</span>
+        <div class="summary-dot" style="background:#3b82f6;"></div>
+      </div>
+      <div class="summary-value">{{ shared_count }}</div>
+      <div class="summary-label">Shared Trips</div>
+    </div>
+
+    <div class="card summary-card">
+      <div class="summary-card-header">
+        <span class="summary-icon">✈️</span>
+        <div class="summary-dot" style="background:#0d9488;"></div>
+      </div>
+      <div class="summary-value">{{ upcoming_date }}</div>
+      <div class="summary-label">Upcoming Trip</div>
+    </div>
+  </div>
+
+  <p class="section-heading">Quick Access</p>
+
+  <div class="quick-access-grid mb-6">
+    <a href="{{ url_for('smart_attraction') }}" class="quick-tile" style="background:#e8f5f0;">
+      <span class="tile-icon">🌴</span>
+      <span class="tile-label">Smart Attraction<br>Recommendation</span>
+    </a>
+
+    <a href="{{ url_for('smart_itinerary') }}" class="quick-tile" style="background:#ccfbf1;">
+      <span class="tile-icon">📅</span>
+      <span class="tile-label">Smart Itinerary<br>Planning</span>
+    </a>
+
+    <a href="{{ url_for('collaboration') }}" class="quick-tile" style="background:#dbeafe;">
+      <span class="tile-icon">👥</span>
+      <span class="tile-label">Collaborative<br>Planning</span>
+    </a>
+
+    <a href="{{ url_for('public_itinerary') }}" class="quick-tile" style="background:#fef3c7;">
+      <span class="tile-icon">🌐</span>
+      <span class="tile-label">Public Itinerary<br>Sharing</span>
+    </a>
+
+    <a href="{{ url_for('profile') }}" class="quick-tile" style="background:#fce7f3;">
+      <span class="tile-icon">👤</span>
+      <span class="tile-label">User<br>Profile</span>
+    </a>
+  </div>
+
+  <div class="card card-p">
+    <div class="card-header">
+      <span class="card-title">Recent Itineraries</span>
+      <a href="{{ url_for('saved_itineraries') }}" class="btn btn-ghost btn-sm">View all</a>
+    </div>
+
+    <div class="empty-state" style="padding:28px 0;">
+      <div class="empty-icon">📋</div>
+      <div class="empty-sub">Plan your first trip to see it here.</div>
+    </div>
+  </div>
+
+</div>
+
 {% endblock %}

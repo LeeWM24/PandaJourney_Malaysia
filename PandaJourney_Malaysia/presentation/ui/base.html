@@ -1,48 +1,172 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>PandaJourney Malaysia</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-    {% block extra_head %}{% endblock %}
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% block title %}PandaJourney Malaysia{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
 
-<header class="top-header">
-    <div class="brand">
-        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="PandaJourney Logo" class="logo">
-        <div>
-            <h1>PandaJourney Malaysia</h1>
-            <p>Smart Tourism Planning Platform</p>
-        </div>
+<div class="modal-backdrop" id="logout-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-icon">🚪</div>
+    <div class="modal-title">Sign out of PandaJourney?</div>
+    <div class="modal-desc">
+      You'll need to sign in again to access your itineraries,
+      saved attractions, and collaboration features.
     </div>
-</header>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-md" id="logout-cancel" type="button">Cancel</button>
+      <form action="{{ url_for('logout') }}" method="post" style="flex:1; margin:0;">
+        <button type="submit" class="btn btn-danger btn-md btn-full">Sign out</button>
+      </form>
+    </div>
+  </div>
+</div>
 
-<nav class="module-nav">
-    <a href="{{ url_for('smart_attraction') }}" class="module-card">
-        <div class="module-icon">📍</div>
-        <span>Attraction</span>
-    </a>
+<div class="app-shell">
 
-    <a href="{{ url_for('smart_itinerary') }}" class="module-card">
-        <div class="module-icon">🗺️</div>
-        <span>Itinerary</span>
-    </a>
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-brand">
+        <img
+          src="{{ url_for('static', filename='images/logo.png') }}"
+          alt="PandaJourney Logo"
+          class="sidebar-logo-img"
+          style="width:30px;height:30px;border-radius:50%;object-fit:cover;background:white;"
+        />
+        <span class="sidebar-brand-name">PandaJourney</span>
+      </div>
+      <div class="sidebar-brand-sub">Malaysia Smart Tourism</div>
+    </div>
 
-    <a href="{{ url_for('collaboration') }}" class="module-card">
-        <div class="module-icon">👥</div>
+    <nav class="sidebar-nav">
+      <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+        <span class="nav-icon">🏠</span>
+        <span>Dashboard</span>
+      </a>
+
+      <a href="{{ url_for('smart_attraction') }}" class="{% if active_page == 'attractions' %}active{% endif %}">
+        <span class="nav-icon">🌴</span>
+        <span>Attractions</span>
+      </a>
+
+      <a href="{{ url_for('smart_itinerary') }}" class="{% if active_page == 'itinerary' %}active{% endif %}">
+        <span class="nav-icon">📅</span>
+        <span>Itinerary Planner</span>
+      </a>
+
+      <a href="{{ url_for('saved_itineraries') }}" class="{% if active_page == 'saved' %}active{% endif %}">
+        <span class="nav-icon">💾</span>
+        <span>Saved Itineraries</span>
+      </a>
+
+      <a href="{{ url_for('collaboration') }}" class="{% if active_page == 'collaboration' %}active{% endif %}">
+        <span class="nav-icon">👥</span>
         <span>Collaboration</span>
-    </a>
+      </a>
 
-    <a href="{{ url_for('user_management') }}" class="module-card">
-        <div class="module-icon">👤</div>
-        <span>User</span>
-    </a>
-</nav>
+      <a href="{{ url_for('public_itinerary') }}" class="{% if active_page == 'public' %}active{% endif %}">
+        <span class="nav-icon">🌐</span>
+        <span>Public Itineraries</span>
+      </a>
+    </nav>
 
-<main class="content-area">
-    {% block content %}{% endblock %}
-</main>
+    <div class="sidebar-footer">
+      <a href="{{ url_for('profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
+        <span class="nav-icon">👤</span>
+        <span>Profile</span>
+      </a>
+
+      <button type="button" class="logout-btn js-open-logout">
+        <span class="nav-icon">🚪</span>
+        <span>Logout</span>
+      </button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <header class="topbar">
+      <div>
+        <div class="topbar-title">{% block page_title %}{% endblock %}</div>
+        <div class="topbar-subtitle">{% block page_subtitle %}{% endblock %}</div>
+      </div>
+
+      <div class="topbar-actions">
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </header>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div style="padding: 0 32px; margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}" role="alert">
+              {% if category == 'error' %}⛔
+              {% elif category == 'warning' %}⚠️
+              {% elif category == 'success' %}✅
+              {% else %}ℹ️{% endif %}
+              <span>{{ message }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <main class="page-body">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var modal = document.getElementById("logout-modal");
+  var cancelBtn = document.getElementById("logout-cancel");
+
+  function openModal() {
+    modal.classList.add("active");
+    cancelBtn.focus();
+  }
+
+  function closeModal() {
+    modal.classList.remove("active");
+  }
+
+  document.querySelectorAll(".js-open-logout").forEach(function (btn) {
+    btn.addEventListener("click", openModal);
+  });
+
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", closeModal);
+  }
+
+  modal.addEventListener("click", function (e) {
+    if (e.target === modal) {
+      closeModal();
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && modal.classList.contains("active")) {
+      closeModal();
+    }
+  });
+
+  document.querySelectorAll(".chip[data-chip]").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      this.classList.toggle("active");
+      var cb = this.querySelector('input[type="checkbox"]');
+      if (cb) {
+        cb.checked = this.classList.contains("active");
+      }
+    });
+  });
+})();
+</script>
 
 {% block extra_scripts %}{% endblock %}
 
