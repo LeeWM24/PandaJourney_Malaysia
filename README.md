@@ -40,18 +40,7 @@ The project follows a Modular Layered Architecture consisting of four layers:
 | Constants        | UPPER_SNAKE_CASE  | `MAX_LOGIN_ATTEMPTS`           |
 | Files            | kebab-case        | `user-profile.js`              |
 
-### Folder Structure
 
-```text
-src/
-├── presentation/
-├── controllers/
-├── services/
-├── repositories/
-├── models/
-├── integrations/
-├── utils/
-└── tests/
 
 # PandaJourney Malaysia
 
