@@ -17,7 +17,7 @@ The project follows a Modular Layered Architecture consisting of four layers:
 
 1. Presentation Layer
    - Responsible for UI rendering and user interactions.
-   - 
+   
 2. Controller Layer
    - Handles requests and coordinates module operations.
 
