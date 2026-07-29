@@ -1,13 +1,59 @@
-# Testing PULL request
-# TEST 1 : Direct commit, no owner permission
 ## Coding Standards (TBC)
+### General Standards
 
-- Use meaningful and descriptive naming conventions for variables, functions, and classes.
-- Keep functions small and focused on a single responsibility.
-- Add comments for complex business logic when necessary.
-- Follow a layered architecture (UI, Service, Model, and Database layers).
-- Ensure all code changes are reviewed before merging into the main branch.
-# TEST 2 : Create My branch "LCT", test commit
+- Follow consistent naming conventions throughout the project.
+- Use English for all source code, variables, functions, comments, and documentation.
+- Ensure all source code is properly indented.
+- Keep functions focused on a single responsibility.
+- Add comments only for complex business logic or external API integrations.
+- Perform code reviews before merging changes into the `main` branch.
+- Avoid duplicate code.
+- Validate all user inputs.
+- Ensure all APIs return standardized responses.
+
+### Architecture Standards
+
+The project follows a Modular Layered Architecture consisting of four layers:
+
+1. Presentation Layer
+   - Responsible for UI rendering and user interactions.
+   - 
+2. Controller Layer
+   - Handles requests and coordinates module operations.
+
+3. Business Logic Layer
+   - Implements business rules, calculations, and validations.
+
+4. Data & Integration Layer
+   - Handles database operations and external API integrations.
+
+### Naming Conventions
+Convention: camelCase
+Example   : userName
+
+| Element          | Convention        | Example                        |
+|------------------|-------------------|----------------------------    |
+| Variables        | camelCase         | `userName`, `travelPreference` |
+| Functions        | camelCase         | `generateItinerary()`          |
+| Classes          | PascalCase        | `UserController`               |
+| Components       | PascalCase        | `ProfileCard`                  |
+| Database Tables  | snake_case        | `user_profile`                 |
+| API Endpoints    | kebab-case        | `/api/user-profile`            |
+| Constants        | UPPER_SNAKE_CASE  | `MAX_LOGIN_ATTEMPTS`           |
+| Files            | kebab-case        | `user-profile.js`              |
+
+### Folder Structure
+
+```text
+src/
+├── presentation/
+├── controllers/
+├── services/
+├── repositories/
+├── models/
+├── integrations/
+├── utils/
+└── tests/
 
 # PandaJourney Malaysia
 
