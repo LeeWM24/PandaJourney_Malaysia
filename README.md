@@ -27,9 +27,7 @@ The project follows a Modular Layered Architecture consisting of four layers:
 4. Data & Integration Layer
    - Handles database operations and external API integrations.
 
-### Naming Conventions
-Convention: camelCase
-Example   : userName
+### Naming Convention
 
 | Element          | Convention        | Example                        |
 |------------------|-------------------|----------------------------    |
