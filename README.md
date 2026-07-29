@@ -1,5 +1,12 @@
 # Testing PULL request
 # TEST 1 : Direct commit, no owner permission
+## Coding Standards (TBC)
+
+- Use meaningful and descriptive naming conventions for variables, functions, and classes.
+- Keep functions small and focused on a single responsibility.
+- Add comments for complex business logic when necessary.
+- Follow a layered architecture (UI, Service, Model, and Database layers).
+- Ensure all code changes are reviewed before merging into the main branch.
 # TEST 2 : Create My branch "LCT", test commit
 
 # PandaJourney Malaysia
