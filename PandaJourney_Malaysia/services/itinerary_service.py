@@ -39,15 +39,15 @@ print(
 GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
 
 
-def get_default_itinerary_form() -> dict[str, Any]:
+def get_default_itinerary_form():
     return {
         "start": "",
         "end": "",
         "trip_date": "",
         "start_time": "09:00",
         "available_hours": 6,
-        "interests": "culture",
         "minimum_rating": "4.0",
+        "transport_mode": "driving",
         "selected_attractions": []
     }
 
@@ -93,6 +93,37 @@ WEATHER_LABELS = {
     82: "Violent rain showers",
     95: "Thunderstorm",
 }
+
+
+TRANSPORT_OPTIONS = {
+    "driving": {
+        "label": "Driving",
+        "icon": "🚗",
+        # Driving uses OSRM driving duration directly.
+        "speed_mps": None,
+    },
+    "walking": {
+        "label": "Walking",
+        "icon": "🚶",
+        # Approx. normal walking speed: 5 km/h.
+        "speed_mps": 1.4,
+    },
+    "cycling": {
+        "label": "Cycling",
+        "icon": "🚲",
+        # Approx. city cycling speed: 15 km/h.
+        "speed_mps": 4.2,
+    },
+}
+
+
+def get_transport_option(transport_mode: str | None) -> dict[str, Any]:
+    transport_mode = str(transport_mode or "driving").lower()
+
+    if transport_mode not in TRANSPORT_OPTIONS:
+        transport_mode = "driving"
+
+    return TRANSPORT_OPTIONS[transport_mode]
 
 
 def _request_json(
@@ -400,9 +431,14 @@ def search_attractions_serpapi(
     return candidates
 
 
-def get_route_with_stops(points: list[dict[str, Any]]) -> dict[str, Any] | None:
+def get_route_with_stops(
+    points: list[dict[str, Any]],
+    transport_mode: str = "driving"
+) -> dict[str, Any] | None:
     if len(points) < 2:
         return None
+
+    transport_option = get_transport_option(transport_mode)
 
     coordinates = ";".join(
         f"{point['longitude']},{point['latitude']}"
@@ -425,12 +461,33 @@ def get_route_with_stops(points: list[dict[str, Any]]) -> dict[str, Any] | None:
             return None
 
         route = routes[0]
+        distance_m = float(route.get("distance", 0))
+        duration_s = float(route.get("duration", 0))
+        legs = route.get("legs", [])
+
+        # OSRM public demo route is kept for route line geometry.
+        # Driving uses OSRM duration. Walking/Cycling use the same distance
+        # but estimate duration using average travel speed.
+        if transport_mode != "driving":
+            speed_mps = transport_option.get("speed_mps")
+
+            if speed_mps:
+                duration_s = distance_m / float(speed_mps)
+                adjusted_legs = []
+
+                for leg in legs:
+                    new_leg = dict(leg)
+                    leg_distance = float(new_leg.get("distance", 0))
+                    new_leg["duration"] = leg_distance / float(speed_mps)
+                    adjusted_legs.append(new_leg)
+
+                legs = adjusted_legs
 
         return {
-            "distance_m": route.get("distance", 0),
-            "duration_s": route.get("duration", 0),
+            "distance_m": distance_m,
+            "duration_s": duration_s,
             "geometry": route.get("geometry", {}),
-            "legs": route.get("legs", []),
+            "legs": legs,
         }
 
     except requests.RequestException:
@@ -611,11 +668,15 @@ def build_timetable(
     start_name: str,
     selected: list[dict[str, Any]],
     end_name: str,
-    route: dict[str, Any] | None
+    route: dict[str, Any] | None,
+    transport_option: dict[str, Any]
 ) -> list[dict[str, str]]:
     timetable: list[dict[str, str]] = []
     current_time = start_datetime
     legs = route.get("legs", []) if route else []
+
+    transport_label = transport_option["label"]
+    transport_icon = transport_option["icon"]
 
     timetable.append(
         {
@@ -625,14 +686,15 @@ def build_timetable(
             "name": f"Start at {start_name}",
             "activity": f"Start at {start_name}",
             "duration": "Start point",
-            "transport": "Driving",
+            "transport": transport_label,
+            "transport_icon": transport_icon,
             "waze_url": "",
         }
     )
 
     for index, attraction in enumerate(selected):
         leg_seconds = legs[index].get("duration") if index < len(legs) else 0
-        current_time += timedelta(seconds=float(leg_seconds))
+        current_time += timedelta(seconds=float(leg_seconds or 0))
 
         arrival_time = current_time
         visit_minutes = int(attraction.get("estimated_minutes", 90))
@@ -648,7 +710,8 @@ def build_timetable(
                 "name": attraction["name"],
                 "activity": attraction["name"],
                 "duration": f"{visit_minutes} mins",
-                "transport": f"Driving · {human_duration(leg_seconds)}",
+                "transport": f"{transport_label} · {human_duration(leg_seconds)}",
+                "transport_icon": transport_icon,
                 "waze_url": attraction.get("waze_url", ""),
             }
         )
@@ -670,7 +733,8 @@ def build_timetable(
             "name": f"Arrive at {end_name}",
             "activity": f"Arrive at {end_name}",
             "duration": "End point",
-            "transport": f"Driving · {human_duration(final_leg_seconds)}",
+            "transport": f"{transport_label} · {human_duration(final_leg_seconds)}",
+            "transport_icon": transport_icon,
             "waze_url": "",
         }
     )
@@ -702,6 +766,9 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     available_hours = int(form.get("available_hours", 6))
     minimum_rating = float(form.get("minimum_rating", 4.0))
+
+    transport_mode = str(form.get("transport_mode", "driving")).lower()
+    transport_option = get_transport_option(transport_mode)
 
     start = geocode_place(start_text)
 
@@ -759,7 +826,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     route_points = [start] + selected + [end]
 
-    route = get_route_with_stops(route_points)
+    route = get_route_with_stops(route_points, transport_mode)
 
     car_comparison = get_serpapi_direction(
         start_text,
@@ -789,14 +856,17 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         start_text,
         selected,
         end_text,
-        route
+        route,
+        transport_option
     )
 
-    total_duration = (
+    travel_duration = (
         human_duration(route.get("duration_s"))
         if route
-        else f"{available_hours} hrs"
+        else "Not available"
     )
+
+    total_duration = travel_duration
 
     return {
         "id": int(datetime.now().timestamp()),
@@ -834,8 +904,11 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "attraction_source_note": source_note,
 
         "total_duration": total_duration,
-        "transport_icon": "🚗",
-        "transport_mode": "Driving",
+        "travel_duration": travel_duration,
+        "transport_icon": transport_option["icon"],
+        "transport_mode": transport_mode,
+        "transport_key": transport_mode,
+        "transport_label": transport_option["label"],
         "exceeds_hours": False,
         "image_url": "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=400&h=200&fit=crop&auto=format",
     }
@@ -863,3 +936,5 @@ def format_date_for_display(date_text: str) -> str:
         return dt.strftime("%b %d, %Y")
     except ValueError:
         return date_text
+
+

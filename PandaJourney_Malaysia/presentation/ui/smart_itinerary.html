@@ -77,23 +77,47 @@
           </div>
 
           <div class="form-group mb-3">
+            <label class="form-label" for="transport_mode">Transport Mode</label>
+
+            {% set transport_mode = form.get("transport_mode", "driving") %}
+
+            <select name="transport_mode" id="transport_mode" class="form-select">
+              <option value="driving" {% if transport_mode == "driving" %}selected{% endif %}>
+                🚗 Driving
+              </option>
+              <option value="walking" {% if transport_mode == "walking" %}selected{% endif %}>
+                🚶 Walking
+              </option>
+              <option value="cycling" {% if transport_mode == "cycling" %}selected{% endif %}>
+                🚲 Cycling
+              </option>
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
             <label class="form-label" for="minimum_rating">Minimum Rating</label>
+
+            {% set minimum_rating = form.get("minimum_rating", "4.0") %}
+
             <select class="form-select" id="minimum_rating" name="minimum_rating">
-              <option value="3.0">⭐ 3.0+</option>
-              <option value="3.5">⭐ 3.5+</option>
-              <option value="4.0" selected>⭐ 4.0+</option>
-              <option value="4.5">⭐ 4.5+</option>
+              <option value="3.0" {% if minimum_rating == "3.0" %}selected{% endif %}>⭐ 3.0+</option>
+              <option value="3.5" {% if minimum_rating == "3.5" %}selected{% endif %}>⭐ 3.5+</option>
+              <option value="4.0" {% if minimum_rating == "4.0" %}selected{% endif %}>⭐ 4.0+</option>
+              <option value="4.5" {% if minimum_rating == "4.5" %}selected{% endif %}>⭐ 4.5+</option>
             </select>
           </div>
 
           <div class="form-group mb-4">
             <label class="form-label" for="interests">Travel Interest</label>
+
+            {% set selected_interest = form.get("interests", "culture") %}
+
             <select class="form-select" id="interests" name="interests">
-              <option value="culture">Culture</option>
-              <option value="museum">Museum</option>
-              <option value="nature">Nature</option>
-              <option value="shopping">Shopping</option>
-              <option value="food">Food</option>
+              <option value="culture" {% if selected_interest == "culture" %}selected{% endif %}>Culture</option>
+              <option value="museum" {% if selected_interest == "museum" %}selected{% endif %}>Museum</option>
+              <option value="nature" {% if selected_interest == "nature" %}selected{% endif %}>Nature</option>
+              <option value="shopping" {% if selected_interest == "shopping" %}selected{% endif %}>Shopping</option>
+              <option value="food" {% if selected_interest == "food" %}selected{% endif %}>Food</option>
             </select>
           </div>
 
@@ -120,19 +144,23 @@
 
         <div class="trip-summary-grid">
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Total Duration</div>
-            <div class="trip-summary-value">{{ plan.total_duration | default('Estimated') }}</div>
+            <div class="trip-summary-label">Travel Duration</div>
+            <div class="trip-summary-value">
+              {{ plan.travel_duration | default(plan.total_duration | default('Estimated')) }}
+            </div>
           </div>
+
           <div class="card trip-summary-card">
             <div class="trip-summary-label">Weather</div>
             <div class="trip-summary-value">
               {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
             </div>
           </div>
+
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Transport</div>
+            <div class="trip-summary-label">Transport Mode</div>
             <div class="trip-summary-value">
-              {{ plan.transport_icon | default('🚗') }} {{ plan.transport_mode | default('Driving') }}
+              {{ plan.transport_icon | default('🚗') }} {{ plan.transport_label | default('Driving') }}
             </div>
           </div>
         </div>
@@ -189,7 +217,10 @@
                   <div class="timetable-name">{{ item.name | default(item.activity) }}</div>
                   <div class="timetable-meta">
                     <span class="badge badge-muted">{{ item.duration | default('Estimated') }}</span>
-                    <span class="badge badge-teal">🚗 {{ item.transport | default('Driving') }}</span>
+                    <span class="badge badge-teal">
+                      {{ item.transport_icon | default(plan.transport_icon | default('🚗')) }}
+                      {{ item.transport | default(plan.transport_label | default('Driving')) }}
+                    </span>
                   </div>
                   {% if item.waze_url %}
                     <div class="timetable-actions">
@@ -203,17 +234,17 @@
         </div>
 
         <div class="card card-p">
-                    {% if map_data %}
+          {% if map_data %}
             <div id="routeMap"></div>
-            {% else %}
+          {% else %}
             <div class="map-placeholder" style="min-height:280px;">
-                <div class="map-inner">
+              <div class="map-inner">
                 <div class="map-icon">🗺️</div>
                 <div class="map-label">Route Map</div>
                 <div class="map-sub">Map will appear after route is generated</div>
-                </div>
+              </div>
             </div>
-            {% endif %}
+          {% endif %}
         </div>
 
       {% endif %}
@@ -280,4 +311,4 @@
   }
 </script>
 {% endif %}
-{% endblock %}x
+{% endblock %}
