@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Create Account – PandaJourney</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #f7faf8;
+      color: #1a2e22;
+      min-height: 100vh;
+      display: flex;
+    }
+
+    /* ── Tokens ───────────────────────────────────────────── */
+    :root {
+      --green-dark:   #0f2d1f;
+      --green-mid:    #1a5c3a;
+      --green-brand:  #0f7a5a;
+      --green-hover:  #0a6349;
+      --green-light:  #e8f5f0;
+      --green-border: #d1e8dd;
+      --green-muted:  #9bbcac;
+      --green-subtle: #5a7a6a;
+      --green-deep:   #1a2e22;
+      --text-main:    #1a2e22;
+      --text-mid:     #5a7a6a;
+      --text-muted:   #9bbcac;
+      --bg-page:      #f7faf8;
+      --radius-sm:    8px;
+      --radius-md:    12px;
+      --radius-lg:    16px;
+      --radius-xl:    20px;
+      --shadow-sm:    0 1px 3px rgba(0,0,0,.08);
+      --shadow-md:    0 4px 12px rgba(0,0,0,.12);
+    }
+
+    /* ── Layout ───────────────────────────────────────────── */
+    .auth-wrap {
+      display: flex;
+      min-height: 100vh;
+      width: 100%;
+    }
+
+    /* ── Left panel ───────────────────────────────────────── */
+    .left-panel {
+      flex: 1;
+      background: var(--green-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .left-panel::before {
+      content: '';
+      position: absolute;
+      top: -80px; left: -80px;
+      width: 320px; height: 320px;
+      border-radius: 50%;
+      background: var(--green-brand);
+      opacity: .1;
+    }
+    .left-panel::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; right: -60px;
+      width: 256px; height: 256px;
+      border-radius: 50%;
+      background: #f59e0b;
+      opacity: .1;
+    }
+    .left-inner {
+      position: relative;
+      z-index: 1;
+      max-width: 340px;
+      text-align: center;
+    }
+    .hero-img {
+      width: 100%;
+      height: 210px;
+      object-fit: cover;
+      border-radius: var(--radius-lg);
+      margin-bottom: 2rem;
+      box-shadow: var(--shadow-md);
+    }
+    .left-title {
+      font-family: 'Sora', sans-serif;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: .75rem;
+    }
+    .left-desc {
+      font-size: .875rem;
+      color: #a8d5b8;
+      line-height: 1.6;
+    }
+    .left-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: .5rem;
+      margin-top: 1.25rem;
+    }
+    .left-tag {
+      font-size: .75rem;
+      padding: .25rem .75rem;
+      border-radius: 9999px;
+      background: var(--green-mid);
+      color: #a8d5b8;
+    }
+
+    /* ── Right panel ──────────────────────────────────────── */
+    .right-panel {
+      width: 500px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 2.5rem 3rem;
+      overflow-y: auto;
+      background: #fff;
+    }
+    .form-inner {
+      width: 100%;
+      max-width: 360px;
+    }
+
+    /* ── Logo ─────────────────────────────────────────────── */
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      margin-bottom: 1.25rem;
+    }
+    .logo-wordmark {
+      font-family: 'Sora', sans-serif;
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--green-deep);
+      letter-spacing: -.02em;
+    }
+
+    /* ── View headings ────────────────────────────────────── */
+    .view-title {
+      font-family: 'Sora', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: .25rem;
+    }
+    .view-subtitle {
+      font-size: .875rem;
+      color: var(--text-mid);
+      margin-bottom: 1.5rem;
+    }
+
+    /* ── Alert banner ─────────────────────────────────────── */
+    .alert {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      padding: .75rem 1rem;
+      border-radius: var(--radius-md);
+      font-size: .875rem;
+      margin-bottom: 1rem;
+    }
+    .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+    .alert-warning { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+    .alert.hidden  { display: none; }
+
+    /* ── Google button ────────────────────────────────────── */
+    .btn-google {
+      width: 100%;
+      height: 48px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--green-border);
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .75rem;
+      font-size: .875rem;
+      font-weight: 500;
+      color: var(--text-main);
+      cursor: pointer;
+      transition: background .15s;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: 1.25rem;
+      position: relative;
+    }
+    .btn-google:hover { background: var(--green-light); }
+    .btn-google:disabled { opacity: .6; pointer-events: none; }
+    .btn-google .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--green-border);
+      border-top-color: var(--green-brand);
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+
+    /* ── Divider ──────────────────────────────────────────── */
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      margin-bottom: 1.25rem;
+      color: var(--text-muted);
+      font-size: .75rem;
+      font-weight: 500;
+    }
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--green-border);
+    }
+
+    /* ── Form fields ──────────────────────────────────────── */
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+      margin-bottom: 1rem;
+    }
+    .field label {
+      font-size: .7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: var(--text-mid);
+    }
+    .input-wrap {
+      position: relative;
+    }
+    .input-icon {
+      position: absolute;
+      left: .75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: .875rem;
+      pointer-events: none;
+      line-height: 1;
+    }
+    .field input {
+      width: 100%;
+      height: 40px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--green-border);
+      background: #fff;
+      font-size: .875rem;
+      color: var(--text-main);
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color .15s, box-shadow .15s;
+      padding: 0 .75rem 0 2.25rem;
+    }
+    .field input.no-icon { padding-left: .75rem; }
+    .field input.has-trail { padding-right: 2.25rem; }
+    .field input:focus {
+      border-color: var(--green-brand);
+      box-shadow: 0 0 0 3px rgba(15,122,90,.12);
+    }
+    .field input.error  { border-color: #f87171; background: #fef2f2; }
+    .field input.warn   { border-color: #fbbf24; background: #fffbeb; }
+    .field input.ok     { border-color: var(--green-brand); background: #f0faf5; }
+    .field input::placeholder { color: var(--text-muted); }
+
+    .field-msg {
+      font-size: .7rem;
+      margin-top: .15rem;
+    }
+    .field-msg.err { color: #dc2626; }
+    .field-msg.ok  { color: var(--green-brand); }
+    .field-msg.hidden { display: none; }
+
+    .toggle-pw {
+      position: absolute;
+      right: .75rem;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: .75rem;
+      color: var(--text-muted);
+      transition: color .15s;
+      line-height: 1;
+      padding: 0;
+    }
+    .toggle-pw:hover { color: var(--text-mid); }
+
+    /* ── Password strength ────────────────────────────────── */
+    .pw-strength { margin-top: .35rem; }
+    .strength-bar {
+      display: flex;
+      gap: .2rem;
+      height: 5px;
+      margin-bottom: .3rem;
+    }
+    .strength-seg {
+      flex: 1;
+      border-radius: 9999px;
+      background: #e8f0ec;
+      transition: background .3s;
+    }
+    .strength-seg.weak    { background: #f87171; }
+    .strength-seg.fair    { background: #fbbf24; }
+    .strength-seg.good    { background: #60a5fa; }
+    .strength-seg.strong  { background: var(--green-brand); }
+    .strength-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .strength-label {
+      font-size: .65rem;
+      font-weight: 600;
+    }
+    .strength-label.weak   { color: #dc2626; }
+    .strength-label.fair   { color: #d97706; }
+    .strength-label.good   { color: #2563eb; }
+    .strength-label.strong { color: var(--green-brand); }
+    .pw-hints {
+      display: flex;
+      gap: .6rem;
+      flex-wrap: wrap;
+    }
+    .pw-hint {
+      font-size: .65rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: .2rem;
+      transition: color .2s;
+    }
+    .pw-hint.met { color: var(--green-brand); }
+
+    /* ── Checkbox ─────────────────────────────────────────── */
+    .check-label {
+      display: flex;
+      align-items: flex-start;
+      gap: .625rem;
+      cursor: pointer;
+      margin-bottom: 1.25rem;
+    }
+    .check-label input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin-top: 1px;
+      accent-color: var(--green-brand);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .check-label span {
+      font-size: .8rem;
+      color: var(--text-mid);
+      line-height: 1.5;
+    }
+    .check-label a {
+      color: var(--green-brand);
+      font-weight: 500;
+      text-decoration: none;
+    }
+    .check-label a:hover { text-decoration: underline; }
+
+    /* ── Buttons ──────────────────────────────────────────── */
+    .btn-primary {
+      width: 100%;
+      height: 48px;
+      border-radius: var(--radius-md);
+      border: none;
+      background: var(--green-brand);
+      color: #fff;
+      font-family: 'Inter', sans-serif;
+      font-size: .875rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .5rem;
+      box-shadow: var(--shadow-sm);
+      margin-bottom: .75rem;
+    }
+    .btn-primary:hover:not(:disabled) { background: var(--green-hover); }
+    .btn-primary:disabled {
+      background: var(--green-light);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .btn-outline {
+      width: 100%;
+      height: 40px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--green-border);
+      background: transparent;
+      color: var(--text-mid);
+      font-family: 'Inter', sans-serif;
+      font-size: .875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-outline:hover { background: var(--green-light); }
+
+    /* ── Security note ────────────────────────────────────── */
+    .sec-note {
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+      background: var(--green-light);
+      border-radius: var(--radius-md);
+      padding: .75rem 1rem;
+      margin-top: .75rem;
+    }
+    .sec-note p {
+      font-size: .75rem;
+      color: var(--text-mid);
+    }
+
+    /* ── Footer link ──────────────────────────────────────── */
+    .footer-link {
+      text-align: center;
+      font-size: .75rem;
+      color: var(--text-muted);
+      margin-top: 1.25rem;
+    }
+    .footer-link button {
+      background: none;
+      border: none;
+      color: var(--green-brand);
+      font-weight: 500;
+      cursor: pointer;
+      font-size: .75rem;
+      font-family: 'Inter', sans-serif;
+      padding: 0;
+    }
+    .footer-link button:hover { text-decoration: underline; }
+
+    /* ── OTP inputs ───────────────────────────────────────── */
+    .otp-row {
+      display: flex;
+      gap: .5rem;
+      justify-content: center;
+      margin-bottom: 1.25rem;
+    }
+    .otp-box {
+      width: 48px;
+      height: 56px;
+      border-radius: var(--radius-md);
+      border: 2px solid var(--green-border);
+      background: #fff;
+      font-size: 1.25rem;
+      font-weight: 700;
+      text-align: center;
+      color: var(--text-main);
+      font-family: 'Sora', sans-serif;
+      outline: none;
+      transition: border-color .15s, background .15s;
+      caret-color: var(--green-brand);
+    }
+    .otp-box:focus { border-color: var(--green-brand); background: #f0faf5; }
+    .otp-box.filled { border-color: var(--green-brand); background: #f0faf5; }
+    .otp-box.expired { opacity: .35; pointer-events: none; }
+
+    /* ── Verify icon ──────────────────────────────────────── */
+    .verify-icon {
+      width: 80px; height: 80px;
+      border-radius: var(--radius-lg);
+      background: var(--green-light);
+      border: 1px solid #c3e3d4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* ── Countdown ────────────────────────────────────────── */
+    .countdown-row {
+      text-align: center;
+      font-size: .875rem;
+      color: var(--text-muted);
+      margin-top: 1rem;
+      margin-bottom: .5rem;
+      min-height: 24px;
+    }
+    .countdown-num {
+      font-weight: 600;
+      color: var(--text-mid);
+      font-variant-numeric: tabular-nums;
+      transition: color .3s;
+    }
+    .countdown-num.urgent { color: #d97706; }
+    .resend-btn {
+      background: none;
+      border: none;
+      color: var(--green-brand);
+      font-size: .875rem;
+      font-weight: 600;
+      font-family: 'Inter', sans-serif;
+      cursor: pointer;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    .resend-btn:hover { text-decoration: underline; }
+
+    /* ── View switching ───────────────────────────────────── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── Spinner ──────────────────────────────────────────── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    .spinner-green {
+      border-color: var(--green-border);
+      border-top-color: var(--green-brand);
+    }
+
+    /* ── Responsive ───────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .left-panel { display: none; }
+      .right-panel { width: 100%; padding: 2rem 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="auth-wrap">
+
+  <!-- ══ Left decorative panel ══ -->
+  <div class="left-panel">
+    <div class="left-inner">
+      <img
+        class="hero-img"
+        src="https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=600&h=420&fit=crop&auto=format"
+        alt="Kuala Lumpur skyline"
+      />
+      <h2 class="left-title" id="left-title">Your journey starts here</h2>
+      <p class="left-desc" id="left-desc">
+        Join thousands of travellers planning smarter trips across Malaysia with AI-powered itineraries and collaborative planning.
+      </p>
+      <div class="left-tags">
+        <span class="left-tag">🏙️ KL</span>
+        <span class="left-tag">🌿 Langkawi</span>
+        <span class="left-tag">🏛️ Melaka</span>
+        <span class="left-tag">🏝️ Sabah</span>
+        <span class="left-tag">🌊 Penang</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ Right form panel ══ -->
+  <div class="right-panel">
+    <div class="form-inner">
+
+      <!-- Logo -->
+      <div class="logo">
+        <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="16" fill="#0f2d1f"/>
+          <circle cx="10" cy="11" r="4" fill="white"/>
+          <circle cx="22" cy="11" r="4" fill="white"/>
+          <circle cx="10" cy="11" r="2" fill="#1a2e22"/>
+          <circle cx="22" cy="11" r="2" fill="#1a2e22"/>
+          <ellipse cx="16" cy="20" rx="7" ry="5" fill="white"/>
+          <ellipse cx="16" cy="20" rx="4" ry="3" fill="#f0f7f4"/>
+          <circle cx="14" cy="19" r="1" fill="#1a2e22"/>
+          <circle cx="18" cy="19" r="1" fill="#1a2e22"/>
+          <path d="M14.5 21.5 Q16 23 17.5 21.5" stroke="#1a2e22" stroke-width=".8" fill="none" stroke-linecap="round"/>
+          <circle cx="8" cy="6" r="3" fill="#1a2e22"/>
+          <circle cx="24" cy="6" r="3" fill="#1a2e22"/>
+        </svg>
+        <span class="logo-wordmark">PandaJourney</span>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: Sign In
+      ════════════════════════════════════════ -->
+      <div class="view active" id="view-signin">
+        <p style="font-size:.875rem;color:#5a7a6a;margin-bottom:2rem;">Plan smarter trips across Malaysia</p>
+
+        <button class="btn-google" onclick="handleGoogleSignIn()">
+          <span id="google-signin-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2a10.34 10.34 0 0 0-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z" fill="#4285F4"/><path d="M9 18a8.59 8.59 0 0 0 5.96-2.18l-2.92-2.26a5.43 5.43 0 0 1-8.07-2.85H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.97 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08z" fill="#FBBC05"/><path d="M9 3.58a4.86 4.86 0 0 1 3.44 1.35l2.58-2.58A8.64 8.64 0 0 0 9 0 9 9 0 0 0 .96 4.96L3.97 7.3A5.36 5.36 0 0 1 9 3.58z" fill="#EA4335"/></svg>
+          </span>
+          <span id="google-signin-label">Continue with Google</span>
+        </button>
+
+        <div class="divider">or sign in with email</div>
+
+        <div class="field">
+          <label>Email</label>
+          <div class="input-wrap">
+            <span class="input-icon">✉️</span>
+            <input type="email" placeholder="you@example.com" />
+          </div>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="signin-pw" placeholder="••••••••" class="has-trail" />
+            <button class="toggle-pw" onclick="toggleVis('signin-pw',this)">👁</button>
+          </div>
+        </div>
+
+        <button class="btn-primary" onclick="handleSignIn()">Sign In</button>
+
+        <div class="sec-note">
+          <span>🔒</span>
+          <p>Secured with OAuth 2.0. PandaJourney never stores your Google password.</p>
+        </div>
+
+        <p class="footer-link">
+          Don't have an account?
+          <button onclick="showView('register')">Create one free</button>
+        </p>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: Create Account
+      ════════════════════════════════════════ -->
+      <div class="view" id="view-register">
+
+        <h1 class="view-title">Create New Account</h1>
+        <p class="view-subtitle">Create your account to start planning your travels smarter.</p>
+
+        <!-- Server error -->
+        <div class="alert alert-error hidden" id="reg-server-error">
+          <span>⛔</span>
+          <span id="reg-server-error-msg"></span>
+        </div>
+
+        <!-- Google sign up — goes straight to dashboard, no PIN -->
+        <button class="btn-google" id="btn-google-signup" onclick="handleGoogleSignUp()">
+          <span id="google-signup-icon">
+            <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2a10.34 10.34 0 0 0-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z" fill="#4285F4"/><path d="M9 18a8.59 8.59 0 0 0 5.96-2.18l-2.92-2.26a5.43 5.43 0 0 1-8.07-2.85H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.97 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08z" fill="#FBBC05"/><path d="M9 3.58a4.86 4.86 0 0 1 3.44 1.35l2.58-2.58A8.64 8.64 0 0 0 9 0 9 9 0 0 0 .96 4.96L3.97 7.3A5.36 5.36 0 0 1 9 3.58z" fill="#EA4335"/></svg>
+          </span>
+          <span id="google-signup-label">Continue with Google</span>
+        </button>
+
+        <div class="divider">OR</div>
+
+        <!-- Full Name -->
+        <div class="field">
+          <label for="reg-name">Full Name</label>
+          <div class="input-wrap">
+            <span class="input-icon">👤</span>
+            <input
+              type="text" id="reg-name" placeholder="Ahmad Faris"
+              oninput="validateName()" onblur="touchField('name')"
+            />
+          </div>
+          <span class="field-msg err hidden" id="msg-name">Please enter your full name.</span>
+        </div>
+
+        <!-- Email -->
+        <div class="field">
+          <label for="reg-email">Email Address</label>
+          <div class="input-wrap">
+            <span class="input-icon">✉️</span>
+            <input
+              type="email" id="reg-email" placeholder="you@example.com"
+              oninput="validateEmail()" onblur="touchField('email')"
+            />
+          </div>
+          <span class="field-msg err hidden" id="msg-email">Please enter a valid email address.</span>
+        </div>
+
+        <!-- Password -->
+        <div class="field">
+          <label for="reg-pw">Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input
+              type="password" id="reg-pw" placeholder="Min. 8 characters" class="has-trail"
+              oninput="validatePw()" onblur="touchField('pw')"
+            />
+            <button class="toggle-pw" onclick="toggleVis('reg-pw',this)">👁</button>
+          </div>
+          <!-- Strength bar -->
+          <div class="pw-strength" id="pw-strength-wrap" style="display:none">
+            <div class="strength-bar">
+              <div class="strength-seg" id="seg1"></div>
+              <div class="strength-seg" id="seg2"></div>
+              <div class="strength-seg" id="seg3"></div>
+              <div class="strength-seg" id="seg4"></div>
+            </div>
+            <div class="strength-meta">
+              <span class="strength-label" id="strength-label"></span>
+              <div class="pw-hints">
+                <span class="pw-hint" id="hint-len">· 8+ chars</span>
+                <span class="pw-hint" id="hint-upper">· A–Z</span>
+                <span class="pw-hint" id="hint-lower">· a–z</span>
+                <span class="pw-hint" id="hint-num">· 0–9</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Confirm Password -->
+        <div class="field">
+          <label for="reg-pw2">Confirm Password</label>
+          <div class="input-wrap">
+            <span class="input-icon">🔒</span>
+            <input
+              type="password" id="reg-pw2" placeholder="Re-enter your password" class="has-trail"
+              oninput="validatePw2()" onblur="touchField('pw2')"
+            />
+            <button class="toggle-pw" onclick="toggleVis('reg-pw2',this)">👁</button>
+          </div>
+          <span class="field-msg err hidden" id="msg-pw2">Passwords do not match.</span>
+          <span class="field-msg ok hidden" id="msg-pw2-ok">✓ Passwords match.</span>
+        </div>
+
+        <!-- T&C checkbox -->
+        <label class="check-label">
+          <input type="checkbox" id="reg-agree" onchange="checkForm()" />
+          <span>
+            I agree to the
+            <a href="#">Terms &amp; Conditions</a>
+            and
+            <a href="#">Privacy Policy</a>.
+          </span>
+        </label>
+
+        <!-- Submit -->
+        <button class="btn-primary" id="btn-create" onclick="handleCreateAccount()" disabled>
+          Create Account
+        </button>
+
+        <p class="footer-link">
+          Already have an account?
+          <button onclick="showView('signin')">Sign In</button>
+        </p>
+      </div>
+
+      <!-- ════════════════════════════════════════
+           VIEW: Email Verification
+      ════════════════════════════════════════ -->
+      <div class="view" id="view-verify">
+
+        <div style="text-align:center;margin-bottom:2rem;">
+          <div class="verify-icon">
+            <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+              <rect x="4" y="10" width="32" height="22" rx="4" fill="#d0ede3" stroke="#0f7a5a" stroke-width="1.5"/>
+              <path d="M4 14l16 10 16-10" stroke="#0f7a5a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="30" cy="12" r="6" fill="#0f7a5a"/>
+              <path d="M27 12l2 2 4-4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <h1 class="view-title">Verify Your Email</h1>
+          <p style="font-size:.875rem;color:#5a7a6a;margin-top:.25rem;">
+            We've sent a 6-digit verification code to
+          </p>
+          <p style="font-size:.875rem;font-weight:600;color:#0f7a5a;margin-top:.25rem;" id="verify-email-display"></p>
+        </div>
+
+        <!-- OTP errors -->
+        <div class="alert alert-error hidden" id="otp-error">
+          <span>⛔</span>
+          <span id="otp-error-msg"></span>
+        </div>
+        <div class="alert alert-warning hidden" id="otp-expired-banner">
+          <span>⚠️</span>
+          <span>Your verification code has expired. Please request a new one.</span>
+        </div>
+
+        <!-- OTP boxes -->
+        <div class="otp-row" id="otp-row">
+          <input class="otp-box" type="text" inputmode="numeric" maxlength="1" data-idx="0" />
+          <input class="otp-box" type="text" inputmode="numeric" maxlength="1" data-idx="1" />
+          <input class="otp-box" type="text" inputmode="numeric" maxlength="1" data-idx="2" />
+          <input class="otp-box" type="text" inputmode="numeric" maxlength="1" data-idx="3" />
+          <input class="otp-box" type="text" inputmode="numeric" maxlength="1" data-idx="4" />
+          <input class="otp-box" type="text" inputmode="numeric" maxlength="1" data-idx="5" />
+        </div>
+
+        <!-- Countdown / resend -->
+        <div class="countdown-row" id="countdown-row">
+          Resend code in <span class="countdown-num" id="countdown-num">60</span>s
+        </div>
+
+        <!-- Action buttons -->
+        <button class="btn-primary" id="btn-verify" onclick="handleVerify()" style="margin-top:.5rem;">
+          Verify
+        </button>
+        <button class="btn-outline" onclick="goBackFromVerify()">← Back</button>
+
+        <p class="footer-link">
+          Already have an account?
+          <button onclick="showView('signin')">Sign In</button>
+        </p>
+      </div>
+
+    </div><!-- /form-inner -->
+  </div><!-- /right-panel -->
+
+</div><!-- /auth-wrap -->
+
+<script>
+  /* ─────────────────────────────────────────────────────────
+     State
+  ───────────────────────────────────────────────────────── */
+  const touched = {};
+  let countdownTimer = null;
+  let pinExpired = false;
+
+  /* ─────────────────────────────────────────────────────────
+     View switching
+  ───────────────────────────────────────────────────────── */
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + name).classList.add('active');
+
+    // Update left panel copy
+    const titles = {
+      signin:   'Discover Malaysia',
+      register: 'Your journey starts here',
+      verify:   'Almost there…'
+    };
+    const descs = {
+      signin:   "From the Petronas Towers to the rainforests of Borneo — explore Malaysia's wonders, intelligently planned just for you.",
+      register: "Join thousands of travellers planning smarter trips across Malaysia with AI-powered itineraries and collaborative planning.",
+      verify:   "You're one step away from unlocking AI-powered trip planning, collaborative itineraries, and personalised recommendations."
+    };
+    document.getElementById('left-title').textContent = titles[name] || '';
+    document.getElementById('left-desc').textContent  = descs[name]  || '';
+
+    if (name === 'verify') startCountdown();
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Google sign-in (from sign-in view) — goes to dashboard
+  ───────────────────────────────────────────────────────── */
+  function handleGoogleSignIn() {
+    const icon  = document.getElementById('google-signin-icon');
+    const label = document.getElementById('google-signin-label');
+    icon.innerHTML  = '<span class="spinner spinner-green"></span>';
+    label.textContent = 'Connecting to Google…';
+    document.querySelector('#view-signin .btn-google').disabled = true;
+
+    // Simulate OAuth redirect — no PIN, goes straight to dashboard
+    setTimeout(() => {
+      window.location.href = 'profile.html';
+    }, 1600);
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Google sign-up (from register view) — goes to dashboard, NO PIN
+  ───────────────────────────────────────────────────────── */
+  function handleGoogleSignUp() {
+    const icon  = document.getElementById('google-signup-icon');
+    const label = document.getElementById('google-signup-label');
+    const btn   = document.getElementById('btn-google-signup');
+    icon.innerHTML  = '<span class="spinner spinner-green"></span>';
+    label.textContent = 'Connecting to Google…';
+    btn.disabled = true;
+
+    // Google auth: account auto-created or auto-signed-in. No email PIN required.
+    setTimeout(() => {
+      window.location.href = 'profile.html';
+    }, 1600);
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Sign-in demo
+  ───────────────────────────────────────────────────────── */
+  function handleSignIn() {
+    window.location.href = 'profile.html';
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Password toggle
+  ───────────────────────────────────────────────────────── */
+  function toggleVis(inputId, btn) {
+    const inp = document.getElementById(inputId);
+    if (inp.type === 'password') {
+      inp.type = 'text';
+      btn.textContent = '🙈';
+    } else {
+      inp.type = 'password';
+      btn.textContent = '👁';
+    }
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Validation helpers
+  ───────────────────────────────────────────────────────── */
+  function touchField(f) {
+    touched[f] = true;
+    if (f === 'name')  validateName(true);
+    if (f === 'email') validateEmail(true);
+    if (f === 'pw')    validatePw(true);
+    if (f === 'pw2')   validatePw2(true);
+    checkForm();
+  }
+
+  function validateName(force) {
+    const inp = document.getElementById('reg-name');
+    const msg = document.getElementById('msg-name');
+    const v   = inp.value.trim();
+    const err = v.length < 2;
+    if (touched.name || force) {
+      inp.classList.toggle('error', err);
+      msg.classList.toggle('hidden', !err);
+    }
+    return !err;
+  }
+
+  function validateEmail(force) {
+    const inp = document.getElementById('reg-email');
+    const msg = document.getElementById('msg-email');
+    const ok  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inp.value);
+    if (touched.email || force) {
+      inp.classList.toggle('error', !ok);
+      msg.classList.toggle('hidden', ok);
+    }
+    return ok;
+  }
+
+  function validatePw(force) {
+    const inp  = document.getElementById('reg-pw');
+    const pw   = inp.value;
+    const wrap = document.getElementById('pw-strength-wrap');
+
+    const checks = {
+      length: pw.length >= 8,
+      upper:  /[A-Z]/.test(pw),
+      lower:  /[a-z]/.test(pw),
+      number: /[0-9]/.test(pw),
+    };
+    const score = Object.values(checks).filter(Boolean).length;
+
+    if (pw) {
+      wrap.style.display = 'block';
+      const colorMap = ['', 'weak', 'fair', 'good', 'strong'];
+      const labelMap = ['', 'Weak', 'Fair', 'Good', 'Strong'];
+      const segs = [document.getElementById('seg1'), document.getElementById('seg2'),
+                    document.getElementById('seg3'), document.getElementById('seg4')];
+      segs.forEach((s, i) => {
+        s.className = 'strength-seg';
+        if (i < score) s.classList.add(colorMap[score]);
+      });
+      const lbl = document.getElementById('strength-label');
+      lbl.textContent = labelMap[score];
+      lbl.className   = 'strength-label ' + (colorMap[score] || '');
+
+      const hintLen   = document.getElementById('hint-len');
+      const hintUpper = document.getElementById('hint-upper');
+      const hintLower = document.getElementById('hint-lower');
+      const hintNum   = document.getElementById('hint-num');
+      hintLen.className   = 'pw-hint' + (checks.length ? ' met' : '');
+      hintLen.textContent  = (checks.length ? '✓' : '·') + ' 8+ chars';
+      hintUpper.className = 'pw-hint' + (checks.upper  ? ' met' : '');
+      hintUpper.textContent = (checks.upper ? '✓' : '·') + ' A–Z';
+      hintLower.className = 'pw-hint' + (checks.lower  ? ' met' : '');
+      hintLower.textContent = (checks.lower ? '✓' : '·') + ' a–z';
+      hintNum.className   = 'pw-hint' + (checks.number ? ' met' : '');
+      hintNum.textContent  = (checks.number ? '✓' : '·') + ' 0–9';
+
+      if (touched.pw || force) {
+        inp.classList.toggle('warn', score < 4);
+        inp.classList.toggle('ok',   score === 4);
+        inp.classList.remove('error');
+      }
+    } else {
+      wrap.style.display = 'none';
+    }
+
+    if (touched.pw2) validatePw2();
+    checkForm();
+    return score === 4;
+  }
+
+  function validatePw2(force) {
+    const pw1 = document.getElementById('reg-pw').value;
+    const inp = document.getElementById('reg-pw2');
+    const pw2 = inp.value;
+    const msgErr = document.getElementById('msg-pw2');
+    const msgOk  = document.getElementById('msg-pw2-ok');
+    const match  = pw2 && pw2 === pw1;
+    const mismatch = pw2 && pw2 !== pw1;
+
+    if (touched.pw2 || force) {
+      inp.classList.toggle('error', mismatch);
+      inp.classList.toggle('ok',    match);
+      msgErr.classList.toggle('hidden', !mismatch);
+      msgOk.classList.toggle('hidden',  !match);
+    }
+    checkForm();
+    return match;
+  }
+
+  function checkForm() {
+    const ok =
+      validateName() && validateEmail() &&
+      document.getElementById('reg-pw').value.length >= 8 &&
+      /[A-Z]/.test(document.getElementById('reg-pw').value) &&
+      /[a-z]/.test(document.getElementById('reg-pw').value) &&
+      /[0-9]/.test(document.getElementById('reg-pw').value) &&
+      document.getElementById('reg-pw').value === document.getElementById('reg-pw2').value &&
+      document.getElementById('reg-pw2').value.length > 0 &&
+      document.getElementById('reg-agree').checked;
+    document.getElementById('btn-create').disabled = !ok;
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Create Account (manual) — triggers email PIN verification
+  ───────────────────────────────────────────────────────── */
+  function handleCreateAccount() {
+    const btn   = document.getElementById('btn-create');
+    const email = document.getElementById('reg-email').value.trim();
+    const errEl = document.getElementById('reg-server-error');
+    const errMsg= document.getElementById('reg-server-error-msg');
+
+    // Simulate duplicate email
+    if (email.toLowerCase() === 'taken@example.com') {
+      errMsg.textContent = 'An account with this email already exists.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Creating account…';
+
+    // After simulated server call → navigate to PIN verification screen
+    setTimeout(() => {
+      btn.innerHTML = 'Create Account';
+      // Show masked email on verify screen
+      const masked = email.replace(/(.{2})[^@]+(@.+)/, '$1****$2');
+      document.getElementById('verify-email-display').textContent = masked;
+      showView('verify');
+    }, 1400);
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Back from verify
+  ───────────────────────────────────────────────────────── */
+  function goBackFromVerify() {
+    clearInterval(countdownTimer);
+    pinExpired = false;
+    document.getElementById('otp-error').classList.add('hidden');
+    document.getElementById('otp-expired-banner').classList.add('hidden');
+    resetOtp();
+    document.getElementById('btn-create').disabled = false;
+    document.getElementById('btn-create').textContent = 'Create Account';
+    showView('register');
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     OTP wiring
+  ───────────────────────────────────────────────────────── */
+  function initOtp() {
+    const boxes = document.querySelectorAll('.otp-box');
+
+    boxes.forEach((box, i) => {
+      box.addEventListener('input', () => {
+        const digit = box.value.replace(/\D/g, '').slice(-1);
+        box.value = digit;
+        box.classList.toggle('filled', !!digit);
+        if (digit && i < boxes.length - 1) boxes[i + 1].focus();
+        if (getOtpValue().length === 6) autoVerify();
+      });
+
+      box.addEventListener('keydown', e => {
+        if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
+      });
+
+      box.addEventListener('paste', e => {
+        e.preventDefault();
+        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+        if (!pasted) return;
+        boxes.forEach((b, j) => {
+          b.value = pasted[j] || '';
+          b.classList.toggle('filled', !!b.value);
+        });
+        const focusIdx = Math.min(pasted.length, boxes.length - 1);
+        boxes[focusIdx].focus();
+        if (pasted.length === 6) autoVerify();
+      });
+    });
+  }
+
+  function getOtpValue() {
+    return Array.from(document.querySelectorAll('.otp-box')).map(b => b.value).join('');
+  }
+
+  function resetOtp() {
+    document.querySelectorAll('.otp-box').forEach(b => {
+      b.value = '';
+      b.classList.remove('filled', 'expired');
+    });
+  }
+
+  function setOtpExpired(expired) {
+    document.querySelectorAll('.otp-box').forEach(b => b.classList.toggle('expired', expired));
+    document.getElementById('btn-verify').disabled = expired;
+    document.getElementById('otp-expired-banner').classList.toggle('hidden', !expired);
+  }
+
+  function autoVerify() {
+    if (!pinExpired) handleVerify();
+  }
+
+  function handleVerify() {
+    const code = getOtpValue();
+    const errEl  = document.getElementById('otp-error');
+    const errMsg = document.getElementById('otp-error-msg');
+    const btn    = document.getElementById('btn-verify');
+
+    if (pinExpired) {
+      document.getElementById('otp-expired-banner').classList.remove('hidden');
+      return;
+    }
+    if (code.length < 6) {
+      errMsg.textContent = 'Please enter the full 6-digit code.';
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    errEl.classList.add('hidden');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Verifying…';
+
+    setTimeout(() => {
+      if (code === '000000') {
+        // Wrong code demo
+        btn.disabled = false;
+        btn.textContent = 'Verify';
+        errMsg.textContent = 'Incorrect code. Please try again.';
+        errEl.classList.remove('hidden');
+        resetOtp();
+        document.querySelectorAll('.otp-box')[0].focus();
+        return;
+      }
+      // Success — go to dashboard / profile
+      clearInterval(countdownTimer);
+      window.location.href = 'profile.html';
+    }, 1200);
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Countdown timer
+  ───────────────────────────────────────────────────────── */
+  function startCountdown() {
+    clearInterval(countdownTimer);
+    pinExpired = false;
+    let seconds = 60;
+    resetOtp();
+    setOtpExpired(false);
+    document.getElementById('otp-error').classList.add('hidden');
+    document.getElementById('otp-expired-banner').classList.add('hidden');
+    document.getElementById('btn-verify').disabled = false;
+    renderCountdown(seconds);
+
+    countdownTimer = setInterval(() => {
+      seconds--;
+      renderCountdown(seconds);
+      if (seconds <= 0) {
+        clearInterval(countdownTimer);
+        pinExpired = true;
+        setOtpExpired(true);
+        showResend();
+      }
+    }, 1000);
+  }
+
+  function renderCountdown(s) {
+    const row = document.getElementById('countdown-row');
+    const num = document.getElementById('countdown-num');
+    if (s > 0) {
+      row.innerHTML = 'Resend code in <span class="countdown-num' + (s <= 10 ? ' urgent' : '') + '" id="countdown-num">' + s + 's</span>';
+    }
+  }
+
+  function showResend() {
+    document.getElementById('countdown-row').innerHTML =
+      '<button class="resend-btn" onclick="handleResend()">🔄 Resend Code</button>';
+  }
+
+  function handleResend() {
+    startCountdown();
+    document.querySelectorAll('.otp-box')[0].focus();
+  }
+
+  /* ─────────────────────────────────────────────────────────
+     Init
+  ───────────────────────────────────────────────────────── */
+  document.addEventListener('DOMContentLoaded', () => {
+    initOtp();
+  });
+</script>
+</body>
+</html>
