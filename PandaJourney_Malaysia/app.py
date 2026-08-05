@@ -29,6 +29,10 @@ def login():
     return render_template("login.html")
 
 
+@app.route('/create-account')
+def create_account():
+    return render_template('create_account.html')
+
 @app.route("/dashboard")#jiading
 def dashboard():
     return render_template(
