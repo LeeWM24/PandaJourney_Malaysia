@@ -1,0 +1,486 @@
+{% extends "base.html" %}
+
+{% block title %}Smart Attractions — PandaJourney Malaysia{% endblock %}
+{% block page_title %}Smart Attraction Recommendation{% endblock %}
+{% block page_subtitle %}Discover attractions matched to your travel interests and weather preferences{% endblock %}
+
+{% block extra_head %}
+<style>
+  .filter-panel { max-width: 320px; }
+  .filter-panel .card-title { margin-bottom: 18px; }
+  .form-input-icon { position: relative; }
+  .form-input-icon .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; }
+  .form-input-icon .form-input { padding-left: 42px; }
+  .filter-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+  .filter-actions .btn { flex: 1; }
+  .filter-actions .clear-filters { background: transparent; color: var(--fg-2); border: 1px solid var(--border); }
+  .result-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  .result-label { color: var(--fg-2); font-size: 14px; }
+  .result-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .result-count { font-weight: 700; }
+  .detail-panel-backdrop { position: fixed; inset: 0; background: rgba(4, 29, 16, 0.55); backdrop-filter: blur(8px); display: none; align-items: stretch; justify-content: flex-end; z-index: 50; }
+  .detail-panel-backdrop.active { display: flex; }
+  .detail-panel { width: min(540px, 100%); background: white; display: flex; flex-direction: column; box-shadow: 0 30px 60px rgba(0,0,0,.18); }
+  .detail-header { position: relative; min-height: 320px; overflow: hidden; }
+  .detail-hero { width: 100%; height: 320px; object-fit: cover; display: block; }
+  .detail-hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.64) 100%); }
+  .detail-hero-copy { position: absolute; left: 20px; bottom: 20px; right: 20px; color: white; z-index: 2; }
+  .detail-hero-copy h2 { margin: 0 0 8px; font-size: 24px; }
+  .detail-hero-copy .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; }
+  .detail-hero-copy .hero-meta span { background: rgba(255,255,255,.16); padding: 8px 11px; border-radius: 999px; }
+  .detail-gallery { display: flex; gap: 10px; padding: 16px; overflow-x: auto; }
+  .detail-thumb { min-width: 84px; height: 64px; border-radius: 14px; overflow: hidden; cursor: pointer; opacity: .65; border: 2px solid transparent; }
+  .detail-thumb.active { opacity: 1; border-color: var(--primary); }
+  .detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .detail-body { padding: 22px; overflow-y: auto; flex: 1; }
+  .detail-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+  .detail-cell { background: var(--muted-bg); border-radius: 14px; padding: 16px; text-align: center; }
+  .detail-cell strong { display: block; margin-bottom: 6px; }
+  .detail-section { margin-bottom: 22px; }
+  .detail-section h3 { margin-bottom: 12px; font-size: 16px; }
+  .detail-pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+  .detail-pill { background: var(--teal-soft); color: #065f52; padding: 7px 12px; border-radius: 999px; font-size: 13px; }
+  .detail-tips { list-style: disc; margin: 12px 0 0 18px; color: var(--fg-2); }
+  .detail-info-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  .detail-info-card { background: var(--muted-bg); border-radius: 18px; padding: 18px; }
+  .detail-info-title { font-weight: 700; margin-bottom: 8px; }
+  .detail-footer { padding: 18px; border-top: 1px solid var(--border); background: #fbfffd; display: flex; gap: 12px; }
+  .detail-footer .btn { flex: 1; }
+  .panel-close { position: absolute; right: 16px; top: 16px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.24); color: white; font-size: 18px; cursor: pointer; }
+  .card-media { position: relative; display: block; border: 0; background: transparent; padding: 0; width: 100%; cursor: pointer; }
+  .card-media img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 18px; display: block; }
+  .card-overlay { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; padding: 16px; color: white; opacity: 0; transition: opacity .18s ease; background: linear-gradient(180deg, rgba(0,0,0,0) 40%, rgba(0,0,0,.55) 100%); border-radius: 18px; }
+  .card-media:hover .card-overlay { opacity: 1; }
+  .card-toolbar { position: absolute; right: 14px; top: 14px; display: flex; gap: 8px; }
+  .card-weather { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px; background: rgba(255,255,255,.95); font-size: 12px; color: var(--fg); }
+  .fav-icon { width: 36px; height: 36px; border-radius: 999px; display: grid; place-items: center; background: rgba(255,255,255,.9); border: 1px solid var(--border); cursor: pointer; }
+  .fav-icon.active { background: #fef3c7; color: #c2410c; }
+  .attraction-card { position: relative; overflow: hidden; }
+  .detail-empty { min-height: 240px; display: grid; place-items: center; color: var(--fg-2); }
+  @media (max-width: 1040px) {
+    .attraction-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 760px) {
+    .attraction-layout { grid-template-columns: 1fr; }
+    .filter-panel, .itinerary-result-col { width: 100%; }
+    .attraction-grid { grid-template-columns: 1fr; }
+    .detail-row { grid-template-columns: 1fr; }
+    .detail-info-grid { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-inner">
+  <div class="attraction-layout">
+    <aside class="filter-panel">
+      <div class="card card-p">
+        <div class="card-title">Find attractions</div>
+        <form action="{{ url_for('smart_attraction') }}" method="post" id="filter-form">
+          <div class="form-group mb-3">
+            <label class="form-label" for="destination">Destination</label>
+            <div class="form-input-icon">
+              <span class="icon">📍</span>
+              <input class="form-input" id="destination" name="destination" type="text"
+                     placeholder="e.g. Bukit Bintang"
+                     value="{{ filters.destination | default('') }}" required />
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label">Interests</label>
+            <div class="flex flex-wrap gap-2">
+              {% for interest in ['nature', 'culture', 'museum', 'shopping', 'food', 'adventure', 'beach', 'heritage'] %}
+                <label class="chip {% if interest in filters.interests %}active{% endif %}" data-chip="true">
+                  <input type="checkbox" name="interests" value="{{ interest }}" {% if interest in filters.interests %}checked{% endif %} hidden />
+                  {{ interest.title() }}
+                </label>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label" for="min_rating">Minimum Rating</label>
+            <select class="form-select" id="min_rating" name="min_rating">
+              <option value="0" {% if filters.min_rating == '0' %}selected{% endif %}>Any</option>
+              <option value="3.0" {% if filters.min_rating == '3.0' %}selected{% endif %}>⭐ 3.0+</option>
+              <option value="4.0" {% if filters.min_rating == '4.0' %}selected{% endif %}>⭐ 4.0+</option>
+              <option value="4.5" {% if filters.min_rating == '4.5' %}selected{% endif %}>⭐ 4.5+</option>
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label" for="sort">Sort by</label>
+            <select class="form-select" id="sort" name="sort">
+              <option value="rating" {% if filters.sort == 'rating' %}selected{% endif %}>Highest Rated</option>
+              <option value="score" {% if filters.sort == 'score' %}selected{% endif %}>Most Relevant</option>
+              <option value="nearest" {% if filters.sort == 'nearest' %}selected{% endif %}>Nearest</option>
+            </select>
+          </div>
+
+          <div class="form-group mb-4 toggle-wrap">
+            <label class="form-label">Weather-aware</label>
+            <label class="toggle">
+              <input type="checkbox" name="weather_aware" value="1" {% if filters.weather_aware %}checked{% endif %} />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+
+          <div class="filter-actions">
+            <button type="submit" class="btn btn-primary btn-lg btn-full">🔍 Search Attractions</button>
+            {% if searched %}
+              <button type="button" class="btn btn-ghost clear-filters" id="clear-filters">✕ Clear filters</button>
+            {% endif %}
+          </div>
+        </form>
+      </div>
+    </aside>
+
+    <section class="itinerary-result-col">
+      <div class="card card-p mb-4">
+        <div class="result-row">
+          <div>
+            <div class="result-count">{{ results_label }}</div>
+            <div class="result-label">Showing {{ attractions | length }} attractions · adjust filters and click Search.</div>
+          </div>
+          <div>
+            <span class="badge badge-warning" id="fav-count-chip" style="display: none;">⭐ <span id="fav-count">0</span> favourites</span>
+          </div>
+        </div>
+      </div>
+
+      {% if attractions %}
+        <div class="attraction-grid">
+          {% for attraction in attractions %}
+            <article class="attraction-card card" data-id="{{ attraction.id }}">
+              <button class="card-media" type="button" data-detail-id="{{ attraction.id }}">
+                <img src="{{ attraction.image_url }}" alt="{{ attraction.name }}" />
+                <div class="card-overlay">View details</div>
+                <div class="card-toolbar">
+                  <span class="card-weather">{{ attraction.weather_suitability }}</span>
+                  <button type="button" class="fav-icon" data-fav-id="{{ attraction.id }}" aria-label="Star attraction">★</button>
+                </div>
+              </button>
+              <div class="attraction-body">
+                <div class="flex items-center justify-between gap-3 mb-3">
+                  <h3 class="attraction-title">{{ attraction.name }}</h3>
+                  <span class="attraction-rating">⭐ {{ attraction.rating | default('N/A') }}</span>
+                </div>
+                <div class="attraction-meta mb-2">
+                  <span class="badge badge-muted">{{ attraction.category }}</span>
+                  {% if attraction.distance_label %}<span class="badge badge-muted">{{ attraction.distance_label }}</span>{% endif %}
+                </div>
+                <div class="attraction-loc mb-3">{{ attraction.area }}</div>
+                <div class="attraction-reasons mb-4">
+                  {% for reason in attraction.reason_tags %}
+                    <span class="reason-tag">{{ reason }}</span>
+                  {% endfor %}
+                </div>
+                <div class="attraction-actions">
+                  <button type="button" class="btn btn-secondary btn-sm details-btn" data-detail-id="{{ attraction.id }}">View details</button>
+                  <button type="button" class="btn btn-ghost btn-sm fav-toggle" data-fav-id="{{ attraction.id }}">★</button>
+                </div>
+              </div>
+            </article>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="card card-p">
+          <div class="empty-state">
+            <div class="empty-icon">🌏</div>
+            <div class="empty-title">No attractions matched</div>
+            <div class="empty-sub">Submit the form to get weather-aware recommended attractions for your destination.</div>
+          </div>
+        </div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="detail-panel-backdrop" id="detail-backdrop" aria-hidden="true">
+  <div class="detail-panel" role="dialog" aria-modal="true">
+    <div class="detail-header">
+      <img id="detail-main-image" class="detail-hero" src="" alt="Attraction photo" />
+      <div class="detail-hero-overlay"></div>
+      <button type="button" class="panel-close" id="detail-close">✕</button>
+      <div class="detail-hero-copy">
+        <div class="hero-meta" id="detail-meta-top"></div>
+        <h2 id="detail-name">Attraction Name</h2>
+        <div class="hero-meta" id="detail-meta-bottom"></div>
+      </div>
+    </div>
+    <div class="detail-gallery" id="detail-gallery"></div>
+    <div class="detail-body">
+      <div class="detail-row">
+        <div class="detail-cell">
+          <strong>Hours</strong>
+          <span id="detail-hours"></span>
+        </div>
+        <div class="detail-cell">
+          <strong>Entry fee</strong>
+          <span id="detail-fee"></span>
+        </div>
+        <div class="detail-cell">
+          <strong>Visit</strong>
+          <span id="detail-duration"></span>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h3>About</h3>
+        <p id="detail-description"></p>
+      </div>
+
+      <div class="detail-section">
+        <h3>Why we recommend this</h3>
+        <div class="detail-pills" id="detail-reasons"></div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Travel interests</h3>
+        <div class="detail-pills" id="detail-interests"></div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Visitor tips</h3>
+        <ul class="detail-tips" id="detail-tips"></ul>
+      </div>
+
+      <div class="detail-section">
+        <h3>Location & contact</h3>
+        <div class="detail-info-grid">
+          <div class="detail-info-card">
+            <div class="detail-info-title">Area</div>
+            <div id="detail-area"></div>
+          </div>
+          <div class="detail-info-card">
+            <div class="detail-info-title">Source</div>
+            <div id="detail-source"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h3>Map</h3>
+        <div class="detail-info-card" style="min-height: 180px; display: grid; place-items: center; color: var(--fg-2);">
+          Map preview coming soon
+        </div>
+      </div>
+    </div>
+    <div class="detail-footer">
+      <button type="button" class="btn btn-primary" id="detail-fav-btn">Save as favourite</button>
+      <button type="button" class="btn btn-ghost" id="detail-close-btn">Close</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const attractionsData = {{ attractions | tojson | safe }};
+  const searched = {{ searched | tojson }};
+
+  function getFavouriteIds() {
+    try {
+      const saved = localStorage.getItem('smartAttractionFavourites');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveFavouriteIds(ids) {
+    localStorage.setItem('smartAttractionFavourites', JSON.stringify(ids));
+  }
+
+  function updateFavCount() {
+    const ids = getFavouriteIds();
+    document.getElementById('fav-count').textContent = ids.length;
+    const chip = document.getElementById('fav-count-chip');
+    chip.style.display = ids.length > 0 ? 'inline-flex' : 'none';
+  }
+
+  function setCardFavourite(cardId, active) {
+    document.querySelectorAll(`[data-fav-id="${cardId}"]`).forEach((button) => {
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function toast(message) {
+    const toastEl = document.createElement('div');
+    toastEl.className = 'alert alert-success';
+    toastEl.style.position = 'fixed';
+    toastEl.style.right = '20px';
+    toastEl.style.bottom = '20px';
+    toastEl.style.zIndex = 60;
+    toastEl.textContent = message;
+    document.body.appendChild(toastEl);
+    setTimeout(() => toastEl.remove(), 2500);
+  }
+
+  function toggleFavourite(id) {
+    const ids = getFavouriteIds();
+    const index = ids.indexOf(id);
+    let message;
+
+    if (index === -1) {
+      ids.push(id);
+      message = 'Added to favourites';
+      setCardFavourite(id, true);
+    } else {
+      ids.splice(index, 1);
+      message = 'Removed from favourites';
+      setCardFavourite(id, false);
+    }
+
+    saveFavouriteIds(ids);
+    updateFavCount();
+    toast(message);
+    syncDetailFavourite(id, ids.includes(id));
+  }
+
+  function syncDetailFavourite(id, active) {
+    const favBtn = document.getElementById('detail-fav-btn');
+    if (!favBtn) return;
+    favBtn.textContent = active ? 'Remove from favourites' : 'Save as favourite';
+    favBtn.dataset.favId = id;
+  }
+
+  function openDetail(attractionId) {
+    const attraction = attractionsData.find((item) => item.id === attractionId);
+    if (!attraction) return;
+
+    const backdrop = document.getElementById('detail-backdrop');
+    const mainImage = document.getElementById('detail-main-image');
+    const nameEl = document.getElementById('detail-name');
+    const metaTop = document.getElementById('detail-meta-top');
+    const metaBottom = document.getElementById('detail-meta-bottom');
+    const hoursEl = document.getElementById('detail-hours');
+    const feeEl = document.getElementById('detail-fee');
+    const durationEl = document.getElementById('detail-duration');
+    const descEl = document.getElementById('detail-description');
+    const reasonsEl = document.getElementById('detail-reasons');
+    const interestsEl = document.getElementById('detail-interests');
+    const tipsEl = document.getElementById('detail-tips');
+    const areaEl = document.getElementById('detail-area');
+    const sourceEl = document.getElementById('detail-source');
+    const galleryEl = document.getElementById('detail-gallery');
+    const favBtn = document.getElementById('detail-fav-btn');
+
+    backdrop.classList.add('active');
+    mainImage.src = attraction.image_url;
+    nameEl.textContent = attraction.name;
+    metaTop.innerHTML = `<span>${attraction.weather_suitability}</span><span>${attraction.category}</span>`;
+    metaBottom.innerHTML = `<span>${attraction.area}</span><span>⭐ ${attraction.rating.toFixed(1)}</span>`;
+    hoursEl.textContent = attraction.hours;
+    feeEl.textContent = attraction.entry_fee;
+    durationEl.textContent = `${attraction.estimated_minutes} mins`;
+    descEl.textContent = attraction.description;
+    areaEl.textContent = attraction.area;
+    sourceEl.textContent = attraction.source || 'Local demo dataset';
+
+    reasonsEl.innerHTML = '';
+    (attraction.reason_tags || []).forEach((reason) => {
+      const pill = document.createElement('span');
+      pill.className = 'detail-pill';
+      pill.textContent = reason;
+      reasonsEl.appendChild(pill);
+    });
+
+    interestsEl.innerHTML = '';
+    (attraction.interest_tags || []).forEach((interest) => {
+      const pill = document.createElement('span');
+      pill.className = 'detail-pill';
+      pill.textContent = interest;
+      interestsEl.appendChild(pill);
+    });
+
+    tipsEl.innerHTML = '';
+    (attraction.visitor_tips || []).forEach((tip) => {
+      const li = document.createElement('li');
+      li.textContent = tip;
+      tipsEl.appendChild(li);
+    });
+
+    galleryEl.innerHTML = '';
+    (attraction.photo_urls || []).forEach((photo, index) => {
+      const thumb = document.createElement('button');
+      thumb.type = 'button';
+      thumb.className = 'detail-thumb';
+      if (index === 0) thumb.classList.add('active');
+      thumb.innerHTML = `<img src="${photo}" alt="Thumbnail ${index + 1}" />`;
+      thumb.addEventListener('click', () => {
+        mainImage.src = photo;
+        galleryEl.querySelectorAll('.detail-thumb').forEach((button) => button.classList.remove('active'));
+        thumb.classList.add('active');
+      });
+      galleryEl.appendChild(thumb);
+    });
+
+    const favIds = getFavouriteIds();
+    const active = favIds.includes(attractionId);
+    syncDetailFavourite(attractionId, active);
+    favBtn.dataset.favId = attractionId;
+  }
+
+  function closeDetail() {
+    document.getElementById('detail-backdrop').classList.remove('active');
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    const favIds = getFavouriteIds();
+    favIds.forEach((id) => setCardFavourite(id, true));
+    updateFavCount();
+
+    document.querySelectorAll('[data-fav-id]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const id = Number(button.dataset.favId);
+        if (!Number.isNaN(id)) toggleFavourite(id);
+      });
+    });
+
+    document.querySelectorAll('[data-detail-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = Number(button.dataset.detailId);
+        openDetail(id);
+      });
+    });
+
+    document.getElementById('detail-close').addEventListener('click', closeDetail);
+    document.getElementById('detail-close-btn').addEventListener('click', closeDetail);
+    document.getElementById('detail-backdrop').addEventListener('click', (event) => {
+      if (event.target === event.currentTarget) closeDetail();
+    });
+
+    document.getElementById('detail-fav-btn').addEventListener('click', () => {
+      const id = Number(document.getElementById('detail-fav-btn').dataset.favId);
+      if (!Number.isNaN(id)) toggleFavourite(id);
+    });
+
+    document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        const checkbox = chip.querySelector('input[type="checkbox"]');
+        if (!checkbox) return;
+        checkbox.checked = !checkbox.checked;
+        chip.classList.toggle('active', checkbox.checked);
+      });
+    });
+
+    const clearFilters = document.getElementById('clear-filters');
+    if (clearFilters) {
+      clearFilters.addEventListener('click', () => {
+        document.getElementById('filter-form').reset();
+        document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
+          const checkbox = chip.querySelector('input[type="checkbox"]');
+          if (checkbox) {
+            checkbox.checked = false;
+            chip.classList.remove('active');
+          }
+        });
+      });
+    }
+  });
+</script>
+{% endblock %}
