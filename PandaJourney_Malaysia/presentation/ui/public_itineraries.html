@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Public Itineraries | PandaJourney Malaysia</title>
+  <style>
+    :root {
+      --bg: #f7faf8;
+      --fg: #143123;
+      --fg-2: #285440;
+      --card: #ffffff;
+      --primary: #0f8a67;
+      --primary-dark: #0b6048;
+      --primary-soft: #e8f5f0;
+      --secondary: #dff3ec;
+      --muted-bg: #f0f7f4;
+      --muted-fg: #5a7a6a;
+      --border: #cfe7dc;
+      --accent: #f5b400;
+      --accent-soft: #fff4c7;
+      --sidebar: #0b3422;
+      --sidebar-2: #0e3d29;
+      --sidebar-text: #b9dfc8;
+      --sidebar-active: #1b6e45;
+      --shadow: 0 8px 22px rgba(15, 61, 42, .10);
+      --shadow-sm: 0 4px 12px rgba(15, 61, 42, .08);
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 18px;
+      --radius-xl: 26px;
+      --font-display: 'Georgia', 'Times New Roman', serif;
+      --font-body: 'Inter', 'Segoe UI', sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--font-body);
+      background: var(--bg);
+      color: var(--fg);
+    }
+    button, input { font: inherit; }
+    img { display: block; max-width: 100%; }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 240px 1fr;
+    }
+
+    .sidebar {
+      background: var(--sidebar);
+      color: var(--sidebar-text);
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      padding: 24px 14px 18px;
+    }
+    .sidebar-logo { margin-bottom: 20px; }
+    .sidebar-brand { display: flex; align-items: center; gap: 10px; }
+    .sidebar-logo-img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: white; }
+    .sidebar-brand-name { color: white; font-family: var(--font-display); font-size: 20px; font-weight: 700; }
+    .sidebar-brand-sub { margin-top: 6px; margin-left: 46px; color: #8ac7a2; font-size: 11px; }
+    .sidebar-nav { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .sidebar-nav a {
+      color: inherit;
+      text-decoration: none;
+      padding: 11px 14px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+    }
+    .sidebar-nav a.active, .sidebar-nav a:hover { background: var(--sidebar-active); color: white; }
+    .sidebar-footer { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+    .sidebar-footer a { color: inherit; text-decoration: none; padding: 11px 14px; border-radius: 999px; display: flex; align-items: center; gap: 12px; font-weight: 700; }
+
+    .main-content { min-width: 0; }
+    .topbar {
+      padding: 22px 32px;
+      background: rgba(255,255,255,.85);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    .topbar-title { font-family: var(--font-display); font-size: 24px; font-weight: 700; }
+    .topbar-subtitle { margin-top: 4px; color: var(--muted-fg); font-size: 13px; }
+    .topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+    .page-body { padding: 24px 32px 36px; }
+    .page-shell { display: flex; flex-direction: column; gap: 18px; }
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
+    .search-card { padding: 20px 22px; }
+    .search-row { display: flex; gap: 12px; align-items: center; }
+    .search-input-wrap { position: relative; flex: 1; }
+    .search-input-wrap input {
+      width: 100%;
+      min-height: 48px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0 48px 0 16px;
+      outline: none;
+      background: #fcfffd;
+      color: var(--fg);
+    }
+    .search-input-wrap input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,138,103,.10); }
+    .clear-btn {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; color: var(--muted-fg);
+    }
+    .clear-btn:hover { background: var(--muted-bg); }
+    .filter-btn {
+      min-height: 46px; padding: 0 16px; border: 1px solid var(--border); border-radius: 999px;
+      background: white; color: var(--fg-2); cursor: pointer; white-space: nowrap; font-weight: 700;
+    }
+    .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+    .filter-popover {
+      position: absolute; top: 100%; right: 0; margin-top: 10px; width: min(420px, 90vw);
+      background: white; border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 18px; padding: 16px; z-index: 30; display: none;
+    }
+    .filter-popover.open { display: block; }
+    .popover-section { margin-top: 12px; }
+    .popover-title { font-weight: 800; margin-bottom: 10px; color: var(--fg-2); }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+    .chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); background: #fbfffd; cursor: pointer; color: var(--fg-2); font-size: 13px; }
+    .chip.active { background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary); }
+    .popover-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+    .btn { border: 0; border-radius: 999px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+    .btn-ghost { background: var(--muted-bg); color: var(--fg-2); }
+    .btn-primary { background: var(--primary); color: white; }
+    .results-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .filter-pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; font-size: 12px; }
+    .filter-pill button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
+
+    .mode-tabs { display: flex; gap: 8px; align-items: center; }
+    .tab-btn { border: 1px solid var(--border); background: white; color: var(--fg-2); border-radius: 999px; padding: 8px 12px; cursor: pointer; font-weight: 700; }
+    .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    .popular-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .community-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+    .card-content { padding: 16px; }
+    .popular-card { position: relative; overflow: hidden; }
+    .popular-card .image { height: 170px; background: linear-gradient(135deg, #cfe8df, #86b6a0); }
+    .popular-card .image img { width: 100%; height: 100%; object-fit: cover; }
+    .medal { position: absolute; top: 12px; left: 12px; display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,.86); font-size: 18px; }
+    .card-title { font-weight: 800; margin: 0 0 8px; font-size: 16px; }
+    .meta-line { font-size: 13px; color: var(--muted-fg); margin-top: 4px; }
+    .pill-stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .tag { padding: 5px 8px; border-radius: 999px; background: var(--muted-bg); color: var(--fg-2); font-size: 11px; font-weight: 700; }
+    .card-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; }
+    .small-btn { border: 0; border-radius: 999px; padding: 8px 12px; background: var(--primary-soft); color: var(--primary-dark); cursor: pointer; font-weight: 700; }
+    .list-card { padding: 16px; }
+    .stop-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .stop-chip { font-size: 11px; padding: 5px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); }
+
+    .results-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .result-card { padding: 16px; }
+    .result-card .title-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .highlight { background: #fff4c7; padding: 0 2px; border-radius: 4px; }
+    .result-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .result-actions { display: flex; justify-content: space-between; margin-top: 14px; }
+    .empty-state { padding: 24px; text-align: center; color: var(--muted-fg); border: 1px dashed var(--border); border-radius: 18px; background: #fcfffd; }
+
+    .detail-overlay { position: fixed; inset: 0; background: rgba(4, 23, 16, .35); opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 40; }
+    .detail-overlay.active { opacity: 1; pointer-events: auto; }
+    .detail-drawer {
+      position: fixed; right: 0; top: 0; bottom: 0; width: min(430px, 100%); background: white; box-shadow: -10px 0 35px rgba(0,0,0,.15);
+      transform: translateX(100%); transition: transform .25s ease; z-index: 41; display: flex; flex-direction: column;
+    }
+    .detail-drawer.active { transform: translateX(0); }
+    .detail-header img { width: 100%; height: 220px; object-fit: cover; background: #cfe8df; }
+    .detail-body { padding: 18px 18px 16px; overflow: auto; }
+    .detail-title { font-family: var(--font-display); font-size: 24px; margin: 0; }
+    .meta-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .stats-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+    .stat-box { background: var(--muted-bg); border-radius: 12px; padding: 10px; text-align: center; }
+    .stat-box strong { display: block; font-size: 15px; }
+    .stat-box span { font-size: 11px; color: var(--muted-fg); text-transform: uppercase; font-weight: 700; }
+    .timeline { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+    .timeline-item { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; }
+    .timeline-time { font-size: 12px; color: var(--muted-fg); font-weight: 700; padding-top: 2px; }
+    .timeline-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: #fcfffd; }
+    .timeline-card strong { display: block; margin-bottom: 4px; }
+    .timeline-card small { color: var(--muted-fg); }
+    .detail-footer { border-top: 1px solid var(--border); padding: 14px 18px; display: flex; gap: 10px; }
+    .detail-footer .btn { flex: 1; }
+    .toast {
+      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
+      background: #0f2f22; color: white; padding: 12px 18px; border-radius: 999px; box-shadow: var(--shadow);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; z-index: 50; font-weight: 700;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-width: 1100px) {
+      .popular-grid, .results-grid, .community-list { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 840px) {
+      .app-shell { grid-template-columns: 1fr; }
+      .sidebar { min-height: auto; }
+      .page-body { padding: 20px 18px 30px; }
+      .topbar { padding: 18px; }
+      .search-row { flex-direction: column; align-items: stretch; }
+      .filter-popover { width: calc(100vw - 24px); right: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-logo">
+        <div class="sidebar-brand">
+          <img class="sidebar-logo-img" src="https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=200&q=80" alt="PandaJourney" />
+          <span class="sidebar-brand-name">PandaJourney</span>
+        </div>
+        <div class="sidebar-brand-sub">Malaysia Smart Tourism</div>
+      </div>
+      <nav class="sidebar-nav">
+        <a href="dashboard.html">🏠 <span>Dashboard</span></a>
+        <a href="smart_attractions.html">🌴 <span>Smart Attractions</span></a>
+        <a href="smart_itinerary.html">📅 <span>Itinerary Planner</span></a>
+        <a href="saved_itineraries.html">💾 <span>Saved Itineraries</span></a>
+        <a href="collaboration.html">👥 <span>Collaboration</span></a>
+        <a href="public_itineraries.html" class="active">🌐 <span>Public Itineraries</span></a>
+      </nav>
+      <div class="sidebar-footer">
+        <a href="profile.html">👤 <span>Profile</span></a>
+        <a href="create_account.html">✍️ <span>Create account</span></a>
+      </div>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div>
+          <div class="topbar-title">Public Itineraries</div>
+          <div class="topbar-subtitle">Follow community favorites, search the map of Malaysia, and copy routes in a tap.</div>
+        </div>
+        <div class="topbar-actions">
+          <div class="mode-tabs">
+            <button class="tab-btn active" data-mode="browse">Browse</button>
+            <button class="tab-btn" data-mode="results">Search</button>
+          </div>
+        </div>
+      </header>
+
+      <main class="page-body">
+        <div class="page-shell">
+          <section class="card search-card">
+            <div class="search-row">
+              <div class="search-input-wrap" style="position: relative;">
+                <input id="searchInput" type="text" placeholder="Search itinerary title, city, stop, or vibe" />
+                <button id="clearSearch" class="clear-btn" type="button" aria-label="Clear search">✕</button>
+              </div>
+              <div style="position: relative;">
+                <button id="filterToggle" class="filter-btn" type="button">Filters ▾</button>
+                <div id="filterPopover" class="filter-popover" role="dialog" aria-label="Filter itineraries">
+                  <div class="popover-section">
+                    <div class="popover-title">Destination</div>
+                    <div class="chip-row" data-group="destination">
+                      <button class="chip" type="button" data-value="Kuala Lumpur">Kuala Lumpur</button>
+                      <button class="chip" type="button" data-value="Penang">Penang</button>
+                      <button class="chip" type="button" data-value="Cameron Highlands">Cameron Highlands</button>
+                      <button class="chip" type="button" data-value="Langkawi">Langkawi</button>
+                      <button class="chip" type="button" data-value="Malacca">Malacca</button>
+                      <button class="chip" type="button" data-value="Sabah">Sabah</button>
+                    </div>
+                  </div>
+                  <div class="popover-section">
+                    <div class="popover-title">Travel duration</div>
+                    <div class="chip-row" data-group="duration">
+                      <button class="chip" type="button" data-value="Half day">Half day</button>
+                      <button class="chip" type="button" data-value="1 day">1 day</button>
+                      <button class="chip" type="button" data-value="2 days">2 days</button>
+                      <button class="chip" type="button" data-value="3+ days">3+ days</button>
+                    </div>
+                  </div>
+                  <div class="popover-section">
+                    <div class="popover-title">Number of stops</div>
+                    <div class="chip-row" data-group="stops">
+                      <button class="chip" type="button" data-value="3">3</button>
+                      <button class="chip" type="button" data-value="4">4</button>
+                      <button class="chip" type="button" data-value="5">5</button>
+                      <button class="chip" type="button" data-value="6">6</button>
+                    </div>
+                  </div>
+                  <div class="popover-actions">
+                    <button id="resetFilters" class="btn btn-ghost" type="button">Reset</button>
+                    <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="activeFilters" class="pill-row"></div>
+            <div id="resultSummary" class="results-bar" style="margin-top: 14px;"></div>
+          </section>
+
+          <section id="contentArea"></section>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="detailOverlay" class="detail-overlay"></div>
+  <aside id="detailDrawer" class="detail-drawer" aria-label="Itinerary details"></aside>
+  <div id="copyToast" class="toast">Itinerary copied to your saved list</div>
+
+  <script>
+    const itineraries = [
+      {
+        id: 1,
+        title: 'KL Night Lights & Heritage Loop',
+        author: 'Aina',
+        destination: 'Kuala Lumpur',
+        duration: '1 day',
+        stops: 5,
+        description: 'A polished evening route through iconic skyline, street food, and historic corners.',
+        image: 'https://images.unsplash.com/photo-1520106212299-d99c443e4568?auto=format&fit=crop&w=1200&q=80',
+        popularity: 96,
+        createdAt: '2026-07-16',
+        likes: 684,
+        saves: 218,
+        isYours: false,
+        stopList: [
+          { time: '18:30', place: 'Petronas Twin Towers', note: 'Golden hour skyline photos' },
+          { time: '19:30', place: 'Jalan Alor', note: 'Street food crawl' },
+          { time: '21:00', place: 'Merdeka Square', note: 'Night architecture walk' },
+          { time: '22:00', place: 'Rooftop Bar', note: 'Cocktails and views' },
+          { time: '23:00', place: 'Changkat', note: 'Late-night dessert stop' }
+        ]
+      },
+      {
+        id: 2,
+        title: 'George Town Heritage Stroll',
+        author: 'Hafiz',
+        destination: 'Penang',
+        duration: '1 day',
+        stops: 4,
+        description: 'A vivid mix of murals, heritage shophouses, and local brunch classics.',
+        image: 'https://images.unsplash.com/photo-1601732410115-6a09d4a2f5ce?auto=format&fit=crop&w=1200&q=80',
+        popularity: 91,
+        createdAt: '2026-07-10',
+        likes: 512,
+        saves: 147,
+        isYours: true,
+        stopList: [
+          { time: '09:00', place: 'Khoo Kongsi', note: 'Clanhouse heritage visit' },
+          { time: '11:00', place: 'Little India', note: 'Temple and spice markets' },
+          { time: '13:00', place: 'Cheong Fatt Tze Mansion', note: 'Photo stop' },
+          { time: '15:30', place: 'Esplanade', note: 'Coffee and sea breeze' }
+        ]
+      },
+      {
+        id: 3,
+        title: 'Cameron Highlands Tea & Mist',
+        author: 'Lina',
+        destination: 'Cameron Highlands',
+        duration: '2 days',
+        stops: 6,
+        description: 'Cool climate, tea plantation walks, and quiet villages at every turn.',
+        image: 'https://images.unsplash.com/photo-1517760444937-f6397edcbbcd?auto=format&fit=crop&w=1200&q=80',
+        popularity: 88,
+        createdAt: '2026-06-22',
+        likes: 428,
+        saves: 132,
+        isYours: false,
+        stopList: [
+          { time: '08:30', place: 'Boh Tea Plantation', note: 'Tea tasting' },
+          { time: '10:30', place: 'Mossy Forest', note: 'Boardwalk stroll' },
+          { time: '13:00', place: 'Strawberry Farm', note: 'Snack break' },
+          { time: '15:30', place: 'Brinchang', note: 'Local market browse' },
+          { time: '19:00', place: 'Homestay Cabin', note: 'Relax and enjoy mist' }
+        ]
+      },
+      {
+        id: 4,
+        title: 'Langkawi Sunset & Island Hop',
+        author: 'Nadia',
+        destination: 'Langkawi',
+        duration: '3+ days',
+        stops: 6,
+        description: 'An island-hopping route that pairs sandy beaches with sunset cruises.',
+        image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+        popularity: 84,
+        createdAt: '2026-06-14',
+        likes: 390,
+        saves: 103,
+        isYours: false,
+        stopList: [
+          { time: '09:00', place: 'Pantai Cenang', note: 'Beach breakfast' },
+          { time: '11:00', place: 'Island Hopping Jetty', note: 'Day cruise' },
+          { time: '14:00', place: 'Tropical Fish Farm', note: 'Snorkeling' },
+          { time: '17:30', place: 'Sunset Cruise', note: 'Golden-hour sail' },
+          { time: '20:00', place: 'Seafood Market', note: 'Dinner by the water' }
+        ]
+      },
+      {
+        id: 5,
+        title: 'Malacca River & Food Trail',
+        author: 'Jun',
+        destination: 'Malacca',
+        duration: 'Half day',
+        stops: 4,
+        description: 'River views, heritage lanes, and a well-paced food crawl in one afternoon.',
+        image: 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=80',
+        popularity: 83,
+        createdAt: '2026-05-28',
+        likes: 367,
+        saves: 94,
+        isYours: false,
+        stopList: [
+          { time: '15:00', place: 'Jonker Walk', note: 'Street snacks' },
+          { time: '16:00', place: 'River Cruise', note: 'Scenic route' },
+          { time: '17:30', place: 'Dutch Square', note: 'Photo stop' },
+          { time: '19:00', place: 'Night Hawker Centre', note: 'Dinner' }
+        ]
+      },
+      {
+        id: 6,
+        title: 'Sabah Coastal Morning',
+        author: 'Dani',
+        destination: 'Sabah',
+        duration: '3+ days',
+        stops: 5,
+        description: 'A slow-paced coastal itinerary with markets, viewpoints, and sea breezes.',
+        image: 'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1200&q=80',
+        popularity: 79,
+        createdAt: '2026-05-19',
+        likes: 312,
+        saves: 83,
+        isYours: false,
+        stopList: [
+          { time: '08:00', place: 'Waterfront Promenade', note: 'Breakfast with sea views' },
+          { time: '10:00', place: 'Handicraft Market', note: 'Local shopping' },
+          { time: '12:30', place: 'Viewpoint Stop', note: 'Panoramic lookout' },
+          { time: '15:00', place: 'Beach Club', note: 'Relax and swim' },
+          { time: '19:00', place: 'Sunset Dinner', note: 'Seafood dinner' }
+        ]
+      },
+      {
+        id: 7,
+        title: 'Ipoh Heritage & Breakfast',
+        author: 'Mina',
+        destination: 'Kuala Lumpur',
+        duration: '1 day',
+        stops: 4,
+        description: 'A cozy day of old streets, bean curd desserts, and famous breakfast stops.',
+        image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
+        popularity: 76,
+        createdAt: '2026-04-30',
+        likes: 298,
+        saves: 74,
+        isYours: false,
+        stopList: [
+          { time: '09:00', place: 'Old Town', note: 'Breakfast' },
+          { time: '11:00', place: 'Mural Walk', note: 'Street art and photo spots' },
+          { time: '13:00', place: 'Cafes', note: 'Coffee pause' },
+          { time: '15:00', place: 'Heritage Lane', note: 'Shopping and snacks' }
+        ]
+      },
+      {
+        id: 8,
+        title: 'Borneo Rainforest Escape',
+        author: 'Siti',
+        destination: 'Sabah',
+        duration: '2 days',
+        stops: 5,
+        description: 'Waterfalls, river trails, and a lodge stay for a nature-first weekend.',
+        image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+        popularity: 74,
+        createdAt: '2026-04-18',
+        likes: 274,
+        saves: 69,
+        isYours: false,
+        stopList: [
+          { time: '08:00', place: 'Rainforest Entrance', note: 'Start the hike' },
+          { time: '10:30', place: 'Waterfall Viewpoint', note: 'Rest and photos' },
+          { time: '13:00', place: 'Riverbank Picnic', note: 'Lunch stop' },
+          { time: '16:00', place: 'Lodge', note: 'Check-in and unwind' },
+          { time: '19:00', place: 'Night Walk', note: 'Wildlife spotting' }
+        ]
+      },
+      {
+        id: 9,
+        title: 'Island Breeze & Coffee',
+        author: 'Rina',
+        destination: 'Langkawi',
+        duration: 'Half day',
+        stops: 3,
+        description: 'A calm half-day route for beach views and breezy cafés.',
+        image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
+        popularity: 72,
+        createdAt: '2026-03-24',
+        likes: 248,
+        saves: 62,
+        isYours: false,
+        stopList: [
+          { time: '10:30', place: 'Beachfront Cafe', note: 'Coffee and pastries' },
+          { time: '12:00', place: 'Pier Walk', note: 'Sea breeze and photos' },
+          { time: '15:00', place: 'Sunset Point', note: 'Early evening stop' }
+        ]
+      }
+    ];
+
+    const state = {
+      search: '',
+      filters: { destination: [], duration: [], stops: [] },
+      mode: 'browse',
+      sort: 'popular',
+      selectedId: null,
+      popoverOpen: false
+    };
+
+    const searchInput = document.getElementById('searchInput');
+    const clearSearch = document.getElementById('clearSearch');
+    const filterToggle = document.getElementById('filterToggle');
+    const filterPopover = document.getElementById('filterPopover');
+    const activeFilters = document.getElementById('activeFilters');
+    const resultSummary = document.getElementById('resultSummary');
+    const contentArea = document.getElementById('contentArea');
+    const detailOverlay = document.getElementById('detailOverlay');
+    const detailDrawer = document.getElementById('detailDrawer');
+    const copyToast = document.getElementById('copyToast');
+
+    function init() {
+      searchInput.addEventListener('input', (event) => {
+        state.search = event.target.value.trim().toLowerCase();
+        updateMode();
+        render();
+      });
+
+      clearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        state.search = '';
+        updateMode();
+        render();
+      });
+
+      document.querySelectorAll('.tab-btn[data-mode]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn[data-mode]').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          state.mode = btn.dataset.mode;
+          render();
+        });
+      });
+
+      document.querySelectorAll('.tab-btn[data-mode]').forEach((btn) => {
+        if (btn.dataset.mode === 'browse') btn.classList.add('active');
+      });
+
+      filterToggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        state.popoverOpen = !state.popoverOpen;
+        filterPopover.classList.toggle('open', state.popoverOpen);
+        filterToggle.classList.toggle('active', state.popoverOpen);
+      });
+
+      document.addEventListener('click', (event) => {
+        if (!filterPopover.contains(event.target) && !filterToggle.contains(event.target)) {
+          state.popoverOpen = false;
+          filterPopover.classList.remove('open');
+          filterToggle.classList.remove('active');
+        }
+      });
+
+      document.querySelectorAll('[data-group]').forEach((group) => {
+        group.querySelectorAll('.chip').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            const groupName = group.dataset.group;
+            const value = chip.dataset.value;
+            const list = state.filters[groupName];
+            const index = list.indexOf(value);
+            if (index >= 0) list.splice(index, 1);
+            else list.push(value);
+            chip.classList.toggle('active');
+          });
+        });
+      });
+
+      document.getElementById('applyFilters').addEventListener('click', () => {
+        state.popoverOpen = false;
+        filterPopover.classList.remove('open');
+        filterToggle.classList.remove('active');
+        render();
+      });
+
+      document.getElementById('resetFilters').addEventListener('click', () => {
+        state.filters = { destination: [], duration: [], stops: [] };
+        document.querySelectorAll('.chip.active').forEach((chip) => chip.classList.remove('active'));
+        render();
+      });
+
+      detailOverlay.addEventListener('click', closeDetail);
+      render();
+    }
+
+    function updateMode() {
+      const hasQuery = state.search.length > 0;
+      const hasFilters = Object.values(state.filters).some((items) => items.length > 0);
+      state.mode = hasQuery || hasFilters ? 'results' : 'browse';
+      document.querySelectorAll('.tab-btn[data-mode]').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === state.mode);
+      });
+    }
+
+    function getFilteredItineraries() {
+      return itineraries.filter((item) => {
+        const matchesSearch = !state.search || [item.title, item.description, item.destination, item.author, item.stopList.map((s) => s.place).join(' ')]
+          .join(' ')
+          .toLowerCase()
+          .includes(state.search);
+
+        const matchesDestination = state.filters.destination.length === 0 || state.filters.destination.includes(item.destination);
+        const matchesDuration = state.filters.duration.length === 0 || state.filters.duration.includes(item.duration);
+        const matchesStops = state.filters.stops.length === 0 || state.filters.stops.includes(String(item.stops));
+        return matchesSearch && matchesDestination && matchesDuration && matchesStops;
+      });
+    }
+
+    function getSortedItineraries(list) {
+      const clone = [...list];
+      if (state.sort === 'popular') return clone.sort((a, b) => b.popularity - a.popularity);
+      if (state.sort === 'newest') return clone.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return clone.sort((a, b) => b.likes - a.likes);
+    }
+
+    function render() {
+      const visible = getFilteredItineraries();
+      const sorted = getSortedItineraries(visible);
+      renderFilters();
+      renderSummary(sorted.length);
+      if (state.mode === 'browse') {
+        contentArea.innerHTML = renderBrowse(sorted);
+      } else {
+        contentArea.innerHTML = renderResults(sorted);
+      }
+      bindCards();
+    }
+
+    function renderFilters() {
+      const counts = [];
+      const addFilter = (label, values) => values.forEach((value) => counts.push({ label, value }));
+      addFilter('Destination', state.filters.destination);
+      addFilter('Duration', state.filters.duration);
+      addFilter('Stops', state.filters.stops);
+
+      if (counts.length === 0) {
+        activeFilters.innerHTML = '';
+        return;
+      }
+
+      activeFilters.innerHTML = counts.map((item) => `
+        <span class="filter-pill">
+          <span>${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>
+          <button type="button" data-remove="${item.label}:${item.value}">×</button>
+        </span>
+      `).join('');
+
+      activeFilters.querySelectorAll('button[data-remove]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const [label, value] = btn.dataset.remove.split(':');
+          if (label === 'Destination') state.filters.destination = state.filters.destination.filter((item) => item !== value);
+          if (label === 'Duration') state.filters.duration = state.filters.duration.filter((item) => item !== value);
+          if (label === 'Stops') state.filters.stops = state.filters.stops.filter((item) => item !== value);
+          render();
+        });
+      });
+    }
+
+    function renderSummary(count) {
+      const total = itineraries.length;
+      const hasAny = state.search || Object.values(state.filters).some((items) => items.length > 0); 
+      resultSummary.innerHTML = `
+        <div><strong>${count}</strong> of <strong>${total}</strong> itineraries</div>
+        <div style="color: var(--muted-fg); font-size: 13px;">${hasAny ? 'Filtered to your vibe.' : 'Browse the community favorites.'}</div>
+      `;
+    }
+
+    function renderBrowse(list) {
+      const popular = list.slice(0, 3);
+      const community = list.slice(3);
+      return `
+        <section class="card" style="padding: 18px;">
+          <div class="results-bar">
+            <div>
+              <div class="card-title">Popular picks</div>
+              <div class="meta-line">Top-rated itineraries with the clearest stop lists.</div>
+            </div>
+            <div class="mode-tabs">
+              <button class="tab-btn ${state.sort === 'popular' ? 'active' : ''}" data-sort="popular">Popular</button>
+              <button class="tab-btn ${state.sort === 'newest' ? 'active' : ''}" data-sort="newest">Newest</button>
+              <button class="tab-btn ${state.sort === 'likes' ? 'active' : ''}" data-sort="likes">Trending</button>
+            </div>
+          </div>
+          <div class="popular-grid" style="margin-top: 14px;">
+            ${popular.map((item, index) => `
+              <article class="popular-card card">
+                <div class="medal">${index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
+                <div class="image"><img src="${item.image}" alt="${escapeHtml(item.title)}" /></div>
+                <div class="card-content">
+                  <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="pill-stack">
+                    <span class="tag">${escapeHtml(item.author)}</span>
+                    <span class="tag">★ ${item.popularity}</span>
+                    <span class="tag">${item.likes} likes</span>
+                  </div>
+                  <div class="card-actions">
+                    <button class="small-btn" type="button" data-open="${item.id}">Open</button>
+                    <span class="meta-line">${item.isYours ? 'Yours' : 'Community'}</span>
+                  </div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+
+        <section style="margin-top: 18px;">
+          <div class="results-bar">
+            <div>
+              <div class="card-title">Community list</div>
+              <div class="meta-line">Drop-in itineraries with stop previews for quick scanning.</div>
+            </div>
+          </div>
+          <div class="community-list">
+            ${community.map((item) => `
+              <article class="list-card card">
+                <div class="card-title">${escapeHtml(item.title)}</div>
+                <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                <div class="stop-preview">
+                  ${item.stopList.slice(0, 3).map((stop) => `<span class="stop-chip">${escapeHtml(stop.place)}</span>`).join('')}
+                </div>
+                <div class="card-actions">
+                  <button class="small-btn" type="button" data-open="${item.id}">Open itinerary</button>
+                  <span class="meta-line">${escapeHtml(item.author)}</span>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderResults(list) {
+      if (!list.length) {
+        return `<div class="empty-state">No itineraries match that search. Try a broader keyword or clear a filter.</div>`;
+      }
+      return `
+        <div class="results-grid">
+          ${list.map((item) => `
+            <article class="result-card card">
+              <div class="title-row">
+                <div class="card-title">${highlightText(item.title, state.search)}</div>
+                <span class="tag">${item.isYours ? 'Yours' : 'Community'}</span>
+              </div>
+              <div class="meta-line">${highlightText(item.description, state.search)}</div>
+              <div class="result-meta">
+                <span class="tag">${escapeHtml(item.destination)}</span>
+                <span class="tag">${escapeHtml(item.duration)}</span>
+                <span class="tag">${item.stops} stops</span>
+                <span class="tag">${escapeHtml(item.author)}</span>
+              </div>
+              <div class="result-actions">
+                <button class="small-btn" type="button" data-open="${item.id}">View itinerary</button>
+                <span class="meta-line">★ ${item.popularity}</span>
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    function bindCards() {
+      document.querySelectorAll('[data-open]').forEach((button) => {
+        button.addEventListener('click', () => openDetail(Number(button.dataset.open)));
+      });
+
+      document.querySelectorAll('.tab-btn[data-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn[data-sort]').forEach((btn) => btn.classList.remove('active'));
+          button.classList.add('active');
+          state.sort = button.dataset.sort;
+          render();
+        });
+      });
+    }
+
+    function openDetail(id) {
+      const item = itineraries.find((entry) => entry.id === id);
+      if (!item) return;
+      state.selectedId = id;
+      detailDrawer.innerHTML = `
+        <div class="detail-header">
+          <img src="${item.image}" alt="${escapeHtml(item.title)}" />
+        </div>
+        <div class="detail-body">
+          <h3 class="detail-title">${escapeHtml(item.title)}</h3>
+          <div class="meta-strip">
+            <span class="tag">${escapeHtml(item.destination)}</span>
+            <span class="tag">${escapeHtml(item.duration)}</span>
+            <span class="tag">${item.stops} stops</span>
+            <span class="tag">by ${escapeHtml(item.author)}</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-box"><strong>${item.likes}</strong><span>likes</span></div>
+            <div class="stat-box"><strong>${item.saves}</strong><span>saves</span></div>
+            <div class="stat-box"><strong>${item.popularity}</strong><span>score</span></div>
+          </div>
+          <p style="margin: 14px 0 0; color: var(--fg-2); line-height: 1.7;">${escapeHtml(item.description)}</p>
+          <div class="timeline">
+            ${item.stopList.map((stop) => `
+              <div class="timeline-item">
+                <div class="timeline-time">${escapeHtml(stop.time)}</div>
+                <div class="timeline-card">
+                  <strong>${escapeHtml(stop.place)}</strong>
+                  <small>${escapeHtml(stop.note)}</small>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="detail-footer">
+          <button class="btn btn-primary" type="button" data-copy="${item.id}">${item.isYours ? 'Unpublish' : 'Copy'}</button>
+          <button class="btn btn-ghost" type="button" data-close="close">Close</button>
+        </div>
+      `;
+      detailOverlay.classList.add('active');
+      detailDrawer.classList.add('active');
+      detailDrawer.querySelector('[data-copy]').addEventListener('click', () => {
+        if (state.selectedId) {
+          copyToast.classList.add('show');
+          setTimeout(() => copyToast.classList.remove('show'), 3500);
+        }
+      });
+      detailDrawer.querySelector('[data-close]').addEventListener('click', closeDetail);
+    }
+
+    function closeDetail() {
+      detailOverlay.classList.remove('active');
+      detailDrawer.classList.remove('active');
+      detailDrawer.innerHTML = '';
+      state.selectedId = null;
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function highlightText(text, query) {
+      if (!query) return escapeHtml(text);
+      const safeText = escapeHtml(text);
+      const reg = new RegExp(`(${escapeRegExp(query)})`, 'ig');
+      return safeText.replace(reg, '<span class="highlight">$1</span>');
+    }
+
+    function escapeRegExp(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    init();
+  </script>
+</body>
+</html>

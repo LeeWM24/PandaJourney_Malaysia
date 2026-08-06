@@ -108,6 +108,7 @@ def collaboration():
 
 
 @app.route("/public-itinerary", methods=["GET", "POST"])#Zham feng
+@app.route("/public-itineraries", methods=["GET", "POST"])#Zham feng
 def public_itinerary():
     if request.method == "POST":
         action = request.form.get("_action")
@@ -118,10 +119,9 @@ def public_itinerary():
         return redirect(url_for("public_itinerary"))
 
     return render_template(
-        "public_itinerary.html",
+        "public_itineraries.html",
         active_page="public",
         current_user=get_current_user(),
-        
     )
 
 
