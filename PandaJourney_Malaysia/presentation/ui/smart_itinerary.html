@@ -77,6 +77,20 @@
           </div>
 
           <div class="form-group mb-3">
+            <label class="form-label" for="max_stops">Maximum Stops</label>
+
+            {% set max_stops = form.get("max_stops", 3) | int %}
+
+            <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops }}">
+              {% for n in [1, 2, 3, 4, 5, 6] %}
+                <option value="{{ n }}" {% if max_stops == n %}selected{% endif %}>
+                  {{ n }} stop{% if n > 1 %}s{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
             <label class="form-label" for="transport_mode">Transport Mode</label>
 
             {% set transport_mode = form.get("transport_mode", "driving") %}
@@ -163,18 +177,14 @@
               {{ plan.transport_icon | default('🚗') }} {{ plan.transport_label | default('Driving') }}
             </div>
           </div>
-        </div>
-
-        {% if plan.exceeds_hours %}
+</div>
+{% if plan.exceeds_hours %}
           <div class="alert alert-warning">
             ⚠️ This itinerary exceeds your available hours. Consider removing a stop.
           </div>
         {% endif %}
 
-        <div class="alert alert-info">
-          ℹ️ Distances and durations are estimates based on routing API data.
-        </div>
-
+        
         <div class="card card-p">
           <div class="card-header">
             <span class="card-title">Timetable</span>
@@ -254,8 +264,49 @@
 </div>
 {% endblock %}
 
-
 {% block extra_scripts %}
+<script>
+  function getStopLimitByHours(hours) {
+    const parsedHours = parseInt(hours || "6", 10);
+    return Math.max(1, Math.min(parsedHours - 3, 6));
+  }
+
+  function updateMaximumStopsOptions() {
+    const availableHoursSelect = document.getElementById("available_hours");
+    const maxStopsSelect = document.getElementById("max_stops");
+if (!availableHoursSelect || !maxStopsSelect) return;
+
+    const stopLimit = getStopLimitByHours(availableHoursSelect.value);
+    const currentValue = parseInt(maxStopsSelect.value || maxStopsSelect.dataset.selected || "3", 10);
+    const nextValue = Math.min(Math.max(currentValue, 1), stopLimit);
+
+    maxStopsSelect.innerHTML = "";
+
+    for (let stop = 1; stop <= stopLimit; stop += 1) {
+      const option = document.createElement("option");
+      option.value = String(stop);
+      option.textContent = stop + (stop > 1 ? " stops" : " stop");
+
+      if (stop === nextValue) {
+        option.selected = true;
+      }
+
+      maxStopsSelect.appendChild(option);
+    }
+
+  
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    updateMaximumStopsOptions();
+
+    const availableHoursSelect = document.getElementById("available_hours");
+    if (availableHoursSelect) {
+      availableHoursSelect.addEventListener("change", updateMaximumStopsOptions);
+    }
+  });
+</script>
+
 {% if map_data %}
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 

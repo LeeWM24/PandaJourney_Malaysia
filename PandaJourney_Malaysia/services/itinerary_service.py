@@ -46,6 +46,7 @@ def get_default_itinerary_form():
         "trip_date": "",
         "start_time": "09:00",
         "available_hours": 6,
+        "max_stops": 3,
         "minimum_rating": "4.0",
         "transport_mode": "driving",
         "selected_attractions": []
@@ -124,6 +125,25 @@ def get_transport_option(transport_mode: str | None) -> dict[str, Any]:
         transport_mode = "driving"
 
     return TRANSPORT_OPTIONS[transport_mode]
+
+
+def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
+    """Limit available Maximum Stops options based on available travelling hours.
+
+    Rule used in this prototype:
+    4 hours -> max 1 stop
+    5 hours -> max 2 stops
+    6 hours -> max 3 stops
+    7 hours -> max 4 stops
+    8 hours -> max 5 stops
+    9 or 10 hours -> max 6 stops
+    """
+    try:
+        hours = int(available_hours)
+    except (TypeError, ValueError):
+        hours = 6
+
+    return max(1, min(hours - 3, 6))
 
 
 def _request_json(
@@ -590,8 +610,16 @@ def choose_attractions(
     interests: list[str],
     weather: dict[str, Any] | None,
     available_minutes: int,
-    minimum_rating: float
+    minimum_rating: float,
+    max_stops: int
 ) -> list[dict[str, Any]]:
+    """Rank attractions and return up to max_stops.
+
+    Available Hours only controls the maximum selectable stop count.
+    It does not remove attractions using fixed visit duration.
+    The visit duration is assigned later based on available hours.
+    """
+    max_stops = max(1, min(int(max_stops), 6))
     ranked: list[dict[str, Any]] = []
 
     for attraction in candidates:
@@ -610,19 +638,7 @@ def choose_attractions(
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
 
-    visit_budget = max(60, available_minutes - 90)
-
-    chosen: list[dict[str, Any]] = []
-    spent = 0
-
-    for attraction in ranked:
-        visit_minutes = int(attraction.get("estimated_minutes", 90))
-
-        if spent + visit_minutes <= visit_budget and len(chosen) < 3:
-            chosen.append(attraction)
-            spent += visit_minutes
-
-    return chosen
+    return ranked[:max_stops]
 
 
 def human_duration(seconds: float | int | None) -> str:
@@ -633,6 +649,55 @@ def human_duration(seconds: float | int | None) -> str:
     hours, remainder = divmod(minutes, 60)
 
     return f"{hours} hr {remainder} min" if hours else f"{remainder} min"
+
+
+def assign_visit_duration_by_available_hours(
+    selected: list[dict[str, Any]],
+    route: dict[str, Any] | None,
+    available_hours: int
+) -> list[dict[str, Any]]:
+    """Distribute remaining available time across selected stops.
+
+    Formula:
+    visit time per stop = (available hours - travel duration) / selected stops
+
+    A minimum of 30 minutes is used when travel duration is high.
+    """
+    if not selected:
+        return selected
+
+    available_minutes = int(available_hours) * 60
+    travel_minutes = round(float((route or {}).get("duration_s", 0)) / 60)
+
+    remaining_visit_minutes = available_minutes - travel_minutes
+    minimum_total_visit_minutes = 30 * len(selected)
+
+    if remaining_visit_minutes < minimum_total_visit_minutes:
+        remaining_visit_minutes = minimum_total_visit_minutes
+
+    visit_minutes_each = max(30, round(remaining_visit_minutes / len(selected)))
+
+    updated_selected = []
+
+    for attraction in selected:
+        item = dict(attraction)
+        item["estimated_minutes"] = visit_minutes_each
+        updated_selected.append(item)
+
+    return updated_selected
+
+
+def get_itinerary_duration_seconds(
+    route: dict[str, Any] | None,
+    selected: list[dict[str, Any]]
+) -> float:
+    travel_seconds = float((route or {}).get("duration_s", 0))
+    visit_seconds = sum(
+        int(attraction.get("estimated_minutes", 90)) * 60
+        for attraction in selected
+    )
+
+    return travel_seconds + visit_seconds
 
 
 def build_waze_url(place: dict[str, Any]) -> str:
@@ -767,6 +832,10 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     available_hours = int(form.get("available_hours", 6))
     minimum_rating = float(form.get("minimum_rating", 4.0))
 
+    stop_limit = get_stop_limit_by_available_hours(available_hours)
+    requested_max_stops = int(form.get("max_stops", stop_limit))
+    max_stops = max(1, min(requested_max_stops, stop_limit))
+
     transport_mode = str(form.get("transport_mode", "driving")).lower()
     transport_option = get_transport_option(transport_mode)
 
@@ -797,20 +866,24 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         minimum_rating
     )
 
-    candidates = live_candidates or load_demo_attractions()
+    demo_candidates = load_demo_attractions()
 
-    source_note = (
-        "Live SerpApi Google Maps search"
-        if live_candidates
-        else "Local Kuala Lumpur demonstration dataset. Add SERPAPI_KEY for live attraction search."
-    )
+    if live_candidates:
+        # Use live results first. If live API returns fewer attractions than requested,
+        # add local demo records as backup so the prototype can still show multiple stops.
+        candidates = live_candidates + demo_candidates
+        source_note = "Live SerpApi Google Maps search with local demo backup"
+    else:
+        candidates = demo_candidates
+        source_note = "Local Kuala Lumpur demonstration dataset. Add SERPAPI_KEY for live attraction search."
 
     selected = choose_attractions(
         candidates,
         interests,
         weather,
         available_hours * 60,
-        minimum_rating
+        minimum_rating,
+        max_stops
     )
 
     if not selected:
@@ -819,7 +892,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             interests,
             weather,
             available_hours * 60,
-            0
+            0,
+            max_stops
         )
 
     selected = prepare_selected_attractions(selected)
@@ -827,6 +901,14 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     route_points = [start] + selected + [end]
 
     route = get_route_with_stops(route_points, transport_mode)
+
+    # After route duration is known, distribute the remaining available time
+    # across the selected attraction stops.
+    selected = assign_visit_duration_by_available_hours(
+        selected,
+        route,
+        available_hours
+    )
 
     car_comparison = get_serpapi_direction(
         start_text,
@@ -866,7 +948,10 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         else "Not available"
     )
 
-    total_duration = travel_duration
+    itinerary_duration_seconds = get_itinerary_duration_seconds(route, selected)
+    itinerary_duration = human_duration(itinerary_duration_seconds)
+
+    total_duration = itinerary_duration
 
     return {
         "id": int(datetime.now().timestamp()),
@@ -885,6 +970,11 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "trip_date": trip_date,
         "start_time": start_time,
         "available_hours": available_hours,
+        "max_stops": max_stops,
+        "requested_max_stops": requested_max_stops,
+        "stop_limit": stop_limit,
+        "actual_stop_count": len(selected),
+        "stop_limit_message": "",
         "interests": interests,
 
         "weather": weather,
@@ -905,6 +995,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
         "total_duration": total_duration,
         "travel_duration": travel_duration,
+        "itinerary_duration": itinerary_duration,
         "transport_icon": transport_option["icon"],
         "transport_mode": transport_mode,
         "transport_key": transport_mode,
@@ -936,5 +1027,3 @@ def format_date_for_display(date_text: str) -> str:
         return dt.strftime("%b %d, %Y")
     except ValueError:
         return date_text
-
-
