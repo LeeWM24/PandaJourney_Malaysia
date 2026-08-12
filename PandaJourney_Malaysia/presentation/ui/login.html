@@ -34,9 +34,7 @@
         <div class="login-brand">
           <div class="login-logo">
              <img
-          class="login-hero-img"
-          src="C:\Users\User\Documents\GitHub\BMSE3004-Collaborative-Development-\PandaJourney_Malaysia\presentation\static\images\logo.png"
-          
+          <img src="{{ url_for('static', filename='images/logo.png') }}">
            />   
           </div>
           <div class="login-brand-name">PandaJourney</div>
@@ -44,12 +42,10 @@
 
         <p class="login-panel-subtitle">Plan smarter trips across Malaysia</p>
 
-        <form action="{{ url_for('login') }}" method="post">
-          <button type="submit" class="login-google" name="login_type" value="google">
-            <span style="font-weight:800; color:#4285F4;">G</span>
-            Continue with Google
-          </button>
-        </form>
+        <button type="button" class="login-google" id="googleLogin">
+          <span style="font-weight:800; color:#4285F4;">G</span>
+          Continue with Google
+        </button>
 
         <div class="login-divider">or sign in with email</div>
 
@@ -87,5 +83,8 @@
       </div>
     </section>
   </main>
+  <script type="module" src="{{ url_for('static', filename='js/firebase-auth.js') }}"></script>
 </body>
 </html>
+
+

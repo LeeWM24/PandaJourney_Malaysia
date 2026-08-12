@@ -3,573 +3,259 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Create Account – PandaJourney</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  <title>Create Account — PandaJourney Malaysia</title>
+
+  <link rel="stylesheet"
+        href="{{ url_for('static', filename='css/app.css') }}" />
 </head>
+
 <body>
 
-<div class="auth-wrap">
+<main class="login-page">
 
-  <!-- ══ Left decorative panel ══ -->
-  <div class="left-panel">
-    <div class="left-inner">
+  <!-- Left Hero -->
+  <section class="login-hero">
+    <div class="login-hero-content">
+
       <img
-        class="hero-img"
-        src="https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=600&h=420&fit=crop&auto=format"
+        class="login-hero-img"
+        src="https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=900&h=420&fit=crop&auto=format"
         alt="Kuala Lumpur skyline"
       />
-      <h2 class="left-title" id="left-title">Your journey starts here</h2>
-      <p class="left-desc" id="left-desc">
-        Join thousands of travellers planning smarter trips across Malaysia with AI-powered itineraries and collaborative planning.
-      </p>
-      <div class="left-tags">
-        <span class="left-tag">🏙️ KL</span>
-        <span class="left-tag">🌿 Langkawi</span>
-        <span class="left-tag">🏛️ Melaka</span>
-        <span class="left-tag">🏝️ Sabah</span>
-        <span class="left-tag">🌊 Penang</span>
-      </div>
-    </div>
-  </div>
 
-  <!-- ══ Right form panel ══ -->
-  <div class="right-panel">
-    <div class="form-inner">
+      <h1 class="login-hero-title">Your journey starts here</h1>
+
+      <p class="login-hero-subtitle">
+        Join thousands of travellers planning smarter trips across Malaysia
+        with AI-powered itineraries and collaborative planning.
+      </p>
+
+      <div class="login-tags">
+        <span class="login-tag">🏙️ Kuala Lumpur</span>
+        <span class="login-tag">🌿 Langkawi</span>
+        <span class="login-tag">🏛️ Melaka</span>
+        <span class="login-tag">🏝️ Sabah</span>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- Register Panel -->
+  <section class="login-panel">
+    <div class="login-card">
 
       <!-- Logo -->
-      <div class="logo">
-        <svg width="36" height="36" viewBox="0 0 32 32" fill="none">
-          <circle cx="16" cy="16" r="16" fill="#0f2d1f"/>
-          <circle cx="10" cy="11" r="4" fill="white"/>
-          <circle cx="22" cy="11" r="4" fill="white"/>
-          <circle cx="10" cy="11" r="2" fill="#1a2e22"/>
-          <circle cx="22" cy="11" r="2" fill="#1a2e22"/>
-          <ellipse cx="16" cy="20" rx="7" ry="5" fill="white"/>
-          <ellipse cx="16" cy="20" rx="4" ry="3" fill="#f0f7f4"/>
-          <circle cx="14" cy="19" r="1" fill="#1a2e22"/>
-          <circle cx="18" cy="19" r="1" fill="#1a2e22"/>
-          <path d="M14.5 21.5 Q16 23 17.5 21.5" stroke="#1a2e22" stroke-width=".8" fill="none" stroke-linecap="round"/>
-          <circle cx="8" cy="6" r="3" fill="#1a2e22"/>
-          <circle cx="24" cy="6" r="3" fill="#1a2e22"/>
-        </svg>
-        <span class="logo-wordmark">PandaJourney</span>
+      <div class="login-brand">
+
+        <div class="login-logo">
+          <img
+            src="{{ url_for('static', filename='images/logo.png') }}"
+            alt="PandaJourney Logo"
+          />
+        </div>
+
+        <div class="login-brand-name">
+          PandaJourney
+        </div>
+
       </div>
 
-      
-      <!-- ════════════════════════════════════════
-           VIEW: Create Account
-      ════════════════════════════════════════ -->
-      <div class="view" id="view-register">
+      <p class="login-panel-subtitle">
+        Create your account to start planning your travels smarter.
+      </p>
 
-        <h1 class="view-title">Create New Account</h1>
-        <p class="view-subtitle">Create your account to start planning your travels smarter.</p>
 
-        <!-- Server error -->
-        <div class="alert alert-error hidden" id="reg-server-error">
-          <span>⛔</span>
-          <span id="reg-server-error-msg"></span>
-        </div>
+      <!-- Google Sign Up -->
+      <button
+        type="button"
+        class="login-google"
+        id="googleSignup"
+      >
+        <span style="font-weight:800; color:#4285F4;">G</span>
+        Continue with Google
+      </button>
 
-        <!-- Google sign up — goes straight to dashboard, no PIN -->
-        <button class="btn-google" id="btn-google-signup" onclick="handleGoogleSignUp()">
-          <span id="google-signup-icon">
-            <svg width="18" height="18" viewBox="0 0 18 18"><path d="M17.64 9.2a10.34 10.34 0 0 0-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92a8.78 8.78 0 0 0 2.68-6.62z" fill="#4285F4"/><path d="M9 18a8.59 8.59 0 0 0 5.96-2.18l-2.92-2.26a5.43 5.43 0 0 1-8.07-2.85H.96v2.33A9 9 0 0 0 9 18z" fill="#34A853"/><path d="M3.97 10.71a5.41 5.41 0 0 1 0-3.42V4.96H.96a9 9 0 0 0 0 8.08z" fill="#FBBC05"/><path d="M9 3.58a4.86 4.86 0 0 1 3.44 1.35l2.58-2.58A8.64 8.64 0 0 0 9 0 9 9 0 0 0 .96 4.96L3.97 7.3A5.36 5.36 0 0 1 9 3.58z" fill="#EA4335"/></svg>
-          </span>
-          <span id="google-signup-label">Continue with Google</span>
-        </button>
 
-        <div class="divider">OR</div>
+      <div class="login-divider">
+        or create an account with email
+      </div>
+
+
+      <!-- Register Form -->
+      <form id="registerForm" class="login-form">
 
         <!-- Full Name -->
-        <div class="field">
-          <label for="reg-name">Full Name</label>
-          <div class="input-wrap">
-            <span class="input-icon">👤</span>
+        <div class="form-group">
+
+          <label class="form-label" for="name">
+            Full Name
+          </label>
+
+          <div class="form-input-icon">
+
+            <span class="icon">👤</span>
+
             <input
-              type="text" id="reg-name" placeholder="Ahmad Faris"
-              oninput="validateName()" onblur="touchField('name')"
+              class="form-input"
+              id="name"
+              name="name"
+              type="text"
+              placeholder="Ahmad Faris"
+              required
             />
+
           </div>
-          <span class="field-msg err hidden" id="msg-name">Please enter your full name.</span>
+
         </div>
+
 
         <!-- Email -->
-        <div class="field">
-          <label for="reg-email">Email Address</label>
-          <div class="input-wrap">
-            <span class="input-icon">✉️</span>
+        <div class="form-group">
+
+          <label class="form-label" for="email">
+            Email
+          </label>
+
+          <div class="form-input-icon">
+
+            <span class="icon">✉️</span>
+
             <input
-              type="email" id="reg-email" placeholder="you@example.com"
-              oninput="validateEmail()" onblur="touchField('email')"
+              class="form-input"
+              id="email"
+              name="email"
+              type="email"
+              placeholder="you@example.com"
+              required
             />
+
           </div>
-          <span class="field-msg err hidden" id="msg-email">Please enter a valid email address.</span>
+
         </div>
+
 
         <!-- Password -->
-        <div class="field">
-          <label for="reg-pw">Password</label>
-          <div class="input-wrap">
-            <span class="input-icon">🔒</span>
+        <div class="form-group">
+
+          <label class="form-label" for="password">
+            Password
+          </label>
+
+          <div class="form-input-icon">
+
+            <span class="icon">🔒</span>
+
             <input
-              type="password" id="reg-pw" placeholder="Min. 8 characters" class="has-trail"
-              oninput="validatePw()" onblur="touchField('pw')"
+              class="form-input"
+              id="password"
+              name="password"
+              type="password"
+              placeholder="Minimum 8 characters"
+              required
             />
-            <button class="toggle-pw" onclick="toggleVis('reg-pw',this)">👁</button>
+
           </div>
-          <!-- Strength bar -->
-          <div class="pw-strength" id="pw-strength-wrap" style="display:none">
-            <div class="strength-bar">
-              <div class="strength-seg" id="seg1"></div>
-              <div class="strength-seg" id="seg2"></div>
-              <div class="strength-seg" id="seg3"></div>
-              <div class="strength-seg" id="seg4"></div>
-            </div>
-            <div class="strength-meta">
-              <span class="strength-label" id="strength-label"></span>
-              <div class="pw-hints">
-                <span class="pw-hint" id="hint-len">· 8+ chars</span>
-                <span class="pw-hint" id="hint-upper">· A–Z</span>
-                <span class="pw-hint" id="hint-lower">· a–z</span>
-                <span class="pw-hint" id="hint-num">· 0–9</span>
-              </div>
-            </div>
-          </div>
+
         </div>
+
 
         <!-- Confirm Password -->
-        <div class="field">
-          <label for="reg-pw2">Confirm Password</label>
-          <div class="input-wrap">
-            <span class="input-icon">🔒</span>
+        <div class="form-group">
+
+          <label class="form-label" for="confirmPassword">
+            Confirm Password
+          </label>
+
+          <div class="form-input-icon">
+
+            <span class="icon">🔒</span>
+
             <input
-              type="password" id="reg-pw2" placeholder="Re-enter your password" class="has-trail"
-              oninput="validatePw2()" onblur="touchField('pw2')"
+              class="form-input"
+              id="confirmPassword"
+              name="confirmPassword"
+              type="password"
+              placeholder="Re-enter your password"
+              required
             />
-            <button class="toggle-pw" onclick="toggleVis('reg-pw2',this)">👁</button>
+
           </div>
-          <span class="field-msg err hidden" id="msg-pw2">Passwords do not match.</span>
-          <span class="field-msg ok hidden" id="msg-pw2-ok">✓ Passwords match.</span>
+
         </div>
 
-        <!-- T&C checkbox -->
+
+        <!-- Terms -->
         <label class="check-label">
-          <input type="checkbox" id="reg-agree" onchange="checkForm()" />
+
+          <input
+            type="checkbox"
+            id="agree"
+            required
+          />
+
           <span>
             I agree to the
-            <a href="#">Terms &amp; Conditions</a>
+            <a href="#">Terms & Conditions</a>
             and
             <a href="#">Privacy Policy</a>.
           </span>
+
         </label>
 
-        <!-- Submit -->
-        <button class="btn-primary" id="btn-create" onclick="handleCreateAccount()" disabled>
+
+        <!-- Error -->
+        <div
+          id="registerError"
+          style="color:#c0392b; margin-bottom:10px; display:none;"
+        ></div>
+
+
+        <!-- Create Account -->
+        <button
+          type="submit"
+          class="login-submit"
+          id="createAccountBtn"
+        >
           Create Account
         </button>
 
-        <p class="footer-link">
-          Already have an account?
-          <a href="{{ url_for('login') }}">Sign in</a>
-        </p>
+      </form>
+
+
+      <!-- Security -->
+      <div class="login-security">
+
+        <span>🔐</span>
+
+        <span>
+          Your password is securely handled by Firebase Authentication.
+        </span>
+
       </div>
 
-<script>
-  /* ─────────────────────────────────────────────────────────
-     State
-  ───────────────────────────────────────────────────────── */
-  const touched = {};
-  let countdownTimer = null;
-  let pinExpired = false;
 
-  /* ─────────────────────────────────────────────────────────
-     View switching
-  ───────────────────────────────────────────────────────── */
-  function showView(name) {
-    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-    document.getElementById('view-' + name).classList.add('active');
+      <!-- Login -->
+      <div class="login-link-row">
 
-    // Update left panel copy
-    const titles = {
-      signin:   'Discover Malaysia',
-      register: 'Your journey starts here',
-      verify:   'Almost there…'
-    };
-    const descs = {
-      signin:   "From the Petronas Towers to the rainforests of Borneo — explore Malaysia's wonders, intelligently planned just for you.",
-      register: "Join thousands of travellers planning smarter trips across Malaysia with AI-powered itineraries and collaborative planning.",
-      verify:   "You're one step away from unlocking AI-powered trip planning, collaborative itineraries, and personalised recommendations."
-    };
-    document.getElementById('left-title').textContent = titles[name] || '';
-    document.getElementById('left-desc').textContent  = descs[name]  || '';
+        Already have an account?
 
-    if (name === 'verify') startCountdown();
-  }
+        <a href="{{ url_for('login') }}">
+          Sign in
+        </a>
 
-  /* ─────────────────────────────────────────────────────────
-     Google sign-in (from sign-in view) — goes to dashboard
-  ───────────────────────────────────────────────────────── */
-  function handleGoogleSignIn() {
-    const icon  = document.getElementById('google-signin-icon');
-    const label = document.getElementById('google-signin-label');
-    icon.innerHTML  = '<span class="spinner spinner-green"></span>';
-    label.textContent = 'Connecting to Google…';
-    document.querySelector('#view-signin .btn-google').disabled = true;
+      </div>
 
-    // Simulate OAuth redirect — no PIN, goes straight to dashboard
-    setTimeout(() => {
-      window.location.href = '/profile';
-    }, 1600);
-  }
+    </div>
+  </section>
 
-  /* ─────────────────────────────────────────────────────────
-     Google sign-up (from register view) — goes to dashboard, NO PIN
-  ───────────────────────────────────────────────────────── */
-  function handleGoogleSignUp() {
-    const icon  = document.getElementById('google-signup-icon');
-    const label = document.getElementById('google-signup-label');
-    const btn   = document.getElementById('btn-google-signup');
-    icon.innerHTML  = '<span class="spinner spinner-green"></span>';
-    label.textContent = 'Connecting to Google…';
-    btn.disabled = true;
+</main>
 
-    // Google auth: account auto-created or auto-signed-in. No email PIN required.
-    setTimeout(() => {
-      window.location.href = '/profile';
-    }, 1600);
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Sign-in demo
-  ───────────────────────────────────────────────────────── */
-  function handleSignIn() {
-    window.location.href = '/profile';
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Password toggle
-  ───────────────────────────────────────────────────────── */
-  function toggleVis(inputId, btn) {
-    const inp = document.getElementById(inputId);
-    if (inp.type === 'password') {
-      inp.type = 'text';
-      btn.textContent = '🙈';
-    } else {
-      inp.type = 'password';
-      btn.textContent = '👁';
-    }
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Validation helpers
-  ───────────────────────────────────────────────────────── */
-  function touchField(f) {
-    touched[f] = true;
-    if (f === 'name')  validateName(true);
-    if (f === 'email') validateEmail(true);
-    if (f === 'pw')    validatePw(true);
-    if (f === 'pw2')   validatePw2(true);
-    checkForm();
-  }
-
-  function validateName(force) {
-    const inp = document.getElementById('reg-name');
-    const msg = document.getElementById('msg-name');
-    const v   = inp.value.trim();
-    const err = v.length < 2;
-    if (touched.name || force) {
-      inp.classList.toggle('error', err);
-      msg.classList.toggle('hidden', !err);
-    }
-    return !err;
-  }
-
-  function validateEmail(force) {
-    const inp = document.getElementById('reg-email');
-    const msg = document.getElementById('msg-email');
-    const ok  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(inp.value);
-    if (touched.email || force) {
-      inp.classList.toggle('error', !ok);
-      msg.classList.toggle('hidden', ok);
-    }
-    return ok;
-  }
-
-  function validatePw(force) {
-    const inp  = document.getElementById('reg-pw');
-    const pw   = inp.value;
-    const wrap = document.getElementById('pw-strength-wrap');
-
-    const checks = {
-      length: pw.length >= 8,
-      upper:  /[A-Z]/.test(pw),
-      lower:  /[a-z]/.test(pw),
-      number: /[0-9]/.test(pw),
-    };
-    const score = Object.values(checks).filter(Boolean).length;
-
-    if (pw) {
-      wrap.style.display = 'block';
-      const colorMap = ['', 'weak', 'fair', 'good', 'strong'];
-      const labelMap = ['', 'Weak', 'Fair', 'Good', 'Strong'];
-      const segs = [document.getElementById('seg1'), document.getElementById('seg2'),
-                    document.getElementById('seg3'), document.getElementById('seg4')];
-      segs.forEach((s, i) => {
-        s.className = 'strength-seg';
-        if (i < score) s.classList.add(colorMap[score]);
-      });
-      const lbl = document.getElementById('strength-label');
-      lbl.textContent = labelMap[score];
-      lbl.className   = 'strength-label ' + (colorMap[score] || '');
-
-      const hintLen   = document.getElementById('hint-len');
-      const hintUpper = document.getElementById('hint-upper');
-      const hintLower = document.getElementById('hint-lower');
-      const hintNum   = document.getElementById('hint-num');
-      hintLen.className   = 'pw-hint' + (checks.length ? ' met' : '');
-      hintLen.textContent  = (checks.length ? '✓' : '·') + ' 8+ chars';
-      hintUpper.className = 'pw-hint' + (checks.upper  ? ' met' : '');
-      hintUpper.textContent = (checks.upper ? '✓' : '·') + ' A–Z';
-      hintLower.className = 'pw-hint' + (checks.lower  ? ' met' : '');
-      hintLower.textContent = (checks.lower ? '✓' : '·') + ' a–z';
-      hintNum.className   = 'pw-hint' + (checks.number ? ' met' : '');
-      hintNum.textContent  = (checks.number ? '✓' : '·') + ' 0–9';
-
-      if (touched.pw || force) {
-        inp.classList.toggle('warn', score < 4);
-        inp.classList.toggle('ok',   score === 4);
-        inp.classList.remove('error');
-      }
-    } else {
-      wrap.style.display = 'none';
-    }
-
-    if (touched.pw2) validatePw2();
-    checkForm();
-    return score === 4;
-  }
-
-  function validatePw2(force) {
-    const pw1 = document.getElementById('reg-pw').value;
-    const inp = document.getElementById('reg-pw2');
-    const pw2 = inp.value;
-    const msgErr = document.getElementById('msg-pw2');
-    const msgOk  = document.getElementById('msg-pw2-ok');
-    const match  = pw2 && pw2 === pw1;
-    const mismatch = pw2 && pw2 !== pw1;
-
-    if (touched.pw2 || force) {
-      inp.classList.toggle('error', mismatch);
-      inp.classList.toggle('ok',    match);
-      msgErr.classList.toggle('hidden', !mismatch);
-      msgOk.classList.toggle('hidden',  !match);
-    }
-    checkForm();
-    return match;
-  }
-
-  function checkForm() {
-    const ok =
-      validateName() && validateEmail() &&
-      document.getElementById('reg-pw').value.length >= 8 &&
-      /[A-Z]/.test(document.getElementById('reg-pw').value) &&
-      /[a-z]/.test(document.getElementById('reg-pw').value) &&
-      /[0-9]/.test(document.getElementById('reg-pw').value) &&
-      document.getElementById('reg-pw').value === document.getElementById('reg-pw2').value &&
-      document.getElementById('reg-pw2').value.length > 0 &&
-      document.getElementById('reg-agree').checked;
-    document.getElementById('btn-create').disabled = !ok;
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Create Account (manual) — triggers email PIN verification
-  ───────────────────────────────────────────────────────── */
-  function handleCreateAccount() {
-    const btn   = document.getElementById('btn-create');
-    const email = document.getElementById('reg-email').value.trim();
-    const errEl = document.getElementById('reg-server-error');
-    const errMsg= document.getElementById('reg-server-error-msg');
-
-    // Simulate duplicate email
-    if (email.toLowerCase() === 'taken@example.com') {
-      errMsg.textContent = 'An account with this email already exists.';
-      errEl.classList.remove('hidden');
-      return;
-    }
-
-    errEl.classList.add('hidden');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Creating account…';
-
-    // After simulated server call → navigate to PIN verification screen
-    setTimeout(() => {
-      btn.innerHTML = 'Create Account';
-      // Show masked email on verify screen
-      const masked = email.replace(/(.{2})[^@]+(@.+)/, '$1****$2');
-      document.getElementById('verify-email-display').textContent = masked;
-      showView('verify');
-    }, 1400);
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Back from verify
-  ───────────────────────────────────────────────────────── */
-  function goBackFromVerify() {
-    clearInterval(countdownTimer);
-    pinExpired = false;
-    document.getElementById('otp-error').classList.add('hidden');
-    document.getElementById('otp-expired-banner').classList.add('hidden');
-    resetOtp();
-    document.getElementById('btn-create').disabled = false;
-    document.getElementById('btn-create').textContent = 'Create Account';
-    showView('register');
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     OTP wiring
-  ───────────────────────────────────────────────────────── */
-  function initOtp() {
-    const boxes = document.querySelectorAll('.otp-box');
-
-    boxes.forEach((box, i) => {
-      box.addEventListener('input', () => {
-        const digit = box.value.replace(/\D/g, '').slice(-1);
-        box.value = digit;
-        box.classList.toggle('filled', !!digit);
-        if (digit && i < boxes.length - 1) boxes[i + 1].focus();
-        if (getOtpValue().length === 6) autoVerify();
-      });
-
-      box.addEventListener('keydown', e => {
-        if (e.key === 'Backspace' && !box.value && i > 0) boxes[i - 1].focus();
-      });
-
-      box.addEventListener('paste', e => {
-        e.preventDefault();
-        const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
-        if (!pasted) return;
-        boxes.forEach((b, j) => {
-          b.value = pasted[j] || '';
-          b.classList.toggle('filled', !!b.value);
-        });
-        const focusIdx = Math.min(pasted.length, boxes.length - 1);
-        boxes[focusIdx].focus();
-        if (pasted.length === 6) autoVerify();
-      });
-    });
-  }
-
-  function getOtpValue() {
-    return Array.from(document.querySelectorAll('.otp-box')).map(b => b.value).join('');
-  }
-
-  function resetOtp() {
-    document.querySelectorAll('.otp-box').forEach(b => {
-      b.value = '';
-      b.classList.remove('filled', 'expired');
-    });
-  }
-
-  function setOtpExpired(expired) {
-    document.querySelectorAll('.otp-box').forEach(b => b.classList.toggle('expired', expired));
-    document.getElementById('btn-verify').disabled = expired;
-    document.getElementById('otp-expired-banner').classList.toggle('hidden', !expired);
-  }
-
-  function autoVerify() {
-    if (!pinExpired) handleVerify();
-  }
-
-  function handleVerify() {
-    const code = getOtpValue();
-    const errEl  = document.getElementById('otp-error');
-    const errMsg = document.getElementById('otp-error-msg');
-    const btn    = document.getElementById('btn-verify');
-
-    if (pinExpired) {
-      document.getElementById('otp-expired-banner').classList.remove('hidden');
-      return;
-    }
-    if (code.length < 6) {
-      errMsg.textContent = 'Please enter the full 6-digit code.';
-      errEl.classList.remove('hidden');
-      return;
-    }
-
-    errEl.classList.add('hidden');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Verifying…';
-
-    setTimeout(() => {
-      if (code === '000000') {
-        // Wrong code demo
-        btn.disabled = false;
-        btn.textContent = 'Verify';
-        errMsg.textContent = 'Incorrect code. Please try again.';
-        errEl.classList.remove('hidden');
-        resetOtp();
-        document.querySelectorAll('.otp-box')[0].focus();
-        return;
-      }
-      // Success — go to dashboard / profile
-      clearInterval(countdownTimer);
-      window.location.href = '/profile';
-    }, 1200);
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Countdown timer
-  ───────────────────────────────────────────────────────── */
-  function startCountdown() {
-    clearInterval(countdownTimer);
-    pinExpired = false;
-    let seconds = 60;
-    resetOtp();
-    setOtpExpired(false);
-    document.getElementById('otp-error').classList.add('hidden');
-    document.getElementById('otp-expired-banner').classList.add('hidden');
-    document.getElementById('btn-verify').disabled = false;
-    renderCountdown(seconds);
-
-    countdownTimer = setInterval(() => {
-      seconds--;
-      renderCountdown(seconds);
-      if (seconds <= 0) {
-        clearInterval(countdownTimer);
-        pinExpired = true;
-        setOtpExpired(true);
-        showResend();
-      }
-    }, 1000);
-  }
-
-  function renderCountdown(s) {
-    const row = document.getElementById('countdown-row');
-    const num = document.getElementById('countdown-num');
-    if (s > 0) {
-      row.innerHTML = 'Resend code in <span class="countdown-num' + (s <= 10 ? ' urgent' : '') + '" id="countdown-num">' + s + 's</span>';
-    }
-  }
-
-  function showResend() {
-    document.getElementById('countdown-row').innerHTML =
-      '<button class="resend-btn" onclick="handleResend()">🔄 Resend Code</button>';
-  }
-
-  function handleResend() {
-    startCountdown();
-    document.querySelectorAll('.otp-box')[0].focus();
-  }
-
-  /* ─────────────────────────────────────────────────────────
-     Init
-  ───────────────────────────────────────────────────────── */
-  document.addEventListener('DOMContentLoaded', () => {
-    initOtp();
-    showView('register');
-  });
+<!-- Firebase -->
+<script
+  type="module"
+  src="{{ url_for('static', filename='js/firebase-auth.js') }}">
 </script>
+
 </body>
 </html>
