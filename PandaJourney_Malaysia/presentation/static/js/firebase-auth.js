@@ -40,6 +40,10 @@ const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
 
+provider.setCustomParameters({
+    prompt: "select_account"
+});
+
 // Google Login
 
 const googleLogin = document.getElementById("googleLogin");
@@ -66,8 +70,8 @@ if (googleLogin) {
                 {
                     uid: user.uid,
                     email: user.email,
-                    displayName: user.displayName,
-                    profilePictureUrl: user.photoURL,
+                    displayName: user.displayName || "",
+                    profilePictureUrl: user.photoURL || null,
                     updatedAt: serverTimestamp()
                 },
                 {
@@ -120,8 +124,8 @@ if (googleSignup) {
                 {
                     uid: user.uid,
                     email: user.email,
-                    displayName: user.displayName,
-                    profilePictureUrl: user.photoURL,
+                    displayName: user.displayName || "",
+                    profilePictureUrl: user.photoURL || null,
                     updatedAt: serverTimestamp()
                 },
                 {
@@ -178,7 +182,19 @@ if (loginForm && document.getElementById("email")) {
                 console.log("Email Login successful!");
                 console.log("UID:", user.uid);
 
-
+                await setDoc(
+                    doc(db, "users", user.uid),
+                    {
+                        uid: user.uid,
+                        email: user.email,
+                        displayName: user.displayName || "",
+                        profilePictureUrl: user.photoURL || null,
+                        updatedAt: serverTimestamp()
+                    },
+                    {
+                        merge: true
+                    }
+                );
                 // Go to profile
                 window.location.href = "/profile";
 
