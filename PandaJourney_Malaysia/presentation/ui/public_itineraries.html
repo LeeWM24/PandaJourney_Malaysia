@@ -55,8 +55,11 @@
       color: var(--sidebar-text);
       display: flex;
       flex-direction: column;
-      min-height: 100vh;
+      height: 100vh;
       padding: 24px 14px 18px;
+      position: sticky;
+      top: 0;
+      overflow-y: auto;
     }
     .sidebar-logo { margin-bottom: 20px; }
     .sidebar-brand { display: flex; align-items: center; gap: 10px; }
@@ -75,7 +78,7 @@
       font-weight: 700;
     }
     .sidebar-nav a.active, .sidebar-nav a:hover { background: var(--sidebar-active); color: white; }
-    .sidebar-footer { margin-top: auto; padding-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+    .sidebar-footer { margin-top: 8px; padding-top: 0; display: flex; flex-direction: column; gap: 8px; }
     .sidebar-footer a { color: inherit; text-decoration: none; padding: 11px 14px; border-radius: 999px; display: flex; align-items: center; gap: 12px; font-weight: 700; }
 
     .main-content { min-width: 0; }
@@ -159,7 +162,11 @@
     .tag { padding: 5px 8px; border-radius: 999px; background: var(--muted-bg); color: var(--fg-2); font-size: 11px; font-weight: 700; }
     .card-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; }
     .small-btn { border: 0; border-radius: 999px; padding: 8px 12px; background: var(--primary-soft); color: var(--primary-dark); cursor: pointer; font-weight: 700; }
-    .list-card { padding: 16px; }
+    .list-card { padding: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, .85fr); height: 240px; }
+    .list-card-content { padding: 16px; min-width: 0; display: flex; flex-direction: column; }
+    .list-card-content .card-actions { margin-top: auto; }
+    .list-card-image { height: 240px; min-height: 0; background: linear-gradient(135deg, #cfe8df, #86b6a0); overflow: hidden; }
+    .list-card-image img { width: 100%; height: 100%; object-fit: cover; }
     .stop-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
     .stop-chip { font-size: 11px; padding: 5px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); }
 
@@ -194,6 +201,7 @@
     .timeline-card small { color: var(--muted-fg); }
     .detail-footer { border-top: 1px solid var(--border); padding: 14px 18px; display: flex; gap: 10px; }
     .detail-footer .btn { flex: 1; }
+    .btn-primary.active { background: var(--primary-dark); }
     .toast {
       position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
       background: #0f2f22; color: white; padding: 12px 18px; border-radius: 999px; box-shadow: var(--shadow);
@@ -206,11 +214,15 @@
     }
     @media (max-width: 840px) {
       .app-shell { grid-template-columns: 1fr; }
-      .sidebar { min-height: auto; }
+      .sidebar { position: static; height: auto; overflow: visible; }
       .page-body { padding: 20px 18px 30px; }
       .topbar { padding: 18px; }
       .search-row { flex-direction: column; align-items: stretch; }
       .filter-popover { width: calc(100vw - 24px); right: 12px; }
+    }
+    @media (max-width: 560px) {
+      .list-card { grid-template-columns: 1fr; height: auto; }
+      .list-card-image { height: 180px; min-height: 180px; order: -1; }
     }
   </style>
 </head>
@@ -242,13 +254,7 @@
       <header class="topbar">
         <div>
           <div class="topbar-title">Public Itineraries</div>
-          <div class="topbar-subtitle">Follow community favorites, search the map of Malaysia, and copy routes in a tap.</div>
-        </div>
-        <div class="topbar-actions">
-          <div class="mode-tabs">
-            <button class="tab-btn active" data-mode="browse">Browse</button>
-            <button class="tab-btn" data-mode="results">Search</button>
-          </div>
+          <div class="topbar-subtitle">Explore community favorites, search destinations, and save routes in a tap.</div>
         </div>
       </header>
 
@@ -324,7 +330,7 @@
         stops: 5,
         description: 'A polished evening route through iconic skyline, street food, and historic corners.',
         image: 'https://images.unsplash.com/photo-1520106212299-d99c443e4568?auto=format&fit=crop&w=1200&q=80',
-        popularity: 96,
+        views: 1296,
         createdAt: '2026-07-16',
         likes: 684,
         saves: 218,
@@ -346,7 +352,7 @@
         stops: 4,
         description: 'A vivid mix of murals, heritage shophouses, and local brunch classics.',
         image: 'https://images.unsplash.com/photo-1601732410115-6a09d4a2f5ce?auto=format&fit=crop&w=1200&q=80',
-        popularity: 91,
+        views: 1147,
         createdAt: '2026-07-10',
         likes: 512,
         saves: 147,
@@ -367,7 +373,7 @@
         stops: 6,
         description: 'Cool climate, tea plantation walks, and quiet villages at every turn.',
         image: 'https://images.unsplash.com/photo-1517760444937-f6397edcbbcd?auto=format&fit=crop&w=1200&q=80',
-        popularity: 88,
+        views: 968,
         createdAt: '2026-06-22',
         likes: 428,
         saves: 132,
@@ -389,7 +395,7 @@
         stops: 6,
         description: 'An island-hopping route that pairs sandy beaches with sunset cruises.',
         image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
-        popularity: 84,
+        views: 842,
         createdAt: '2026-06-14',
         likes: 390,
         saves: 103,
@@ -411,7 +417,7 @@
         stops: 4,
         description: 'River views, heritage lanes, and a well-paced food crawl in one afternoon.',
         image: 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=80',
-        popularity: 83,
+        views: 731,
         createdAt: '2026-05-28',
         likes: 367,
         saves: 94,
@@ -432,7 +438,7 @@
         stops: 5,
         description: 'A slow-paced coastal itinerary with markets, viewpoints, and sea breezes.',
         image: 'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1200&q=80',
-        popularity: 79,
+        views: 654,
         createdAt: '2026-05-19',
         likes: 312,
         saves: 83,
@@ -454,7 +460,7 @@
         stops: 4,
         description: 'A cozy day of old streets, bean curd desserts, and famous breakfast stops.',
         image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
-        popularity: 76,
+        views: 588,
         createdAt: '2026-04-30',
         likes: 298,
         saves: 74,
@@ -475,7 +481,7 @@
         stops: 5,
         description: 'Waterfalls, river trails, and a lodge stay for a nature-first weekend.',
         image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-        popularity: 74,
+        views: 521,
         createdAt: '2026-04-18',
         likes: 274,
         saves: 69,
@@ -497,7 +503,7 @@
         stops: 3,
         description: 'A calm half-day route for beach views and breezy cafés.',
         image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
-        popularity: 72,
+        views: 476,
         createdAt: '2026-03-24',
         likes: 248,
         saves: 62,
@@ -516,7 +522,9 @@
       mode: 'browse',
       sort: 'popular',
       selectedId: null,
-      popoverOpen: false
+      popoverOpen: false,
+      likedIds: new Set(),
+      savedIds: new Set()
     };
 
     const searchInput = document.getElementById('searchInput');
@@ -542,19 +550,6 @@
         state.search = '';
         updateMode();
         render();
-      });
-
-      document.querySelectorAll('.tab-btn[data-mode]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          document.querySelectorAll('.tab-btn[data-mode]').forEach((b) => b.classList.remove('active'));
-          btn.classList.add('active');
-          state.mode = btn.dataset.mode;
-          render();
-        });
-      });
-
-      document.querySelectorAll('.tab-btn[data-mode]').forEach((btn) => {
-        if (btn.dataset.mode === 'browse') btn.classList.add('active');
       });
 
       filterToggle.addEventListener('click', (event) => {
@@ -590,12 +585,13 @@
         state.popoverOpen = false;
         filterPopover.classList.remove('open');
         filterToggle.classList.remove('active');
+        updateMode();
         render();
       });
 
       document.getElementById('resetFilters').addEventListener('click', () => {
         state.filters = { destination: [], duration: [], stops: [] };
-        document.querySelectorAll('.chip.active').forEach((chip) => chip.classList.remove('active'));
+        updateMode();
         render();
       });
 
@@ -607,9 +603,6 @@
       const hasQuery = state.search.length > 0;
       const hasFilters = Object.values(state.filters).some((items) => items.length > 0);
       state.mode = hasQuery || hasFilters ? 'results' : 'browse';
-      document.querySelectorAll('.tab-btn[data-mode]').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.mode === state.mode);
-      });
     }
 
     function getFilteredItineraries() {
@@ -628,7 +621,7 @@
 
     function getSortedItineraries(list) {
       const clone = [...list];
-      if (state.sort === 'popular') return clone.sort((a, b) => b.popularity - a.popularity);
+      if (state.sort === 'popular') return clone.sort((a, b) => b.views - a.views);
       if (state.sort === 'newest') return clone.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       return clone.sort((a, b) => b.likes - a.likes);
     }
@@ -647,6 +640,7 @@
     }
 
     function renderFilters() {
+      syncFilterChips();
       const counts = [];
       const addFilter = (label, values) => values.forEach((value) => counts.push({ label, value }));
       addFilter('Destination', state.filters.destination);
@@ -671,7 +665,17 @@
           if (label === 'Destination') state.filters.destination = state.filters.destination.filter((item) => item !== value);
           if (label === 'Duration') state.filters.duration = state.filters.duration.filter((item) => item !== value);
           if (label === 'Stops') state.filters.stops = state.filters.stops.filter((item) => item !== value);
+          updateMode();
           render();
+        });
+      });
+    }
+
+    function syncFilterChips() {
+      document.querySelectorAll('[data-group]').forEach((group) => {
+        const selectedValues = state.filters[group.dataset.group];
+        group.querySelectorAll('.chip').forEach((chip) => {
+          chip.classList.toggle('active', selectedValues.includes(chip.dataset.value));
         });
       });
     }
@@ -688,17 +692,27 @@
     function renderBrowse(list) {
       const popular = list.slice(0, 3);
       const community = list.slice(3);
+      const sectionHeading = state.sort === 'newest'
+        ? 'Newest itineraries'
+        : state.sort === 'likes'
+          ? 'Most liked itineraries'
+          : 'Popular picks';
+      const sectionDescription = state.sort === 'newest'
+        ? 'Recently published routes from the community.'
+        : state.sort === 'likes'
+          ? 'Community routes ranked by their total likes.'
+          : 'The community itineraries with the highest view counts.';
       return `
         <section class="card" style="padding: 18px;">
           <div class="results-bar">
             <div>
-              <div class="card-title">Popular picks</div>
-              <div class="meta-line">Top-rated itineraries with the clearest stop lists.</div>
+              <div class="card-title">${sectionHeading}</div>
+              <div class="meta-line">${sectionDescription}</div>
             </div>
             <div class="mode-tabs">
               <button class="tab-btn ${state.sort === 'popular' ? 'active' : ''}" data-sort="popular">Popular</button>
               <button class="tab-btn ${state.sort === 'newest' ? 'active' : ''}" data-sort="newest">Newest</button>
-              <button class="tab-btn ${state.sort === 'likes' ? 'active' : ''}" data-sort="likes">Trending</button>
+              <button class="tab-btn ${state.sort === 'likes' ? 'active' : ''}" data-sort="likes">Most Liked</button>
             </div>
           </div>
           <div class="popular-grid" style="margin-top: 14px;">
@@ -711,7 +725,7 @@
                   <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
                   <div class="pill-stack">
                     <span class="tag">${escapeHtml(item.author)}</span>
-                    <span class="tag">★ ${item.popularity}</span>
+                    <span class="tag">${item.views.toLocaleString()} views</span>
                     <span class="tag">${item.likes} likes</span>
                   </div>
                   <div class="card-actions">
@@ -734,14 +748,19 @@
           <div class="community-list">
             ${community.map((item) => `
               <article class="list-card card">
-                <div class="card-title">${escapeHtml(item.title)}</div>
-                <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
-                <div class="stop-preview">
-                  ${item.stopList.slice(0, 3).map((stop) => `<span class="stop-chip">${escapeHtml(stop.place)}</span>`).join('')}
+                <div class="list-card-content">
+                  <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="stop-preview">
+                    ${item.stopList.slice(0, 3).map((stop) => `<span class="stop-chip">${escapeHtml(stop.place)}</span>`).join('')}
+                  </div>
+                  <div class="card-actions">
+                    <button class="small-btn" type="button" data-open="${item.id}">Open itinerary</button>
+                    <span class="meta-line">${escapeHtml(item.author)}</span>
+                  </div>
                 </div>
-                <div class="card-actions">
-                  <button class="small-btn" type="button" data-open="${item.id}">Open itinerary</button>
-                  <span class="meta-line">${escapeHtml(item.author)}</span>
+                <div class="list-card-image">
+                  <img src="${item.image}" alt="${escapeHtml(item.title)}" />
                 </div>
               </article>
             `).join('')}
@@ -771,7 +790,7 @@
               </div>
               <div class="result-actions">
                 <button class="small-btn" type="button" data-open="${item.id}">View itinerary</button>
-                <span class="meta-line">★ ${item.popularity}</span>
+                <span class="meta-line">${item.views.toLocaleString()} views</span>
               </div>
             </article>
           `).join('')}
@@ -797,6 +816,7 @@
     function openDetail(id) {
       const item = itineraries.find((entry) => entry.id === id);
       if (!item) return;
+      item.views += 1;
       state.selectedId = id;
       detailDrawer.innerHTML = `
         <div class="detail-header">
@@ -811,9 +831,9 @@
             <span class="tag">by ${escapeHtml(item.author)}</span>
           </div>
           <div class="stats-row">
-            <div class="stat-box"><strong>${item.likes}</strong><span>likes</span></div>
-            <div class="stat-box"><strong>${item.saves}</strong><span>saves</span></div>
-            <div class="stat-box"><strong>${item.popularity}</strong><span>score</span></div>
+            <div class="stat-box"><strong data-like-count>${item.likes}</strong><span>likes</span></div>
+            <div class="stat-box"><strong data-save-count>${item.saves}</strong><span>saves</span></div>
+            <div class="stat-box"><strong>${item.views.toLocaleString()}</strong><span>views</span></div>
           </div>
           <p style="margin: 14px 0 0; color: var(--fg-2); line-height: 1.7;">${escapeHtml(item.description)}</p>
           <div class="timeline">
@@ -829,19 +849,65 @@
           </div>
         </div>
         <div class="detail-footer">
-          <button class="btn btn-primary" type="button" data-copy="${item.id}">${item.isYours ? 'Unpublish' : 'Copy'}</button>
+          <button class="btn btn-ghost ${state.likedIds.has(item.id) ? 'active' : ''}" type="button" data-like="${item.id}" aria-pressed="${state.likedIds.has(item.id)}">${state.likedIds.has(item.id) ? 'Unlike' : 'Like'}</button>
+          ${item.isYours
+            ? `<button class="btn btn-primary" type="button" data-unpublish="${item.id}">Unpublish</button>`
+            : `<button class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}" type="button" data-save="${item.id}" aria-pressed="${state.savedIds.has(item.id)}">${state.savedIds.has(item.id) ? 'Saved' : 'Save'}</button>`}
           <button class="btn btn-ghost" type="button" data-close="close">Close</button>
         </div>
       `;
       detailOverlay.classList.add('active');
       detailDrawer.classList.add('active');
-      detailDrawer.querySelector('[data-copy]').addEventListener('click', () => {
-        if (state.selectedId) {
-          copyToast.classList.add('show');
-          setTimeout(() => copyToast.classList.remove('show'), 3500);
+      detailDrawer.querySelector('[data-like]').addEventListener('click', (event) => {
+        const wasLiked = state.likedIds.has(item.id);
+        if (wasLiked) {
+          state.likedIds.delete(item.id);
+          item.likes = Math.max(0, item.likes - 1);
+        } else {
+          state.likedIds.add(item.id);
+          item.likes += 1;
         }
+        const isLiked = !wasLiked;
+        event.currentTarget.textContent = isLiked ? 'Unlike' : 'Like';
+        event.currentTarget.classList.toggle('active', isLiked);
+        event.currentTarget.setAttribute('aria-pressed', String(isLiked));
+        detailDrawer.querySelector('[data-like-count]').textContent = item.likes;
       });
+
+      const saveButton = detailDrawer.querySelector('[data-save]');
+      if (saveButton) {
+        saveButton.addEventListener('click', (event) => {
+          if (state.savedIds.has(item.id)) return;
+          state.savedIds.add(item.id);
+          item.saves += 1;
+          event.currentTarget.textContent = 'Saved';
+          event.currentTarget.classList.add('active');
+          event.currentTarget.setAttribute('aria-pressed', 'true');
+          detailDrawer.querySelector('[data-save-count]').textContent = item.saves;
+          showToast('Itinerary saved to your list');
+        });
+      }
+
+      const unpublishButton = detailDrawer.querySelector('[data-unpublish]');
+      if (unpublishButton) {
+        unpublishButton.addEventListener('click', () => {
+          const itemIndex = itineraries.findIndex((entry) => entry.id === item.id);
+          if (itemIndex >= 0) itineraries.splice(itemIndex, 1);
+          state.likedIds.delete(item.id);
+          state.savedIds.delete(item.id);
+          showToast('Itinerary unpublished and removed from the public list');
+          closeDetail();
+        });
+      }
+
       detailDrawer.querySelector('[data-close]').addEventListener('click', closeDetail);
+    }
+
+    function showToast(message) {
+      copyToast.textContent = message;
+      copyToast.classList.add('show');
+      clearTimeout(showToast.timeoutId);
+      showToast.timeoutId = setTimeout(() => copyToast.classList.remove('show'), 3500);
     }
 
     function closeDetail() {
@@ -849,6 +915,7 @@
       detailDrawer.classList.remove('active');
       detailDrawer.innerHTML = '';
       state.selectedId = null;
+      render();
     }
 
     function escapeHtml(text) {
