@@ -143,7 +143,7 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
             "display_name": f"{title}, {address}".strip(", "),
             "latitude": float(coordinates["latitude"]),
             "longitude": float(coordinates["longitude"]),
-            "source": "SerpApi Google Maps fallback",
+            "source": "SerpApi fallback",
         }
 
         print(
@@ -394,7 +394,7 @@ def search_attractions_serpapi(
                 "tags": tags or [keyword],
                 "estimated_minutes": 90,
                 "rating": float(item.get("rating") or 0),
-                "source": "SerpApi Google Maps",
+                "source": "SerpApi",
             }
         )
 
@@ -888,7 +888,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     candidates = live_candidates or load_demo_attractions()
 
     source_note = (
-        "Live SerpApi Google Maps search"
+        "Live SerpApi search"
         if live_candidates
         else "Local Kuala Lumpur demonstration dataset. Add SERPAPI_KEY for live attraction search."
     )

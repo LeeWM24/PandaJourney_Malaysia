@@ -12,9 +12,12 @@
   .form-input-icon { position: relative; }
   .form-input-icon .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; pointer-events: none; }
   .form-input-icon .form-input { padding-left: 42px; }
-  .filter-actions { display: flex; gap: 12px; margin-top: 18px; }
+  .filter-actions { display: flex; gap: 12px; margin-top: 18px; align-items: stretch; }
   .filter-actions .btn { flex: 1; }
   .filter-actions .clear-filters { background: transparent; color: var(--fg-2); border: 1px solid var(--border); }
+    .filter-actions { flex-direction: column; }
+    .filter-actions .btn { width: 100%; }
+    .filter-actions .clear-filters { display: inline-flex; align-items: center; justify-content: center; padding: 10px 12px; border-radius: 12px; }
   .chip[data-chip] { user-select: none; cursor: pointer; position: relative; }
   .chip[data-chip] input { position: absolute; opacity: 0; pointer-events: none; }
   .result-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -125,7 +128,7 @@
   .chips { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
   .chip { position: relative; display: inline-flex; align-items: center; gap: .35rem; padding: .5rem .8rem; border-radius: 9999px; border: 1px solid rgba(0,0,0,.08); background: #fff; color: #375140; font-size: .9rem; font-weight: 600; cursor: pointer; transition: all .15s ease; }
   .chip.active { border-color: #0f7a5a; background: #0f7a5a; color: #fff; }
-  .chip input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; pointer-events: auto; cursor: pointer; }
+  .chip input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; cursor: pointer; }
 
   .results-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; }
   .results-count { color: var(--fg-2); font-size: 14px; }
@@ -207,9 +210,12 @@
   .detail-info-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
   .detail-info-card { background: var(--muted-bg); border-radius: 18px; padding: 16px; }
   .detail-info-title { font-weight: 700; margin-bottom: 8px; }
-  .detail-footer { padding: 14px 16px 16px; border-top: 1px solid var(--border); background: #fbfffd; display: flex; gap: 10px; }
-  .detail-footer .btn { flex: 1; }
-  .panel-close { position: absolute; right: 16px; top: 16px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.24); color: white; font-size: 18px; cursor: pointer; }
+  .detail-footer { padding: 14px 16px 16px; border-top: 1px solid var(--border); background: #fbfffd; display: flex; gap: 10px; align-items: center; }
+  .detail-footer .btn { flex: 1; min-height: 42px; font-size: .95rem; font-weight: 700; white-space: nowrap; }
+  #detail-fav-btn { flex: 1.35; }
+  .panel-close { position: absolute; right: 16px; top: 16px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.42); color: white; font-size: 18px; cursor: pointer; z-index: 5; }
+  #detail-map { cursor: pointer; border-radius: 12px; overflow: hidden; }
+  #detail-map::after { content: "Open in Maps"; display: grid; place-items: center; width: 100%; height: 100%; color: #0f2d1f; background: #e8f5f0; font-weight: 700; }
   .detail-empty { min-height: 240px; display: grid; place-items: center; color: var(--fg-2); }
 
   @media (max-width: 1040px) {
@@ -229,7 +235,9 @@
 <div class="attraction-layout">
   <aside class="filter-panel">
     <div class="card card-p">
-      <div class="card-title">Find attractions</div>
+        <div>
+        <div class="card-title">Find attractions</div>
+      </div>
       <form action="{{ url_for('smart_attraction') }}" method="post" id="filter-form">
         <div class="form-group mb-3">
           <label class="form-label" for="destination">Destination</label>
@@ -244,7 +252,7 @@
         <div class="form-group mb-3">
           <label class="form-label">Interests</label>
           <div class="flex flex-wrap gap-2">
-            {% for interest in ['nature', 'culture', 'museum', 'shopping', 'food', 'adventure', 'beach', 'heritage'] %}
+            {% for interest in ['nature', 'culture', 'museum', 'shopping', 'food'] %}
               <label class="chip {% if interest in filters.interests %}active{% endif %}" data-chip="true">
                 <input type="checkbox" name="interests" value="{{ interest }}" {% if interest in filters.interests %}checked{% endif %} />
                 {{ interest.title() }}
@@ -273,7 +281,7 @@
 
         <div class="filter-actions">
           <button type="submit" class="btn btn-primary btn-lg btn-full">🔍 Search Attractions</button>
-          <button type="button" class="btn btn-ghost clear-filters" id="clear-filters" style="display:none;">✕ Clear filters</button>
+          <button type="button" class="btn btn-ghost clear-filters" id="clear-filters" hidden aria-label="Clear filters">✕ Clear filters</button>
         </div>
       </form>
     </div>
@@ -308,7 +316,7 @@
     <div class="detail-header">
       <img id="detail-main-image" class="detail-hero" src="" alt="Attraction photo" />
       <div class="detail-hero-overlay"></div>
-      <button type="button" class="panel-close" id="detail-close">✕</button>
+      <button type="button" class="panel-close" id="detail-close" onclick="closeDetail()">✕</button>
       <div class="detail-hero-copy">
         <div class="hero-meta" id="detail-meta-top"></div>
         <h2 id="detail-name">Attraction Name</h2>
@@ -369,13 +377,13 @@
       <div class="detail-section">
         <h3>Map</h3>
         <div class="detail-info-card" style="min-height: 180px;">
-          <div id="detail-map" style="width:100%;height:180px;"></div>
+              <div id="detail-map" title="Open in OpenStreetMap" role="button" tabindex="0" style="width:100%;height:180px;"></div>
+              <div id="detail-map-query" style="margin-top:8px;color:var(--fg-2);font-size:0.95rem;">&nbsp;</div>
         </div>
       </div>
     </div>
     <div class="detail-footer">
       <button type="button" class="btn btn-primary" id="detail-fav-btn">Save as favourite</button>
-      <button type="button" class="btn btn-secondary" id="detail-open-maps">Open in Google Maps</button>
       <button type="button" class="btn btn-ghost" id="detail-close-btn">Close</button>
     </div>
   </div>
@@ -386,6 +394,8 @@
 <div id="toast" class="toast"></div>
 <script>
   const attractionsData = {{ attractions | tojson | safe }};
+  const NOMINATIM_EMAIL = {{ nominatim_email | tojson | safe }} || '';
+  const NOMINATIM_USER_AGENT = {{ nominatim_user_agent | tojson | safe }} || '';
   const favourites = new Set(getFavouriteIds());
   let hasSearched = false;
   let appliedFilters = { dest: '', interests: [], minRating: '0', weather: false };
@@ -421,10 +431,6 @@
       // update class when checkbox value changes
       checkbox.addEventListener('change', () => {
         chip.classList.toggle('active', checkbox.checked);
-        // update the applied filters to reflect current chip selection
-        appliedFilters.interests = getSelectedInterests();
-        hasSearched = true;
-        renderCards();
       });
       // also allow clicking the chip container to toggle
       chip.addEventListener('click', (ev) => {
@@ -436,34 +442,60 @@
     });
   }
 
-  // Google Maps integration
-  let _gmapsLoaded = false;
+  // Leaflet (OpenStreetMap) integration
+  let _mapsLoaded = false;
   let _map = null;
   let _marker = null;
 
-  function loadGoogleMaps() {
-    const key = '{{ google_maps_api_key | default('') }}';
-    if (!key || _gmapsLoaded) return Promise.resolve();
+  function loadLeaflet() {
+    if (_mapsLoaded) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      window.initMap = function() { _gmapsLoaded = true; resolve(); };
-      const s = document.createElement('script');
-      s.src = `https://maps.googleapis.com/maps/api/js?key=${key}&callback=initMap`;
-      s.async = true; s.defer = true;
-      s.onerror = reject;
-      document.head.appendChild(s);
+      // load CSS
+      if (!document.querySelector('link[data-leaflet]')) {
+        const lcss = document.createElement('link');
+        lcss.rel = 'stylesheet';
+        lcss.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        lcss.integrity = 'sha256-sA+e2f8Xb0G6bG7gYkYk2XKk1KfQp1K9G6kGkK3y0uM=';
+        lcss.crossOrigin = '';
+        lcss.dataset.leaflet = '1';
+        document.head.appendChild(lcss);
+      }
+      // load script
+      if (!document.querySelector('script[data-leaflet]')) {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        s.async = true;
+        s.defer = true;
+        s.dataset.leaflet = '1';
+        s.onload = () => { _mapsLoaded = true; resolve(); };
+        s.onerror = () => reject(new Error('Failed to load Leaflet')); 
+        document.head.appendChild(s);
+      } else {
+        // already loading/loaded
+        const existing = document.querySelector('script[data-leaflet]');
+        if (existing && existing.onload) {
+          existing.onload();
+        }
+        _mapsLoaded = true;
+        resolve();
+      }
     });
   }
 
   function ensureMap() {
-    if (!_gmapsLoaded) return loadGoogleMaps().then(() => createMap());
+    if (!_mapsLoaded) return loadLeaflet().then(() => createMap());
     return Promise.resolve(createMap());
   }
 
   function createMap() {
     try {
-      if (!_map) {
+      if (!_map && typeof L !== 'undefined') {
         const el = document.getElementById('detail-map');
-        _map = new google.maps.Map(el, { center: { lat: 3.139, lng: 101.6869 }, zoom: 12 });
+        _map = L.map(el, { center: [3.139, 101.6869], zoom: 12, scrollWheelZoom: false });
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(_map);
       }
       return _map;
     } catch (e) {
@@ -473,17 +505,61 @@
 
   function updateMapForAttraction(attraction) {
     if (!attraction) return;
-    const lat = Number(attraction.latitude || attraction.lat || 0);
+    const lat = Number(attraction.latitude || attraction.lat || attraction.latitude_deg || 0);
     const lng = Number(attraction.longitude || attraction.lon || attraction.lng || 0);
     if (!lat || !lng) return;
     ensureMap().then((map) => {
       if (!map) return;
-      const pos = { lat, lng };
-      map.setCenter(pos);
-      map.setZoom(14);
-      if (_marker) _marker.setMap(null);
-      _marker = new google.maps.Marker({ position: pos, map });
+      // Ensure the map knows its container size (fixes cropped/partial tiles)
+      try { map.invalidateSize(); } catch (e) {}
+      const pos = [lat, lng];
+      map.setView(pos, 14);
+      if (_marker) { try { map.removeLayer(_marker); } catch (e) {} }
+      _marker = L.marker(pos).addTo(map);
+      // update the human-readable map query label (try reverse geocode for a nicer name)
+      const mapQueryEl = document.getElementById('detail-map-query');
+      if (mapQueryEl) {
+        reverseGeocode(lat, lng).then((place) => {
+          if (place && place.display_name) {
+            const osmUrl = getMapsUrl({ latitude: lat, longitude: lng });
+            mapQueryEl.innerHTML = `<a href="${osmUrl}" target="_blank" rel="noopener noreferrer" style="color:var(--fg);font-weight:700;">${escapeHtml(place.display_name)}</a>`;
+          } else {
+            mapQueryEl.textContent = `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+          }
+        }).catch(() => {
+          mapQueryEl.textContent = `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        });
+      }
     }).catch(() => {});
+  }
+
+  function reverseGeocode(lat, lon) {
+    // Use Nominatim reverse geocoding to get a human-friendly display_name.
+    // Include the configured email when available to identify the application.
+    return new Promise((resolve) => {
+      try {
+        const params = new URLSearchParams({ format: 'jsonv2', lat: String(lat), lon: String(lon), 'accept-language': 'en' });
+        if (NOMINATIM_EMAIL) params.set('email', NOMINATIM_EMAIL);
+        const url = `https://nominatim.openstreetmap.org/reverse?${params.toString()}`;
+        fetch(url, { cache: 'no-store' }).then((resp) => {
+          if (!resp.ok) return resolve(null);
+          return resp.json().then((data) => resolve(data)).catch(() => resolve(null));
+        }).catch(() => resolve(null));
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  function escapeHtml(str) {
+    return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+
+  function getMapsLabel(attraction) {
+    if (!attraction) return '';
+    const lat = Number(attraction.latitude || attraction.lat || attraction.latitude_deg || 0);
+    const lng = Number(attraction.longitude || attraction.lon || attraction.lng || 0);
+    if (lat && lng) return `Coordinates: ${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    const query = `${attraction.name || ''} ${attraction.area || attraction.location || ''}`.trim();
+    return query || 'OpenStreetMap search';
   }
 
   function bindFilterEvents() {
@@ -510,20 +586,33 @@
       const id = Number(document.getElementById('detail-fav-btn').dataset.favId);
       if (!Number.isNaN(id)) toggleFavourite(id);
     });
-    const openMapsBtn = document.getElementById('detail-open-maps');
-    if (openMapsBtn) openMapsBtn.addEventListener('click', () => {
-      if (!currentAttr) return;
-      const lat = currentAttr.latitude || currentAttr.lat || currentAttr.latitude_deg || null;
-      const lng = currentAttr.longitude || currentAttr.lon || currentAttr.lng || null;
-      let url = '';
-      if (lat && lng) {
-        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lat + ',' + lng)}`;
-      } else {
-        const q = `${currentAttr.name || ''} ${currentAttr.area || currentAttr.location || ''}`.trim();
-        url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+    const detailMap = document.getElementById('detail-map');
+    detailMap.addEventListener('click', openCurrentAttractionInMaps);
+    detailMap.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openCurrentAttractionInMaps();
       }
-      window.open(url, '_blank');
     });
+  }
+
+  // Return an OpenStreetMap URL (no API key required)
+  function getMapsUrl(attraction, zoom = 17) {
+    if (!attraction) return '';
+    const lat = Number(attraction.latitude || attraction.lat || attraction.latitude_deg || 0);
+    const lng = Number(attraction.longitude || attraction.lon || attraction.lng || 0);
+    if (lat && lng) {
+      return `https://www.openstreetmap.org/?mlat=${encodeURIComponent(lat)}&mlon=${encodeURIComponent(lng)}#map=${zoom}/${encodeURIComponent(lat)}/${encodeURIComponent(lng)}`;
+    }
+    const query = `${attraction.name || ''} ${attraction.area || attraction.location || ''}`.trim();
+    return `https://www.openstreetmap.org/search?query=${encodeURIComponent(query)}`;
+  }
+
+  function openCurrentAttractionInMaps() {
+    const url = getMapsUrl(currentAttr);
+    const labelEl = document.getElementById('detail-map-query');
+    if (labelEl) labelEl.textContent = `Opening: ${getMapsLabel(currentAttr)}`;
+    if (url) window.open(url, '_blank');
   }
 
   function handleSearch() {
@@ -534,7 +623,11 @@
       weather: document.getElementById('weather_aware').checked,
     };
     hasSearched = true;
-    document.getElementById('clear-filters').style.display = 'block';
+    const clearBtn = document.getElementById('clear-filters');
+    if (clearBtn) {
+      clearBtn.removeAttribute('hidden');
+      clearBtn.style.display = '';
+    }
     renderCards();
   }
 
@@ -542,7 +635,11 @@
     document.getElementById('filter-form').reset();
     appliedFilters = { dest: '', interests: [], minRating: '0', weather: false };
     hasSearched = false;
-    document.getElementById('clear-filters').style.display = 'none';
+    const clearBtn = document.getElementById('clear-filters');
+    if (clearBtn) {
+      clearBtn.setAttribute('hidden', '');
+      clearBtn.style.display = 'none';
+    }
     document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
       const checkbox = chip.querySelector('input[type="checkbox"]');
       if (checkbox) {
@@ -560,7 +657,8 @@
   const RATING_MIN = { '0': 0, '3.0': 3, '4.0': 4, '4.5': 4.5 };
 
   function getFilteredAttractions() {
-    if (!hasSearched) return [...attractionsData];
+    // Show all attractions by default until the user applies filters/search
+    if (!hasSearched) return Array.isArray(attractionsData) ? [...attractionsData] : [];
     return attractionsData.filter((item) => {
       if (appliedFilters.dest) {
         const query = appliedFilters.dest.toLowerCase();
@@ -569,7 +667,10 @@
       }
       if (appliedFilters.interests.length > 0) {
         // match when the attraction has any of the selected interests (OR logic)
-        const matchesInterest = appliedFilters.interests.some((interest) => (item.interests || []).includes(interest));
+        const itemInterestsRaw = item.interests || item.interest_tags || item.tags || [];
+        const itemInterests = (Array.isArray(itemInterestsRaw) ? itemInterestsRaw : [itemInterestsRaw]).map(x => String(x).toLowerCase());
+        const selected = appliedFilters.interests.map(x => String(x).toLowerCase());
+        const matchesInterest = selected.some((interest) => itemInterests.includes(interest));
         if (!matchesInterest) return false;
       }
       const minimum = RATING_MIN[appliedFilters.minRating] || 0;
@@ -599,7 +700,7 @@
     const label = hasSearched ? `result${sorted.length !== 1 ? 's' : ''}` : 'attractions';
     countEl.innerHTML = `Showing <strong>${sorted.length}</strong> ${label}`;
     if (!hasSearched) {
-      noteEl.textContent = 'Set filters and click Search to refine recommendations.';
+      noteEl.textContent = 'Showing all attractions — apply filters to refine results.';
     } else if (sorted.length === 0) {
       noteEl.textContent = 'No attractions matched your selections. Try relaxing one filter.';
     } else {
@@ -614,7 +715,12 @@
       weatherEl.textContent = '';
     }
 
+
     if (sorted.length === 0) {
+      if (!hasSearched) {
+        grid.innerHTML = '';
+        return;
+      }
       grid.innerHTML = `
         <div class="card card-p" style="grid-column: 1 / -1;">
           <div class="empty-state">
@@ -760,7 +866,12 @@
 
     syncDetailFavourite(id, favourites.has(id));
     // initialize map for this attraction if available
-    try { updateMapForAttraction(attraction); } catch (e) { /* ignore */ }
+    try { 
+      // set an initial label for the map area so users know what will open
+      const mapQueryEl = document.getElementById('detail-map-query');
+      if (mapQueryEl) mapQueryEl.textContent = getMapsLabel(attraction);
+      updateMapForAttraction(attraction);
+    } catch (e) { /* ignore */ }
   }
 
   function setGalleryImg(index) {
@@ -787,3 +898,4 @@
   }
 </script>
 {% endblock %}
+

@@ -62,7 +62,7 @@ def dashboard():
 def smart_attraction():
     filters = {
         "destination": "",
-        "interests": ["culture", "museum", "nature"],
+        "interests": [],
         "min_rating": "4.0",
         "weather_aware": True,
         "sort": "score",
@@ -142,7 +142,7 @@ def smart_attraction():
             selected.sort(key=lambda item: float(item.get("score", 0)), reverse=True)
 
         source = (
-            "Live SerpApi Google Maps search"
+            "Live SerpApi Leaf Maps search"
             if destination_place and candidates and candidates[0].get("source", "").startswith("SerpApi")
             else "Local demonstration dataset across all destinations."
         )
@@ -156,28 +156,19 @@ def smart_attraction():
             filters["min_rating"] = request.form.get("min_rating", "4.0")
             filters["weather_aware"] = bool(request.form.get("weather_aware"))
             filters["sort"] = request.form.get("sort", "score")
+            interest_list = [item for item in filters["interests"] if item]
+            minimum_rating = float(filters["min_rating"] or 4.0)
+            attractions, weather_status, source_note = build_results(
+                filters["destination"],
+                interest_list,
+                minimum_rating,
+                filters["weather_aware"],
+                filters["sort"],
+            )
+            results_label = f"Showing {len(attractions)} attractions"
         else:
-            filters["destination"] = request.args.get("destination", "").strip()
-            filters["interests"] = request.args.getlist("interests") or filters["interests"]
-            filters["min_rating"] = request.args.get("min_rating", filters["min_rating"])
-            filters["weather_aware"] = request.args.get("weather_aware", "1") not in {"0", "false", "False", ""}
-            filters["sort"] = request.args.get("sort", filters["sort"])
-
-        interest_list = [item for item in filters["interests"] if item]
-        minimum_rating = float(filters["min_rating"] or 4.0)
-
-        attractions, weather_status, source_note = build_results(
-            filters["destination"],
-            interest_list,
-            minimum_rating,
-            filters["weather_aware"],
-            filters["sort"],
-        )
-        results_label = (
-            f"Showing {len(attractions)} attractions"
-            if filters["destination"] or interest_list or request.method == "GET"
-            else "Set filters and click Search"
-        )
+            attractions = prepare_selected_attractions(load_demo_attractions())
+            results_label = "Set filters and click Search"
     except ValueError:
         flash("Invalid rating or filter input. Please revise your selection.", "error")
         attractions = []
@@ -192,7 +183,10 @@ def smart_attraction():
         source_note=source_note,
         searched=searched,
         results_label=results_label,
-        google_maps_api_key=os.environ.get('GOOGLE_MAPS_API_KEY', ''),
+        serpapi_key=os.environ.get('SERPAPI_KEY', ''),
+        SERPAPI_KEY=os.environ.get('SERPAPI_KEY', ''),
+        nominatim_email=os.environ.get('NOMINATIM_EMAIL', ''),
+        nominatim_user_agent=os.environ.get('NOMINATIM_USER_AGENT', ''),
     )
 
 @app.route("/smart-itinerary", methods=["GET", "POST"])#Lee
