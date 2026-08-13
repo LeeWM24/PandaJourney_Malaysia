@@ -1,0 +1,1096 @@
+<!DOCTYPE html>
+<!--
+  PandaJourney — Collaborative Planning
+  Fully functional standalone demo (in-memory state, no backend).
+  Everything on this page actually works: add/edit/delete/reorder stops,
+  post comments, invite + manage collaborators, role-gated permissions
+  via the "Demo view as" switcher, and a live activity feed.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Collaborative Planning – PandaJourney</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root {
+  --green-dark:   #0f2d1f;
+  --green-brand:  #0f7a5a;
+  --green-mid:    #0a6349;
+  --green-light:  #e8f5f0;
+  --green-border: #d1e8dd;
+  --green-bg:     #f0f7f4;
+  --green-faint:  #f7faf8;
+
+  --text-dark:  #1a2e22;
+  --text-mid:   #5a7a6a;
+  --text-muted: #9bbcac;
+
+  --role-owner-bg:  #e8f5f0;
+  --role-owner-fg:  #0f7a5a;
+  --role-editor-bg: #e8eeff;
+  --role-editor-fg: #2e4fbf;
+  --role-viewer-bg: #ededed;
+  --role-viewer-fg: #5a5a5a;
+
+  --font-display: 'Sora', sans-serif;
+  --font-body:    'Inter', sans-serif;
+
+  --radius-sm:  8px;
+  --radius-md:  12px;
+  --radius-lg:  16px;
+  --radius-xl:  18px;
+  --radius-2xl: 24px;
+
+  --shadow-card: 0 1px 3px rgba(15,45,31,.07), 0 4px 16px rgba(15,45,31,.06);
+  --shadow-dropdown: 0 8px 32px rgba(15,45,31,.16), 0 2px 8px rgba(15,45,31,.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  font-family: var(--font-body);
+  background: #f3f8f5;
+  color: var(--text-dark);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+button { font-family: var(--font-body); cursor: pointer; }
+input, textarea, select { font-family: var(--font-body); }
+img { display: block; }
+button:disabled { cursor: not-allowed; }
+
+.app-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+  min-width: 1280px;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--green-dark);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  flex-shrink: 0;
+}
+.sidebar-logo-panda { font-size: 22px; }
+.sidebar-logo-brand { font-family: var(--font-display); font-size: 15px; font-weight: 700; color: #fff; }
+.sidebar-logo-brand em { font-style: normal; color: #6ee7b7; }
+.sidebar-nav { flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 10px;
+  font-size: 13px; font-weight: 500; color: rgba(255,255,255,.55); text-decoration: none;
+  border: none; background: transparent; transition: background .15s, color .15s; width: 100%; text-align: left;
+}
+.nav-item:hover { background: rgba(255,255,255,.07); color: rgba(255,255,255,.88); }
+.nav-item.is-active { background: var(--green-brand); color: #fff; }
+.nav-item-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
+.sidebar-footer { padding: 12px 10px; border-top: 1px solid rgba(255,255,255,.08); flex-shrink: 0; }
+
+.main-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+.page-header {
+  position: sticky; top: 0; z-index: 30; background: rgba(247,250,248,.92);
+  backdrop-filter: blur(12px); border-bottom: 1px solid var(--green-border);
+  padding: 18px 32px 14px; display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-shrink: 0;
+}
+.page-header-title { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text-dark); line-height: 1.2; }
+.page-header-subtitle { font-size: 13px; color: var(--text-mid); margin-top: 2px; }
+.page-header-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; padding-top: 2px; }
+
+.demo-switcher { display: flex; align-items: center; gap: 6px; }
+.demo-switcher-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.role-toggle-btn {
+  font-size: 10px; padding: 4px 10px; border-radius: 20px; border: 1px solid var(--green-border);
+  background: #fff; color: var(--text-mid); font-weight: 500; transition: all .15s;
+}
+.role-toggle-btn:hover { border-color: var(--green-brand); }
+.role-toggle-btn.is-active { background: var(--green-brand); color: #fff; border-color: var(--green-brand); }
+
+.bell-button {
+  position: relative; width: 36px; height: 36px; border-radius: 50%; background: var(--green-bg);
+  border: none; display: flex; align-items: center; justify-content: center; font-size: 16px; transition: background .15s;
+}
+.bell-button:hover { background: var(--green-border); }
+.bell-badge {
+  position: absolute; top: -2px; right: -2px; width: 16px; height: 16px; border-radius: 50%;
+  background: #ef4444; color: #fff; font-size: 9px; font-weight: 700; display: flex; align-items: center;
+  justify-content: center; font-family: var(--font-body);
+}
+.bell-badge.is-hidden { display: none; }
+
+/* Viewing-as banner */
+.viewing-as-banner {
+  margin: 0 32px; margin-top: 12px; padding: 8px 14px; border-radius: 10px;
+  background: #fef3c7; color: #92400e; font-size: 11.5px; font-weight: 600;
+  display: none; align-items: center; gap: 8px;
+}
+.viewing-as-banner.is-visible { display: flex; }
+
+.page-content { flex: 1; overflow-y: auto; padding: 20px 32px 56px; }
+.columns-layout { display: flex; gap: 20px; align-items: flex-start; }
+.column-left { flex: 1; display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.column-right { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; gap: 16px; }
+
+.card { background: #fff; border: 1px solid var(--green-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-card); }
+.card-body { padding: 20px; }
+.card-heading { font-size: 13px; font-weight: 600; color: var(--text-dark); margin-bottom: 12px; }
+
+.itinerary-card-header { margin-bottom: 16px; }
+.itinerary-trip-title-row { display: flex; align-items: center; gap: 6px; }
+.itinerary-trip-title {
+  font-size: 13px; font-weight: 600; color: var(--text-dark); display: flex; align-items: center; gap: 4px;
+  background: none; border: none; padding: 0; text-align: left;
+}
+.itinerary-trip-title .edit-hint { font-size: 10px; color: var(--text-muted); }
+.itinerary-trip-title:not(:disabled):hover { color: var(--green-brand); }
+.itinerary-trip-title-input {
+  font-size: 13px; font-weight: 600; color: var(--text-dark); font-family: var(--font-body);
+  border: 1px solid var(--green-brand); border-radius: 6px; padding: 2px 8px; outline: none;
+}
+.itinerary-trip-meta { font-size: 11px; color: var(--text-mid); margin-top: 3px; }
+
+.stop-timeline { display: flex; flex-direction: column; }
+.stop-row { display: flex; gap: 8px; }
+.stop-row.is-drag-over { background: var(--green-bg); border-radius: 10px; }
+.stop-drag-handle {
+  display: flex; align-items: flex-start; padding-top: 6px; flex-shrink: 0; opacity: 0;
+  cursor: grab; transition: opacity .15s; width: 14px;
+}
+.stop-row:hover .stop-drag-handle { opacity: 1; }
+.stop-drag-handle.is-disabled { visibility: hidden; }
+.stop-drag-handle svg { color: var(--text-muted); }
+
+.stop-dot-col { display: flex; flex-direction: column; align-items: center; width: 32px; flex-shrink: 0; }
+.stop-icon { width: 32px; height: 32px; border-radius: 10px; background: var(--green-light); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.stop-connector { width: 1px; flex: 1; background: var(--green-border); margin: 6px 0; min-height: 16px; }
+
+.stop-info { flex: 1; padding-bottom: 12px; min-width: 0; }
+.stop-info-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.stop-name { font-size: 13px; font-weight: 600; color: var(--text-dark); line-height: 1.35; }
+.stop-time { font-size: 11px; color: var(--text-mid); margin-top: 2px; }
+.stop-actions { display: flex; gap: 4px; opacity: 0; transition: opacity .15s; flex-shrink: 0; }
+.stop-row:hover .stop-actions { opacity: 1; }
+.stop-action-btn {
+  width: 28px; height: 28px; border-radius: var(--radius-sm); border: none; background: transparent;
+  display: flex; align-items: center; justify-content: center; font-size: 13px; transition: background .15s;
+}
+.stop-action-btn:hover { background: var(--green-light); }
+.stop-action-btn.is-delete { color: var(--text-muted); }
+.stop-action-btn.is-delete:hover { background: #fef2f2; color: #ef4444; }
+
+/* Inline add/edit stop form */
+.stop-form {
+  border: 1px solid var(--green-border); border-radius: var(--radius-md); background: var(--green-faint);
+  padding: 14px; margin-top: 8px; display: flex; flex-direction: column; gap: 10px;
+}
+.stop-form-row { display: flex; gap: 8px; }
+.stop-form-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.stop-form-field label { font-size: 10px; font-weight: 600; color: var(--text-mid); text-transform: uppercase; letter-spacing: .02em; }
+.stop-form-field select, .stop-form-field input {
+  height: 34px; border-radius: 8px; border: 1px solid var(--green-border); background: #fff; font-size: 12px;
+  padding: 0 10px; color: var(--text-dark); outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.stop-form-field select:focus, .stop-form-field input:focus { border-color: var(--green-brand); box-shadow: 0 0 0 3px rgba(15,122,90,.12); }
+.stop-form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.stop-form-btn {
+  height: 30px; padding: 0 14px; border-radius: 20px; border: none; font-size: 11.5px; font-weight: 600; transition: background .15s, color .15s;
+}
+.stop-form-btn.is-primary { background: var(--green-brand); color: #fff; }
+.stop-form-btn.is-primary:hover { background: var(--green-mid); }
+.stop-form-btn.is-secondary { background: #fff; color: var(--text-mid); border: 1px solid var(--green-border); }
+.stop-form-btn.is-secondary:hover { border-color: var(--text-mid); }
+
+.add-stop-btn {
+  width: 100%; margin-top: 8px; height: 40px; border-radius: var(--radius-md); border: 2px dashed var(--green-border);
+  background: transparent; font-size: 13px; color: var(--text-mid); display: flex; align-items: center;
+  justify-content: center; gap: 6px; transition: border-color .15s, color .15s;
+}
+.add-stop-btn:hover:not(:disabled) { border-color: var(--green-brand); color: var(--green-brand); }
+.add-stop-btn:disabled { opacity: .5; }
+
+.sync-indicator { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--green-bg); }
+.sync-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green-brand); flex-shrink: 0; animation: pulse-dot 2s cubic-bezier(.4,0,.6,1) infinite; }
+@keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .4; } }
+.sync-text { font-size: 11px; color: var(--text-mid); }
+
+.comments-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.comment-item { display: flex; gap: 12px; }
+.comment-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.comment-bubble { flex: 1; background: var(--green-bg); border-radius: var(--radius-lg); padding: 10px 14px; }
+.comment-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.comment-author { font-size: 12px; font-weight: 600; color: var(--text-dark); }
+.comment-time { font-size: 10px; color: var(--text-muted); }
+.comment-text { font-size: 12px; color: var(--text-mid); line-height: 1.55; white-space: pre-wrap; }
+
+.comment-empty { font-size: 12px; color: var(--text-muted); padding: 8px 2px 16px; }
+
+.comment-input-row { display: flex; gap: 8px; align-items: flex-start; }
+.comment-input {
+  flex: 1; height: 40px; border-radius: 20px; border: 1px solid var(--green-border); background: #fff;
+  font-size: 13px; padding: 0 16px; color: var(--text-dark); outline: none; transition: border-color .15s, box-shadow .15s;
+}
+.comment-input::placeholder { color: var(--text-muted); }
+.comment-input:focus { border-color: var(--green-brand); box-shadow: 0 0 0 3px rgba(15,122,90,.12); }
+.comment-input:disabled { background: var(--green-faint); color: var(--text-muted); cursor: not-allowed; }
+.comment-permission-msg { font-size: 10.5px; color: var(--text-muted); padding-left: 16px; margin-top: 5px; }
+.comment-send-btn {
+  width: 40px; height: 40px; border-radius: 50%; border: none; background: var(--green-brand); color: #fff;
+  font-size: 16px; display: flex; align-items: center; justify-content: center; transition: background .15s; flex-shrink: 0;
+}
+.comment-send-btn:hover:not(:disabled) { background: var(--green-mid); }
+.comment-send-btn:disabled { background: var(--text-muted); }
+
+.invite-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.invite-input {
+  flex: 1; height: 36px; border-radius: 20px; border: 1px solid var(--green-border); background: #fff;
+  font-size: 13px; padding: 0 16px; outline: none; color: var(--text-dark); transition: border-color .15s, box-shadow .15s;
+}
+.invite-input::placeholder { color: var(--text-muted); }
+.invite-input:focus { border-color: var(--green-brand); box-shadow: 0 0 0 3px rgba(15,122,90,.12); }
+.invite-input.is-error { border-color: #f87171; }
+.invite-input:disabled { background: var(--green-faint); color: var(--text-muted); cursor: not-allowed; }
+.invite-error-msg { font-size: 10px; color: #ef4444; padding-left: 16px; margin-top: 4px; }
+.invite-btn { height: 36px; padding: 0 16px; border-radius: 20px; border: none; background: var(--green-brand); color: #fff; font-size: 12px; font-weight: 500; transition: background .15s; white-space: nowrap; }
+.invite-btn:hover:not(:disabled) { background: var(--green-mid); }
+.invite-btn:disabled { background: var(--text-muted); }
+.invite-permission-msg { font-size: 10.5px; color: var(--text-muted); margin: -8px 0 14px; }
+
+.collaborator-list { display: flex; flex-direction: column; gap: 12px; }
+.collaborator-row { display: flex; align-items: center; gap: 10px; animation: row-in .2s ease; }
+@keyframes row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.collaborator-row.is-pending { opacity: .6; }
+.collaborator-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; flex-shrink: 0; }
+.collaborator-info { flex: 1; min-width: 0; }
+.collaborator-name { font-size: 12px; font-weight: 600; color: var(--text-dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collaborator-name .you-tag { font-weight: 500; color: var(--text-muted); }
+.collaborator-email { font-size: 10px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.collaborator-role-wrap { position: relative; flex-shrink: 0; display: flex; align-items: center; gap: 4px; }
+.role-pill { font-size: 10px; padding: 3px 8px; border-radius: 20px; font-weight: 600; border: none; display: flex; align-items: center; gap: 3px; transition: opacity .15s; }
+.role-pill.role-owner { background: var(--role-owner-bg); color: var(--role-owner-fg); cursor: default; }
+.role-pill.role-editor { background: var(--role-editor-bg); color: var(--role-editor-fg); }
+.role-pill.role-viewer { background: var(--role-viewer-bg); color: var(--role-viewer-fg); }
+.role-pill.is-clickable { cursor: pointer; }
+.role-pill.is-clickable:hover { opacity: .8; }
+.role-pill .chevron { font-size: 8px; }
+
+.pending-pill { font-size: 10px; padding: 3px 8px; border-radius: 20px; font-weight: 600; background: #fef3c7; color: #b45309; }
+.accept-sim-btn { width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--green-bg); font-size: 10px; display: flex; align-items: center; justify-content: center; color: var(--green-brand); transition: background .15s; }
+.accept-sim-btn:hover:not(:disabled) { background: var(--green-border); }
+.accept-sim-btn:disabled { opacity: .4; cursor: not-allowed; }
+.remove-invite-btn { width: 20px; height: 20px; border-radius: 50%; border: none; background: var(--green-bg); font-size: 11px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: background .15s, color .15s; }
+.remove-invite-btn:hover:not(:disabled) { background: #fef2f2; color: #ef4444; }
+.remove-invite-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+.role-dropdown { position: absolute; right: 0; top: calc(100% + 4px); background: #fff; border: 1px solid var(--green-border); border-radius: var(--radius-md); box-shadow: var(--shadow-dropdown); z-index: 20; padding: 4px 0; min-width: 150px; }
+.role-dropdown-item { display: block; width: 100%; text-align: left; padding: 8px 14px; font-size: 12px; background: none; border: none; color: var(--text-dark); transition: background .12s; }
+.role-dropdown-item:hover { background: var(--green-bg); }
+.role-dropdown-item.is-current { color: var(--text-muted); }
+.role-dropdown-divider { height: 1px; background: var(--green-bg); margin: 3px 0; }
+.role-dropdown-item.is-danger { color: #ef4444; }
+.role-dropdown-item.is-danger:hover { background: #fef2f2; }
+
+.update-list { display: flex; flex-direction: column; gap: 12px; }
+.update-row { display: flex; align-items: flex-start; gap: 12px; }
+.update-icon { width: 28px; height: 28px; border-radius: var(--radius-sm); background: var(--green-bg); display: flex; align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+.update-text { font-size: 12px; font-weight: 500; color: var(--text-dark); line-height: 1.35; }
+.update-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.view-all-link { margin-top: 12px; display: inline-block; font-size: 12px; color: var(--green-brand); background: none; border: none; padding: 0; text-decoration: none; }
+.view-all-link:hover { text-decoration: underline; }
+
+.app-toast {
+  position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(20px); z-index: 60;
+  display: flex; align-items: center; gap: 10px; background: var(--green-dark); color: #fff; border-radius: var(--radius-lg);
+  padding: 12px 20px; box-shadow: 0 8px 32px rgba(0,0,0,.2); font-size: 13px; font-weight: 500;
+  opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; max-width: 360px;
+}
+.app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+.app-toast.is-warning { background: #92400e; }
+</style>
+</head>
+<body>
+
+<div class="app-layout">
+
+  <aside class="sidebar" aria-label="Main navigation">
+    <div class="sidebar-logo">
+      <span class="sidebar-logo-panda" aria-hidden="true">🐼</span>
+      <span class="sidebar-logo-brand">Panda<em>Journey</em></span>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🏠</span>Dashboard</a>
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">⭐</span>Attractions</a>
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🗺️</span>My Itinerary</a>
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🔖</span>Saved</a>
+      <a class="nav-item is-active" href="#" aria-current="page"><span class="nav-item-icon" aria-hidden="true">👥</span>Collaboration</a>
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🌐</span>Public Itineraries</a>
+    </nav>
+    <div class="sidebar-footer">
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">👤</span>Profile</a>
+      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🚪</span>Logout</a>
+    </div>
+  </aside>
+
+  <main class="main-area">
+
+    <header class="page-header">
+      <div class="page-header-text">
+        <h1 class="page-header-title">Collaborative Planning</h1>
+        <p class="page-header-subtitle">Plan trips together with friends and family in real-time</p>
+      </div>
+      <div class="page-header-actions">
+        <div class="demo-switcher" aria-label="Demo: view as role">
+          <span class="demo-switcher-label">Demo view as:</span>
+          <button class="role-toggle-btn" type="button" data-role="owner">Owner</button>
+          <button class="role-toggle-btn" type="button" data-role="editor">Editor</button>
+          <button class="role-toggle-btn" type="button" data-role="viewer">Viewer</button>
+        </div>
+        <div style="position:relative">
+          <button class="bell-button" type="button" aria-label="Notifications" id="bellButton">
+            🔔
+            <span class="bell-badge" id="bellBadge" aria-label="notifications">0</span>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="viewing-as-banner" id="viewingAsBanner"></div>
+
+    <div class="page-content">
+      <div class="columns-layout">
+
+        <div class="column-left">
+
+          <section class="card itinerary-card" aria-labelledby="itinerary-heading">
+            <div class="card-body">
+
+              <div class="itinerary-card-header">
+                <div class="itinerary-trip-title-row" id="tripTitleWrap"></div>
+                <p class="itinerary-trip-meta" id="tripMeta"></p>
+              </div>
+
+              <div class="stop-timeline" role="list" aria-label="Itinerary stops" id="stopTimeline"></div>
+
+              <button class="add-stop-btn" type="button" id="addStopBtn">+ Add a stop</button>
+
+              <div class="sync-indicator" aria-live="polite">
+                <span class="sync-dot" aria-hidden="true"></span>
+                <p class="sync-text">Synced live — everyone sees changes instantly</p>
+              </div>
+
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="comments-heading">
+            <div class="card-body">
+              <h2 class="card-heading" id="comments-heading">Comments</h2>
+
+              <div class="comments-list" role="log" aria-label="Comments thread" aria-live="polite" id="commentsList"></div>
+
+              <form class="comment-input-row" id="commentForm" aria-label="Add a comment">
+                <input class="comment-input" id="commentInput" type="text" placeholder="Write a comment for the group…" aria-label="Comment text" maxlength="500" />
+                <button class="comment-send-btn" type="submit" aria-label="Send comment" id="commentSendBtn">➤</button>
+              </form>
+              <p class="comment-permission-msg" id="commentPermissionMsg" style="display:none"></p>
+            </div>
+          </section>
+
+        </div>
+
+        <div class="column-right">
+
+          <section class="card" aria-labelledby="collaborators-heading">
+            <div class="card-body">
+              <h2 class="card-heading" id="collaborators-heading">Collaborators</h2>
+
+              <form class="invite-row" id="inviteForm" aria-label="Invite collaborator">
+                <input class="invite-input" id="inviteEmailInput" type="email" placeholder="Search by email…" aria-label="Collaborator email address" />
+                <button class="invite-btn" type="submit" id="inviteBtn">Invite</button>
+              </form>
+              <p class="invite-error-msg" id="inviteErrorMsg" style="display:none"></p>
+              <p class="invite-permission-msg" id="invitePermissionMsg" style="display:none">Only the trip owner can invite people.</p>
+
+              <ul class="collaborator-list" id="collaboratorList" aria-label="Current collaborators"></ul>
+            </div>
+          </section>
+
+          <section class="card" aria-labelledby="updates-heading">
+            <div class="card-body">
+              <h2 class="card-heading" id="updates-heading">Recent Updates</h2>
+              <ul class="update-list" id="updateList" aria-live="polite"></ul>
+              <button class="view-all-link" type="button" id="viewAllActivityBtn">View all activity →</button>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="app-toast" id="appToast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ───────────────────────── STATE ───────────────────────── */
+
+  const ICONS = [
+    { icon: '🚌', label: 'Transport' },
+    { icon: '🌲', label: 'Town / walk' },
+    { icon: '🍃', label: 'Nature' },
+    { icon: '🍵', label: 'Food / drink' },
+    { icon: '🏨', label: 'Hotel' },
+    { icon: '📸', label: 'Sightseeing' },
+    { icon: '🛍️', label: 'Shopping' },
+    { icon: '⛰️', label: 'Hike' },
+  ];
+
+  const USERS = {
+    owner:  { id: 'u_ahmad', name: 'Ahmad Faris', email: 'ahmad@email.com', color: '#0f7a5a', initials: 'AF', role: 'owner' },
+    editor: { id: 'u_siti',  name: 'Siti Nurhaliza', email: 'siti@email.com', color: '#3b82f6', initials: 'SN', role: 'editor' },
+    viewer: { id: 'u_raj',   name: 'Raj Kumar', email: 'raj@email.com', color: '#8b5cf6', initials: 'RK', role: 'viewer' },
+  };
+
+  const state = {
+    currentRole: 'owner', // which demo user is "you" right now
+    trip: {
+      title: 'Cameron Highlands Trip',
+      date: 'Aug 10, 2026',
+    },
+    stops: [
+      { id: 's1', icon: '🚌', name: 'KLIA2 Departure', time: '07:00', durationMins: 120 },
+      { id: 's2', icon: '🌲', name: 'Tanah Rata Town Centre', time: '09:30', durationMins: 90 },
+      { id: 's3', icon: '🍃', name: 'Mossy Forest Walk', time: '11:00', durationMins: 120 },
+      { id: 's4', icon: '🍵', name: 'Cameron Bharat Tea Plantation', time: '13:30', durationMins: 90 },
+    ],
+    collaborators: [
+      { userId: 'u_ahmad', name: 'Ahmad Faris', email: 'ahmad@email.com', color: '#0f7a5a', initials: 'AF', role: 'owner' },
+      { userId: 'u_siti',  name: 'Siti Nurhaliza', email: 'siti@email.com', color: '#3b82f6', initials: 'SN', role: 'editor' },
+      { userId: 'u_raj',   name: 'Raj Kumar', email: 'raj@email.com', color: '#8b5cf6', initials: 'RK', role: 'viewer' },
+      { userId: 'p_newuser', name: 'newuser@example.com', email: 'newuser@example.com', color: '#f59e0b', initials: 'NU', role: 'pending' },
+    ],
+    comments: [
+      { id: 'c1', authorName: 'Siti Nurhaliza', authorColor: '#3b82f6', authorInitials: 'SN', text: 'Can we add Batu Caves to stop 2? The morning light is perfect there.', time: '2h ago' },
+      { id: 'c2', authorName: 'Raj Kumar', authorColor: '#8b5cf6', authorInitials: 'RK', text: 'Agreed! Also check the MRT schedule for that route.', time: '1h ago' },
+      { id: 'c3', authorName: 'Ahmad Faris', authorColor: '#0f7a5a', authorInitials: 'AF', text: 'Updated the route. Batu Caves is now stop 2. Regenerated timetable.', time: '45m ago' },
+    ],
+    activity: [
+      { icon: '💬', text: 'Siti added a comment', time: '2h ago' },
+      { icon: '📍', text: 'Raj added a new stop', time: '1h ago' },
+      { icon: '✏️', text: 'Ahmad updated stop 2', time: '45m ago' },
+      { icon: '🔑', text: 'Raj assigned as Viewer', time: 'Yesterday' },
+      { icon: '🔑', text: 'Siti assigned as Editor', time: '2 days ago' },
+      { icon: '➕', text: 'Ahmad created the trip', time: '3 days ago' },
+    ],
+    unreadCount: 4,
+    editingStopId: null,   // stop currently being edited inline
+    addingStop: false,     // add-stop form open
+    editingTitle: false,
+    openRoleDropdownFor: null, // userId whose role dropdown is open
+    activityExpanded: false,
+    dragIndex: null,
+  };
+
+  let stopIdCounter = 5;
+
+  /* ───────────────────────── PERMISSIONS ───────────────────────── */
+
+  function currentUser() { return USERS[state.currentRole]; }
+
+  function can(action) {
+    const role = state.currentRole;
+    switch (action) {
+      case 'editItinerary':      // add/edit/delete/reorder stops, edit trip title
+        return role === 'owner' || role === 'editor';
+      case 'comment':
+        return role === 'owner' || role === 'editor';
+      case 'manageCollaborators': // invite, change role, remove, accept-sim
+        return role === 'owner';
+      default:
+        return false;
+    }
+  }
+
+  /* ───────────────────────── HELPERS ───────────────────────── */
+
+  function esc(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function fmtDuration(mins) {
+    if (mins < 60) return mins + ' mins';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return m ? (h + ' hr ' + m + ' mins') : (h + (h === 1 ? ' hr' : ' hrs'));
+  }
+
+  function totalTripHours() {
+    const total = state.stops.reduce((sum, s) => sum + s.durationMins, 0);
+    return (total / 60).toFixed(total % 60 === 0 ? 0 : 1);
+  }
+
+  function showToast(message, isWarning) {
+    const toast = document.getElementById('appToast');
+    toast.textContent = message;
+    toast.classList.toggle('is-warning', !!isWarning);
+    toast.classList.add('is-visible');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('is-visible'), 2800);
+  }
+
+  function warnNoPermission(msg) {
+    showToast(msg, true);
+  }
+
+  function pushActivity(icon, text) {
+    state.activity.unshift({ icon, text, time: 'just now' });
+    state.unreadCount += 1;
+    renderActivity();
+    renderBell();
+  }
+
+  function emailIsValid(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+  }
+
+  function initialsFromEmail(value) {
+    const local = value.split('@')[0];
+    const parts = local.split(/[._-]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return local.slice(0, 2).toUpperCase();
+  }
+
+  const AVATAR_COLORS = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#10b981'];
+  function colorForEmail(value) {
+    let hash = 0;
+    for (let i = 0; i < value.length; i++) hash = value.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  }
+
+  /* ───────────────────────── RENDER: HEADER / DEMO SWITCHER ───────────────────────── */
+
+  function renderRoleSwitcher() {
+    document.querySelectorAll('.role-toggle-btn').forEach(btn => {
+      btn.classList.toggle('is-active', btn.dataset.role === state.currentRole);
+    });
+
+    const banner = document.getElementById('viewingAsBanner');
+    if (state.currentRole === 'owner') {
+      banner.classList.remove('is-visible');
+      banner.textContent = '';
+    } else {
+      const u = currentUser();
+      const roleLabel = state.currentRole === 'editor' ? 'Editor — can edit the itinerary and comment' : 'Viewer — read-only, cannot edit or comment';
+      banner.innerHTML = '👁️ Viewing as <strong>' + esc(u.name) + '</strong> (' + roleLabel + ')';
+      banner.classList.add('is-visible');
+    }
+  }
+
+  function renderBell() {
+    const badge = document.getElementById('bellBadge');
+    badge.textContent = state.unreadCount;
+    badge.classList.toggle('is-hidden', state.unreadCount === 0);
+    badge.setAttribute('aria-label', state.unreadCount + ' notifications');
+  }
+
+  /* ───────────────────────── RENDER: TRIP TITLE ───────────────────────── */
+
+  function renderTripTitle() {
+    const wrap = document.getElementById('tripTitleWrap');
+    const meta = document.getElementById('tripMeta');
+    meta.textContent = state.trip.date + ' · ' + state.stops.length + ' stops · ' + totalTripHours() + ' hrs';
+
+    if (state.editingTitle && can('editItinerary')) {
+      wrap.innerHTML = '';
+      const input = document.createElement('input');
+      input.className = 'itinerary-trip-title-input';
+      input.value = state.trip.title;
+      input.setAttribute('aria-label', 'Trip title');
+      wrap.appendChild(input);
+      input.focus();
+      input.select();
+
+      function commit() {
+        const val = input.value.trim();
+        if (val && val !== state.trip.title) {
+          state.trip.title = val;
+          pushActivity('✏️', currentUser().name + ' renamed the trip to "' + val + '"');
+        }
+        state.editingTitle = false;
+        renderTripTitle();
+      }
+      input.addEventListener('blur', commit);
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') input.blur();
+        if (e.key === 'Escape') { state.editingTitle = false; renderTripTitle(); }
+      });
+    } else {
+      wrap.innerHTML = '';
+      const btn = document.createElement('button');
+      btn.className = 'itinerary-trip-title';
+      btn.type = 'button';
+      btn.innerHTML = esc(state.trip.title) + (can('editItinerary') ? ' <span class="edit-hint" aria-hidden="true">✎</span>' : '');
+      btn.addEventListener('click', () => {
+        if (!can('editItinerary')) { warnNoPermission('Viewers can\'t rename the trip.'); return; }
+        state.editingTitle = true;
+        renderTripTitle();
+      });
+      wrap.appendChild(btn);
+    }
+  }
+
+  /* ───────────────────────── RENDER: STOPS ───────────────────────── */
+
+  function iconOptionsHtml(selected) {
+    return ICONS.map(o => '<option value="' + o.icon + '"' + (o.icon === selected ? ' selected' : '') + '>' + o.icon + ' ' + esc(o.label) + '</option>').join('');
+  }
+
+  function buildStopForm(existingStop) {
+    const form = document.createElement('div');
+    form.className = 'stop-form';
+    const isEdit = !!existingStop;
+    form.innerHTML =
+      '<div class="stop-form-row">' +
+        '<div class="stop-form-field" style="max-width:110px">' +
+          '<label>Icon</label>' +
+          '<select class="f-icon">' + iconOptionsHtml(isEdit ? existingStop.icon : ICONS[0].icon) + '</select>' +
+        '</div>' +
+        '<div class="stop-form-field">' +
+          '<label>Stop name</label>' +
+          '<input class="f-name" type="text" maxlength="80" placeholder="e.g. Boh Tea Estate" value="' + (isEdit ? esc(existingStop.name) : '') + '" />' +
+        '</div>' +
+      '</div>' +
+      '<div class="stop-form-row">' +
+        '<div class="stop-form-field">' +
+          '<label>Start time</label>' +
+          '<input class="f-time" type="time" value="' + (isEdit ? existingStop.time : '09:00') + '" />' +
+        '</div>' +
+        '<div class="stop-form-field">' +
+          '<label>Duration (mins)</label>' +
+          '<input class="f-duration" type="number" min="5" step="5" value="' + (isEdit ? existingStop.durationMins : 60) + '" />' +
+        '</div>' +
+      '</div>' +
+      '<div class="stop-form-actions">' +
+        '<button type="button" class="stop-form-btn is-secondary f-cancel">Cancel</button>' +
+        '<button type="button" class="stop-form-btn is-primary f-save">' + (isEdit ? 'Save changes' : 'Add stop') + '</button>' +
+      '</div>';
+
+    form.querySelector('.f-cancel').addEventListener('click', () => {
+      state.editingStopId = null;
+      state.addingStop = false;
+      renderStops();
+    });
+
+    form.querySelector('.f-save').addEventListener('click', () => {
+      const name = form.querySelector('.f-name').value.trim();
+      const icon = form.querySelector('.f-icon').value;
+      const time = form.querySelector('.f-time').value || '09:00';
+      const duration = Math.max(5, parseInt(form.querySelector('.f-duration').value, 10) || 60);
+
+      if (!name) {
+        form.querySelector('.f-name').style.borderColor = '#f87171';
+        form.querySelector('.f-name').focus();
+        return;
+      }
+
+      if (isEdit) {
+        Object.assign(existingStop, { name, icon, time, durationMins: duration });
+        pushActivity('✏️', currentUser().name + ' updated "' + name + '"');
+        state.editingStopId = null;
+      } else {
+        state.stops.push({ id: 's' + (stopIdCounter++), name, icon, time, durationMins: duration });
+        pushActivity('📍', currentUser().name + ' added a new stop: ' + name);
+        state.addingStop = false;
+      }
+      renderStops();
+      renderTripTitle();
+    });
+
+    return form;
+  }
+
+  function renderStops() {
+    const timeline = document.getElementById('stopTimeline');
+    timeline.innerHTML = '';
+    const editable = can('editItinerary');
+
+    state.stops.forEach((stop, idx) => {
+      const row = document.createElement('div');
+      row.className = 'stop-row';
+      row.setAttribute('role', 'listitem');
+      row.draggable = editable;
+      row.dataset.index = idx;
+
+      const isLast = idx === state.stops.length - 1;
+
+      row.innerHTML =
+        '<div class="stop-drag-handle' + (editable ? '' : ' is-disabled') + '" aria-label="Drag to reorder" title="Drag to reorder">' +
+          '<svg width="10" height="16" viewBox="0 0 10 16" fill="none" aria-hidden="true">' +
+            '<circle cx="3" cy="3" r="1.5" fill="currentColor"/><circle cx="7" cy="3" r="1.5" fill="currentColor"/>' +
+            '<circle cx="3" cy="8" r="1.5" fill="currentColor"/><circle cx="7" cy="8" r="1.5" fill="currentColor"/>' +
+            '<circle cx="3" cy="13" r="1.5" fill="currentColor"/><circle cx="7" cy="13" r="1.5" fill="currentColor"/>' +
+          '</svg>' +
+        '</div>' +
+        '<div class="stop-dot-col">' +
+          '<div class="stop-icon" aria-hidden="true">' + stop.icon + '</div>' +
+          (isLast ? '' : '<div class="stop-connector"></div>') +
+        '</div>' +
+        '<div class="stop-info">' +
+          '<div class="stop-info-top">' +
+            '<div><p class="stop-name">' + esc(stop.name) + '</p><p class="stop-time">' + esc(stop.time) + ' · ' + fmtDuration(stop.durationMins) + '</p></div>' +
+            '<div class="stop-actions">' +
+              '<button class="stop-action-btn f-edit" type="button" title="Edit stop" aria-label="Edit ' + esc(stop.name) + '">✎</button>' +
+              '<button class="stop-action-btn is-delete f-delete" type="button" title="Delete stop" aria-label="Delete ' + esc(stop.name) + '">🗑</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+
+      row.querySelector('.f-edit').addEventListener('click', () => {
+        if (!editable) { warnNoPermission('Viewers can\'t edit stops.'); return; }
+        state.editingStopId = stop.id;
+        state.addingStop = false;
+        renderStops();
+      });
+      row.querySelector('.f-delete').addEventListener('click', () => {
+        if (!editable) { warnNoPermission('Viewers can\'t delete stops.'); return; }
+        if (!confirm('Remove "' + stop.name + '" from the itinerary?')) return;
+        state.stops = state.stops.filter(s => s.id !== stop.id);
+        pushActivity('🗑', currentUser().name + ' removed "' + stop.name + '"');
+        renderStops();
+        renderTripTitle();
+      });
+
+      /* drag reorder */
+      row.addEventListener('dragstart', () => { state.dragIndex = idx; row.style.opacity = '.4'; });
+      row.addEventListener('dragend', () => { row.style.opacity = ''; document.querySelectorAll('.stop-row').forEach(r => r.classList.remove('is-drag-over')); });
+      row.addEventListener('dragover', e => { if (editable) { e.preventDefault(); row.classList.add('is-drag-over'); } });
+      row.addEventListener('dragleave', () => row.classList.remove('is-drag-over'));
+      row.addEventListener('drop', e => {
+        e.preventDefault();
+        row.classList.remove('is-drag-over');
+        if (!editable || state.dragIndex === null || state.dragIndex === idx) return;
+        const [moved] = state.stops.splice(state.dragIndex, 1);
+        state.stops.splice(idx, 0, moved);
+        state.dragIndex = null;
+        pushActivity('↕️', currentUser().name + ' reordered the itinerary');
+        renderStops();
+      });
+
+      timeline.appendChild(row);
+
+      if (state.editingStopId === stop.id) {
+        timeline.appendChild(buildStopForm(stop));
+      }
+    });
+
+    if (state.addingStop) {
+      timeline.appendChild(buildStopForm(null));
+    }
+
+    const addBtn = document.getElementById('addStopBtn');
+    addBtn.disabled = !editable;
+    addBtn.title = editable ? '' : 'Only owners and editors can add stops';
+  }
+
+  /* ───────────────────────── RENDER: COMMENTS ───────────────────────── */
+
+  function renderComments() {
+    const list = document.getElementById('commentsList');
+    list.innerHTML = '';
+    if (state.comments.length === 0) {
+      list.innerHTML = '<p class="comment-empty">No comments yet — start the conversation.</p>';
+    } else {
+      state.comments.forEach(c => {
+        const item = document.createElement('article');
+        item.className = 'comment-item';
+        item.innerHTML =
+          '<div class="comment-avatar" style="background:' + c.authorColor + '" aria-label="' + esc(c.authorName) + '">' + esc(c.authorInitials) + '</div>' +
+          '<div class="comment-bubble">' +
+            '<div class="comment-meta"><span class="comment-author">' + esc(c.authorName) + '</span><span class="comment-time">' + esc(c.time) + '</span></div>' +
+            '<p class="comment-text"></p>' +
+          '</div>';
+        item.querySelector('.comment-text').textContent = c.text;
+        list.appendChild(item);
+      });
+    }
+
+    const input = document.getElementById('commentInput');
+    const sendBtn = document.getElementById('commentSendBtn');
+    const permMsg = document.getElementById('commentPermissionMsg');
+    const allowed = can('comment');
+    input.disabled = !allowed;
+    sendBtn.disabled = !allowed;
+    input.placeholder = allowed ? 'Write a comment for the group…' : 'Viewers can\'t comment';
+    permMsg.style.display = allowed ? 'none' : 'block';
+    permMsg.textContent = 'Switch to Owner or Editor to join the conversation.';
+  }
+
+  /* ───────────────────────── RENDER: COLLABORATORS ───────────────────────── */
+
+  function roleLabel(role) {
+    return role === 'owner' ? 'Owner' : role === 'editor' ? 'Editor' : role === 'viewer' ? 'Viewer' : role;
+  }
+
+  function renderCollaborators() {
+    const list = document.getElementById('collaboratorList');
+    list.innerHTML = '';
+    const manage = can('manageCollaborators');
+
+    state.collaborators.forEach(collab => {
+      const li = document.createElement('li');
+      li.className = 'collaborator-row' + (collab.role === 'pending' ? ' is-pending' : '');
+      const youTag = collab.userId === currentUser().id ? ' <span class="you-tag">(you)</span>' : '';
+
+      let roleHtml;
+      if (collab.role === 'pending') {
+        roleHtml =
+          '<span class="pending-pill" aria-label="Invitation pending">Pending</span>' +
+          '<button class="accept-sim-btn f-accept" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance"' + (manage ? '' : ' disabled') + '>✓</button>' +
+          '<button class="remove-invite-btn f-revoke" type="button" title="Revoke invite" aria-label="Revoke invite"' + (manage ? '' : ' disabled') + '>✕</button>';
+      } else if (collab.role === 'owner') {
+        roleHtml = '<button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>';
+      } else {
+        roleHtml =
+          '<button class="role-pill role-' + collab.role + (manage ? ' is-clickable' : '') + '" type="button" aria-haspopup="true" aria-label="Role: ' + roleLabel(collab.role) + '. Click to change">' +
+            roleLabel(collab.role) + (manage ? ' <span class="chevron" aria-hidden="true">▾</span>' : '') +
+          '</button>' +
+          (state.openRoleDropdownFor === collab.userId ? buildRoleDropdownHtml(collab) : '');
+      }
+
+      li.innerHTML =
+        '<div class="collaborator-avatar" style="background:' + collab.color + '" aria-label="' + esc(collab.name) + '">' + esc(collab.initials) + '</div>' +
+        '<div class="collaborator-info"><p class="collaborator-name">' + esc(collab.name) + youTag + '</p><p class="collaborator-email">' + esc(collab.email) + '</p></div>' +
+        '<div class="collaborator-role-wrap">' + roleHtml + '</div>';
+
+      if (collab.role === 'pending') {
+        li.querySelector('.f-accept').addEventListener('click', () => {
+          if (!manage) { warnNoPermission('Only the owner can manage collaborators.'); return; }
+          collab.role = 'viewer';
+          pushActivity('✅', collab.name + ' accepted the invitation');
+          showToast(collab.name + ' joined the itinerary');
+          renderCollaborators();
+        });
+        li.querySelector('.f-revoke').addEventListener('click', () => {
+          if (!manage) { warnNoPermission('Only the owner can manage collaborators.'); return; }
+          state.collaborators = state.collaborators.filter(c => c.userId !== collab.userId);
+          pushActivity('✕', currentUser().name + ' revoked the invite for ' + collab.email);
+          renderCollaborators();
+        });
+      } else if (collab.role !== 'owner') {
+        const pill = li.querySelector('.role-pill');
+        pill.addEventListener('click', () => {
+          if (!manage) { warnNoPermission('Only the owner can change roles.'); return; }
+          state.openRoleDropdownFor = state.openRoleDropdownFor === collab.userId ? null : collab.userId;
+          renderCollaborators();
+        });
+        if (state.openRoleDropdownFor === collab.userId) {
+          wireRoleDropdown(li, collab);
+        }
+      }
+
+      list.appendChild(li);
+    });
+
+    const inviteInput = document.getElementById('inviteEmailInput');
+    const inviteBtn = document.getElementById('inviteBtn');
+    const invitePermMsg = document.getElementById('invitePermissionMsg');
+    inviteInput.disabled = !manage;
+    inviteBtn.disabled = !manage;
+    invitePermMsg.style.display = manage ? 'none' : 'block';
+  }
+
+  function buildRoleDropdownHtml(collab) {
+    return (
+      '<div class="role-dropdown">' +
+        '<button class="role-dropdown-item f-set-editor' + (collab.role === 'editor' ? ' is-current' : '') + '" type="button">' + (collab.role === 'editor' ? '✓ Editor' : 'Make Editor') + '</button>' +
+        '<button class="role-dropdown-item f-set-viewer' + (collab.role === 'viewer' ? ' is-current' : '') + '" type="button">' + (collab.role === 'viewer' ? '✓ Viewer' : 'Make Viewer') + '</button>' +
+        '<div class="role-dropdown-divider"></div>' +
+        '<button class="role-dropdown-item is-danger f-remove" type="button">Remove access</button>' +
+      '</div>'
+    );
+  }
+
+  function wireRoleDropdown(li, collab) {
+    const setRole = (role) => {
+      if (collab.role !== role) {
+        collab.role = role;
+        pushActivity('🔑', collab.name + ' assigned as ' + roleLabel(role));
+        showToast(collab.name + ' is now a ' + roleLabel(role));
+      }
+      state.openRoleDropdownFor = null;
+      renderCollaborators();
+    };
+    const editorBtn = li.querySelector('.f-set-editor');
+    const viewerBtn = li.querySelector('.f-set-viewer');
+    const removeBtn = li.querySelector('.f-remove');
+    if (editorBtn) editorBtn.addEventListener('click', e => { e.stopPropagation(); setRole('editor'); });
+    if (viewerBtn) viewerBtn.addEventListener('click', e => { e.stopPropagation(); setRole('viewer'); });
+    if (removeBtn) removeBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!confirm('Remove ' + collab.name + ' from this trip?')) return;
+      state.collaborators = state.collaborators.filter(c => c.userId !== collab.userId);
+      state.openRoleDropdownFor = null;
+      pushActivity('✕', currentUser().name + ' removed ' + collab.name + ' from the trip');
+      renderCollaborators();
+    });
+  }
+
+  /* close open role dropdown on outside click */
+  document.addEventListener('click', (e) => {
+    if (!state.openRoleDropdownFor) return;
+    if (e.target.closest('.collaborator-role-wrap')) return;
+    state.openRoleDropdownFor = null;
+    renderCollaborators();
+  });
+
+  /* ───────────────────────── RENDER: ACTIVITY ───────────────────────── */
+
+  function renderActivity() {
+    const list = document.getElementById('updateList');
+    list.innerHTML = '';
+    const items = state.activityExpanded ? state.activity : state.activity.slice(0, 4);
+    items.forEach(a => {
+      const li = document.createElement('li');
+      li.className = 'update-row';
+      li.innerHTML =
+        '<div class="update-icon" aria-hidden="true">' + a.icon + '</div>' +
+        '<div><p class="update-text"></p><p class="update-time">' + esc(a.time) + '</p></div>';
+      li.querySelector('.update-text').textContent = a.text;
+      list.appendChild(li);
+    });
+
+    const viewAllBtn = document.getElementById('viewAllActivityBtn');
+    if (state.activity.length <= 4) {
+      viewAllBtn.style.display = 'none';
+    } else {
+      viewAllBtn.style.display = 'inline-block';
+      viewAllBtn.textContent = state.activityExpanded ? '← Show less' : 'View all activity →';
+    }
+  }
+
+  /* ───────────────────────── EVENT WIRING (static controls) ───────────────────────── */
+
+  document.querySelectorAll('.role-toggle-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.currentRole = btn.dataset.role;
+      state.editingStopId = null;
+      state.addingStop = false;
+      state.editingTitle = false;
+      state.openRoleDropdownFor = null;
+      renderAll();
+      showToast('Now viewing as ' + currentUser().name + ' (' + roleLabel(state.currentRole) + ')');
+    });
+  });
+
+  document.getElementById('addStopBtn').addEventListener('click', () => {
+    if (!can('editItinerary')) { warnNoPermission('Viewers can\'t add stops.'); return; }
+    state.editingStopId = null;
+    state.addingStop = true;
+    renderStops();
+    document.getElementById('stopTimeline').scrollIntoView({ behavior: 'smooth', block: 'end' });
+  });
+
+  document.getElementById('commentForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!can('comment')) { warnNoPermission('Viewers can\'t comment.'); return; }
+    const input = document.getElementById('commentInput');
+    const text = input.value.trim();
+    if (!text) return;
+    const u = currentUser();
+    state.comments.push({ id: 'c' + Date.now(), authorName: u.name, authorColor: u.color, authorInitials: u.initials, text, time: 'just now' });
+    pushActivity('💬', u.name + ' added a comment');
+    input.value = '';
+    renderComments();
+  });
+
+  document.getElementById('inviteForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (!can('manageCollaborators')) { warnNoPermission('Only the owner can invite people.'); return; }
+    const input = document.getElementById('inviteEmailInput');
+    const errorMsg = document.getElementById('inviteErrorMsg');
+    const email = input.value.trim();
+
+    if (!emailIsValid(email)) {
+      errorMsg.textContent = 'Enter a valid email address.';
+      errorMsg.style.display = 'block';
+      input.classList.add('is-error');
+      input.focus();
+      return;
+    }
+    if (state.collaborators.some(c => c.email.toLowerCase() === email.toLowerCase())) {
+      errorMsg.textContent = 'This person is already invited or on the plan.';
+      errorMsg.style.display = 'block';
+      input.classList.add('is-error');
+      return;
+    }
+
+    errorMsg.style.display = 'none';
+    input.classList.remove('is-error');
+
+    state.collaborators.push({
+      userId: 'p_' + Date.now(), name: email, email, color: colorForEmail(email), initials: initialsFromEmail(email), role: 'pending',
+    });
+    pushActivity('✉️', 'Invitation sent to ' + email);
+    showToast('Invitation sent to ' + email);
+    renderCollaborators();
+    input.value = '';
+  });
+
+  document.getElementById('inviteEmailInput').addEventListener('input', () => {
+    const errorMsg = document.getElementById('inviteErrorMsg');
+    const input = document.getElementById('inviteEmailInput');
+    if (errorMsg.style.display !== 'none') {
+      errorMsg.style.display = 'none';
+      input.classList.remove('is-error');
+    }
+  });
+
+  document.getElementById('viewAllActivityBtn').addEventListener('click', () => {
+    state.activityExpanded = !state.activityExpanded;
+    renderActivity();
+  });
+
+  document.getElementById('bellButton').addEventListener('click', () => {
+    if (state.unreadCount === 0) { showToast('You\'re all caught up.'); return; }
+    state.unreadCount = 0;
+    renderBell();
+    showToast('Notifications cleared');
+  });
+
+  /* ───────────────────────── INIT ───────────────────────── */
+
+  function renderAll() {
+    renderRoleSwitcher();
+    renderBell();
+    renderTripTitle();
+    renderStops();
+    renderComments();
+    renderCollaborators();
+    renderActivity();
+  }
+
+  renderAll();
+})();
+</script>
+
+</body>
+</html>
