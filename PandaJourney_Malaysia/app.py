@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 
 from services.itinerary_service import (
@@ -67,99 +68,119 @@ def smart_attraction():
         "sort": "score",
     }
     weather_status = ""
-    attractions: list[dict] = []
     source_note = ""
     searched = False
-    results_label = "Set filters and click Search"
+    results_label = "Recommended attractions"
+    attractions: list[dict] = []
 
-    if request.method == "POST":
-        searched = True
-        filters["destination"] = request.form.get("destination", "").strip()
-        filters["interests"] = request.form.getlist("interests") or ["culture", "museum", "nature"]
-        filters["min_rating"] = request.form.get("min_rating", "4.0")
-        filters["weather_aware"] = bool(request.form.get("weather_aware"))
-        filters["sort"] = request.form.get("sort", "score")
+    def build_results(
+        destination_text: str,
+        interest_list: list[str],
+        minimum_rating: float,
+        use_weather: bool,
+        sort_mode: str,
+    ) -> tuple[list[dict], str, str]:
+        weather = None
+        destination_place = geocode_place(destination_text) if destination_text else None
 
-        if not filters["destination"]:
-            flash("Please enter a destination to receive recommendations.", "error")
+        if destination_place and use_weather:
+            weather = get_weather(
+                destination_place["latitude"],
+                destination_place["longitude"],
+                datetime.now().strftime("%Y-%m-%d"),
+            )
+
+        if use_weather and weather and destination_text:
+            weather_message = (
+                f"{weather['condition']} today in {destination_text.title()} - "
+                f"{weather['min_temp']}C to {weather['max_temp']}C"
+            )
+        elif destination_place:
+            weather_message = f"Destination located: {destination_place['display_name']}."
         else:
-            try:
-                interest_list = [item for item in filters["interests"] if item]
-                minimum_rating = float(filters["min_rating"] or 4.0)
-                weather = None
-                destination_place = geocode_place(filters["destination"])
+            weather_message = "Using the Kuala Lumpur demonstration dataset while you refine your filters."
 
-                if destination_place and filters["weather_aware"]:
-                    weather = get_weather(
-                        destination_place["latitude"],
-                        destination_place["longitude"],
-                        datetime.now().strftime("%Y-%m-%d"),
-                    )
+        if destination_place:
+            candidates: list[dict] = search_attractions_serpapi(
+                destination_place["latitude"],
+                destination_place["longitude"],
+                interest_list,
+                minimum_rating,
+            ) or load_demo_attractions()
+        else:
+            candidates = load_demo_attractions()
 
-                if filters["weather_aware"] and weather:
-                    weather_status = (
-                        f"{weather['condition']} today in {filters['destination'].title()} — "
-                        f"{weather['min_temp']}°C to {weather['max_temp']}°C"
-                    )
-                elif destination_place:
-                    weather_status = f"Destination located: {destination_place['display_name']}."
-                else:
-                    weather_status = (
-                        "Could not resolve destination with the geocoder. "
-                        "Showing demonstration attractions for Kuala Lumpur."
-                    )
+        selected = recommend_attractions(
+            candidates,
+            interest_list,
+            weather,
+            minimum_rating,
+            max_results=8,
+            filter_partly_cloudy=bool(
+                use_weather
+                and weather
+                and weather.get("condition", "").lower() == "partly cloudy"
+            ),
+        )
 
-                candidates: list[dict] = []
-                if destination_place:
-                    candidates = search_attractions_serpapi(
-                        destination_place["latitude"],
-                        destination_place["longitude"],
-                        interest_list,
-                        minimum_rating,
-                    )
+        destination_coords = (
+            destination_place["latitude"],
+            destination_place["longitude"],
+        ) if destination_place else (None, None)
 
-                if not candidates:
-                    candidates = load_demo_attractions()
+        selected = prepare_selected_attractions(
+            selected,
+            reference_lat=destination_coords[0],
+            reference_lon=destination_coords[1],
+        )
 
-                attractions = recommend_attractions(
-                    candidates,
-                    interest_list,
-                    weather,
-                    minimum_rating,
-                    max_results=8,
-                    filter_partly_cloudy=bool(
-                        filters["weather_aware"]
-                        and weather
-                        and weather.get("condition", "").lower() == "partly cloudy"
-                    ),
-                )
+        if sort_mode == "rating":
+            selected.sort(key=lambda item: float(item.get("rating", 0)), reverse=True)
+        elif sort_mode == "nearest":
+            selected.sort(key=lambda item: item.get("distance_km") or float("inf"))
+        else:
+            selected.sort(key=lambda item: float(item.get("score", 0)), reverse=True)
 
-                destination_coords = (
-                    destination_place["latitude"],
-                    destination_place["longitude"],
-                ) if destination_place else (None, None)
+        source = (
+            "Live SerpApi Google Maps search"
+            if destination_place and candidates and candidates[0].get("source", "").startswith("SerpApi")
+            else "Local demonstration dataset across all destinations."
+        )
+        return selected, weather_message, source
 
-                attractions = prepare_selected_attractions(
-                    attractions,
-                    reference_lat=destination_coords[0],
-                    reference_lon=destination_coords[1],
-                )
+    try:
+        if request.method == "POST":
+            searched = True
+            filters["destination"] = request.form.get("destination", "").strip()
+            filters["interests"] = request.form.getlist("interests")
+            filters["min_rating"] = request.form.get("min_rating", "4.0")
+            filters["weather_aware"] = bool(request.form.get("weather_aware"))
+            filters["sort"] = request.form.get("sort", "score")
+        else:
+            filters["destination"] = request.args.get("destination", "").strip()
+            filters["interests"] = request.args.getlist("interests") or filters["interests"]
+            filters["min_rating"] = request.args.get("min_rating", filters["min_rating"])
+            filters["weather_aware"] = request.args.get("weather_aware", "1") not in {"0", "false", "False", ""}
+            filters["sort"] = request.args.get("sort", filters["sort"])
 
-                if filters["sort"] == "rating":
-                    attractions.sort(key=lambda item: float(item.get("rating", 0)), reverse=True)
-                elif filters["sort"] == "nearest":
-                    attractions.sort(key=lambda item: item.get("distance_km") or float("inf"))
-                else:
-                    attractions.sort(key=lambda item: float(item.get("score", 0)), reverse=True)
+        interest_list = [item for item in filters["interests"] if item]
+        minimum_rating = float(filters["min_rating"] or 4.0)
 
-                results_label = f"Showing {len(attractions)} attractions"
-                source_note = (
-                    "Live SerpApi Google Maps search"
-                    if candidates and candidates[0].get("source", "").startswith("SerpApi")
-                    else "Local Kuala Lumpur demonstration dataset. Add SERPAPI_KEY for live attraction search."
-                )
-            except ValueError:
-                flash("Invalid rating or filter input. Please revise your selection.", "error")
+        attractions, weather_status, source_note = build_results(
+            filters["destination"],
+            interest_list,
+            minimum_rating,
+            filters["weather_aware"],
+            filters["sort"],
+        )
+        results_label = (
+            f"Showing {len(attractions)} attractions"
+            if filters["destination"] or interest_list or request.method == "GET"
+            else "Set filters and click Search"
+        )
+    except ValueError:
+        flash("Invalid rating or filter input. Please revise your selection.", "error")
+        attractions = []
 
     return render_template(
         "smart_attraction.html",
@@ -171,8 +192,8 @@ def smart_attraction():
         source_note=source_note,
         searched=searched,
         results_label=results_label,
+        google_maps_api_key=os.environ.get('GOOGLE_MAPS_API_KEY', ''),
     )
-
 
 @app.route("/smart-itinerary", methods=["GET", "POST"])#Lee
 def smart_itinerary():
