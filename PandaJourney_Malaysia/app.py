@@ -184,7 +184,6 @@ def smart_attraction():
         searched=searched,
         results_label=results_label,
         serpapi_key=os.environ.get('SERPAPI_KEY', ''),
-        SERPAPI_KEY=os.environ.get('SERPAPI_KEY', ''),
         nominatim_email=os.environ.get('NOMINATIM_EMAIL', ''),
         nominatim_user_agent=os.environ.get('NOMINATIM_USER_AGENT', ''),
     )

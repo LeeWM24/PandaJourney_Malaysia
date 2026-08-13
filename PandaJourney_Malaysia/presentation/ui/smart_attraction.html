@@ -592,12 +592,8 @@
 
   function bindFilterEvents() {
     document.getElementById('filter-form').addEventListener('submit', (event) => {
-      const button = event.currentTarget.querySelector('button[type="submit"]');
-
-      if (button) {
-          button.disabled = true;
-          button.textContent = 'Searching...';
-      }
+      event.preventDefault();
+      handleSearch();
     });
 
     document.getElementById('sort-select').addEventListener('change', renderCards);
