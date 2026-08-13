@@ -1,104 +1,16 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Public Itineraries | PandaJourney Malaysia</title>
+{% extends "base.html" %}
+{% set active_page = "public" %}
+
+{% block title %}Public Itineraries | PandaJourney Malaysia{% endblock %}
+
+{% block page_title %}Public Itineraries{% endblock %}
+
+{% block page_subtitle %}
+Explore community favorites, search destinations, and save routes in a tap.
+{% endblock %}
+
+{% block extra_head %}
   <style>
-    :root {
-      --bg: #f7faf8;
-      --fg: #143123;
-      --fg-2: #285440;
-      --card: #ffffff;
-      --primary: #0f8a67;
-      --primary-dark: #0b6048;
-      --primary-soft: #e8f5f0;
-      --secondary: #dff3ec;
-      --muted-bg: #f0f7f4;
-      --muted-fg: #5a7a6a;
-      --border: #cfe7dc;
-      --accent: #f5b400;
-      --accent-soft: #fff4c7;
-      --sidebar: #0b3422;
-      --sidebar-2: #0e3d29;
-      --sidebar-text: #b9dfc8;
-      --sidebar-active: #1b6e45;
-      --shadow: 0 8px 22px rgba(15, 61, 42, .10);
-      --shadow-sm: 0 4px 12px rgba(15, 61, 42, .08);
-      --radius-sm: 8px;
-      --radius-md: 12px;
-      --radius-lg: 18px;
-      --radius-xl: 26px;
-      --font-display: 'Georgia', 'Times New Roman', serif;
-      --font-body: 'Inter', 'Segoe UI', sans-serif;
-    }
-
-    * { box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: var(--font-body);
-      background: var(--bg);
-      color: var(--fg);
-    }
-    button, input { font: inherit; }
-    img { display: block; max-width: 100%; }
-
-    .app-shell {
-      min-height: 100vh;
-      display: grid;
-      grid-template-columns: 240px 1fr;
-    }
-
-    .sidebar {
-      background: var(--sidebar);
-      color: var(--sidebar-text);
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-      padding: 24px 14px 18px;
-      position: sticky;
-      top: 0;
-      overflow-y: auto;
-    }
-    .sidebar-logo { margin-bottom: 20px; }
-    .sidebar-brand { display: flex; align-items: center; gap: 10px; }
-    .sidebar-logo-img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; background: white; }
-    .sidebar-brand-name { color: white; font-family: var(--font-display); font-size: 20px; font-weight: 700; }
-    .sidebar-brand-sub { margin-top: 6px; margin-left: 46px; color: #8ac7a2; font-size: 11px; }
-    .sidebar-nav { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
-    .sidebar-nav a {
-      color: inherit;
-      text-decoration: none;
-      padding: 11px 14px;
-      border-radius: 999px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      font-weight: 700;
-    }
-    .sidebar-nav a.active, .sidebar-nav a:hover { background: var(--sidebar-active); color: white; }
-    .sidebar-footer { margin-top: 8px; padding-top: 0; display: flex; flex-direction: column; gap: 8px; }
-    .sidebar-footer a { color: inherit; text-decoration: none; padding: 11px 14px; border-radius: 999px; display: flex; align-items: center; gap: 12px; font-weight: 700; }
-
-    .main-content { min-width: 0; }
-    .topbar {
-      padding: 22px 32px;
-      background: rgba(255,255,255,.85);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      backdrop-filter: blur(10px);
-      position: sticky;
-      top: 0;
-      z-index: 10;
-    }
-    .topbar-title { font-family: var(--font-display); font-size: 24px; font-weight: 700; }
-    .topbar-subtitle { margin-top: 4px; color: var(--muted-fg); font-size: 13px; }
-    .topbar-actions { display: flex; align-items: center; gap: 8px; }
-
-    .page-body { padding: 24px 32px 36px; }
     .page-shell { display: flex; flex-direction: column; gap: 18px; }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
     .search-card { padding: 20px 22px; }
@@ -213,10 +125,6 @@
       .popular-grid, .results-grid, .community-list { grid-template-columns: 1fr; }
     }
     @media (max-width: 840px) {
-      .app-shell { grid-template-columns: 1fr; }
-      .sidebar { position: static; height: auto; overflow: visible; }
-      .page-body { padding: 20px 18px 30px; }
-      .topbar { padding: 18px; }
       .search-row { flex-direction: column; align-items: stretch; }
       .filter-popover { width: calc(100vw - 24px); right: 12px; }
     }
@@ -225,41 +133,12 @@
       .list-card-image { height: 180px; min-height: 180px; order: -1; }
     }
   </style>
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-logo">
-        <div class="sidebar-brand">
-          <img class="sidebar-logo-img" src="https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=200&q=80" alt="PandaJourney" />
-          <span class="sidebar-brand-name">PandaJourney</span>
-        </div>
-        <div class="sidebar-brand-sub">Malaysia Smart Tourism</div>
-      </div>
-      <nav class="sidebar-nav">
-        <a href="dashboard.html">🏠 <span>Dashboard</span></a>
-        <a href="smart_attractions.html">🌴 <span>Smart Attractions</span></a>
-        <a href="smart_itinerary.html">📅 <span>Itinerary Planner</span></a>
-        <a href="saved_itineraries.html">💾 <span>Saved Itineraries</span></a>
-        <a href="collaboration.html">👥 <span>Collaboration</span></a>
-        <a href="public_itineraries.html" class="active">🌐 <span>Public Itineraries</span></a>
-      </nav>
-      <div class="sidebar-footer">
-        <a href="profile.html">👤 <span>Profile</span></a>
-        <a href="create_account.html">✍️ <span>Create account</span></a>
-      </div>
-    </aside>
+  {% endblock %}
 
-    <div class="main-content">
-      <header class="topbar">
-        <div>
-          <div class="topbar-title">Public Itineraries</div>
-          <div class="topbar-subtitle">Explore community favorites, search destinations, and save routes in a tap.</div>
-        </div>
-      </header>
+  {% block content %}
 
-      <main class="page-body">
-        <div class="page-shell">
+  <div class="page-inner">
+    <div class="page-shell">
           <section class="card search-card">
             <div class="search-row">
               <div class="search-input-wrap" style="position: relative;">
@@ -311,13 +190,23 @@
 
           <section id="contentArea"></section>
         </div>
-      </main>
-    </div>
-  </div>
+      </div>
 
   <div id="detailOverlay" class="detail-overlay"></div>
-  <aside id="detailDrawer" class="detail-drawer" aria-label="Itinerary details"></aside>
-  <div id="copyToast" class="toast">Itinerary copied to your saved list</div>
+
+  <aside
+    id="detailDrawer"
+    class="detail-drawer"
+    aria-label="Itinerary details">
+  </aside>
+
+  <div id="copyToast" class="toast">
+    Itinerary copied to your saved list
+  </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
 
   <script>
     const itineraries = [
@@ -940,5 +829,5 @@
 
     init();
   </script>
-</body>
-</html>
+
+{% endblock %}
