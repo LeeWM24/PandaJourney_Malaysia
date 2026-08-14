@@ -3,8 +3,10 @@
 {% block title %}Itinerary Planner — PandaJourney Malaysia{% endblock %}
 {% block page_title %}Smart Itinerary Planner{% endblock %}
 {% block page_subtitle %}Generate an optimised route and timetable for your Malaysia trip{% endblock %}
+
 {% block extra_head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
 <style>
   #routeMap {
     width: 100%;
@@ -20,7 +22,9 @@
 <div class="page-inner">
 
   {% if error %}
-    <div class="alert alert-error mb-4" role="alert">⛔ {{ error }}</div>
+    <div class="alert alert-error mb-4" role="alert">
+      ⛔ {{ error }}
+    </div>
   {% endif %}
 
   <div class="itinerary-layout">
@@ -34,39 +38,67 @@
 
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
+
             <div class="form-input-icon">
               <span class="icon">🟢</span>
-              <input class="form-input" id="start" name="start" type="text"
-                     placeholder="e.g. KL Sentral"
-                     value="{{ form.start | default('') }}" required />
+              <input
+                class="form-input"
+                id="start"
+                name="start"
+                type="text"
+                placeholder="e.g. KL Sentral"
+                value="{{ form.start | default('') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="end">End Location</label>
+
             <div class="form-input-icon">
               <span class="icon">🔴</span>
-              <input class="form-input" id="end" name="end" type="text"
-                     placeholder="e.g. Petronas Twin Towers"
-                     value="{{ form.end | default('') }}" required />
+              <input
+                class="form-input"
+                id="end"
+                name="end"
+                type="text"
+                placeholder="e.g. Petronas Twin Towers"
+                value="{{ form.end | default('') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-row-2 mb-3">
             <div class="form-group">
               <label class="form-label" for="trip_date">Travel Date</label>
-              <input class="form-input" id="trip_date" name="trip_date" type="date"
-                     value="{{ form.trip_date | default('') }}" required />
+              <input
+                class="form-input"
+                id="trip_date"
+                name="trip_date"
+                type="date"
+                value="{{ form.trip_date | default('') }}"
+                required
+              />
             </div>
+
             <div class="form-group">
               <label class="form-label" for="start_time">Start Time</label>
-              <input class="form-input" id="start_time" name="start_time" type="time"
-                     value="{{ form.start_time | default('09:00') }}" required />
+              <input
+                class="form-input"
+                id="start_time"
+                name="start_time"
+                type="time"
+                value="{{ form.start_time | default('09:00') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="available_hours">Available Hours</label>
+
             <select class="form-select" id="available_hours" name="available_hours">
               {% for h in [4, 5, 6, 7, 8, 9, 10] %}
                 <option value="{{ h }}" {% if form.available_hours | default(6) | int == h %}selected{% endif %}>
@@ -87,24 +119,6 @@
                   {{ n }} stop{% if n > 1 %}s{% endif %}
                 </option>
               {% endfor %}
-            </select>
-          </div>
-
-          <div class="form-group mb-3">
-            <label class="form-label" for="transport_mode">Transport Mode</label>
-
-            {% set transport_mode = form.get("transport_mode", "driving") %}
-
-            <select name="transport_mode" id="transport_mode" class="form-select">
-              <option value="driving" {% if transport_mode == "driving" %}selected{% endif %}>
-                🚗 Driving
-              </option>
-              <option value="walking" {% if transport_mode == "walking" %}selected{% endif %}>
-                🚶 Walking
-              </option>
-              <option value="cycling" {% if transport_mode == "cycling" %}selected{% endif %}>
-                🚲 Cycling
-              </option>
             </select>
           </div>
 
@@ -148,7 +162,11 @@
         <div class="card">
           <div class="empty-state">
             <div class="empty-icon">🗺️</div>
-            <div class="empty-title">Ready to plan your trip</div>
+
+            <div class="empty-title">
+              Ready to plan your trip
+            </div>
+
             <div class="empty-sub">
               Fill in the form and click Generate Itinerary to see your personalised route and timetable.
             </div>
@@ -159,6 +177,7 @@
         <div class="trip-summary-grid">
           <div class="card trip-summary-card">
             <div class="trip-summary-label">Travel Duration</div>
+
             <div class="trip-summary-value">
               {{ plan.travel_duration | default(plan.total_duration | default('Estimated')) }}
             </div>
@@ -166,36 +185,34 @@
 
           <div class="card trip-summary-card">
             <div class="trip-summary-label">Weather</div>
+
             <div class="trip-summary-value">
               {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
             </div>
           </div>
+        </div>
 
-          <div class="card trip-summary-card">
-            <div class="trip-summary-label">Transport Mode</div>
-            <div class="trip-summary-value">
-              {{ plan.transport_icon | default('🚗') }} {{ plan.transport_label | default('Driving') }}
-            </div>
-          </div>
-</div>
-{% if plan.exceeds_hours %}
+        {% if plan.exceeds_hours %}
           <div class="alert alert-warning">
             ⚠️ This itinerary exceeds your available hours. Consider removing a stop.
           </div>
         {% endif %}
 
-        
         <div class="card card-p">
           <div class="card-header">
             <span class="card-title">Timetable</span>
+
             <div style="display:flex; gap:8px;">
-              <a href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
-                 class="btn btn-secondary btn-sm">🔄 Regenerate</a>
-              <form action="{{ url_for('saved_itineraries') }}" method="post" style="display:inline; margin:0;">
-                <input type="hidden" name="_action" value="save" />
-                <input type="hidden" name="plan_id" value="{{ plan.id | default(1) }}" />
-                <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
-              </form>
+              <a
+                href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
+                class="btn btn-secondary btn-sm"
+              >
+                🔄 Regenerate
+              </a>
+
+              <button type="button" class="btn btn-primary btn-sm" id="save-itinerary-btn">
+                💾 Save
+              </button>
             </div>
           </div>
 
@@ -203,8 +220,14 @@
             {% for attraction in plan["selected"] %}
               <div class="stop-item">
                 <span class="stop-handle">⠿</span>
-                <span class="stop-name">{{ loop.index }}. {{ attraction.name }}</span>
-                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">✕</a>
+
+                <span class="stop-name">
+                  {{ loop.index }}. {{ attraction.name }}
+                </span>
+
+                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">
+                  ✕
+                </a>
               </div>
             {% endfor %}
           </div>
@@ -214,6 +237,7 @@
               <div class="timetable-row">
                 <div class="timeline-col">
                   <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}"></div>
+
                   {% if not loop.last %}
                     <div class="timeline-line"></div>
                   {% endif %}
@@ -224,17 +248,27 @@
                     {{ item.arrival_time | default(item.time | default('')) }}
                     {% if item.departure_time %} – {{ item.departure_time }}{% endif %}
                   </div>
-                  <div class="timetable-name">{{ item.name | default(item.activity) }}</div>
+
+                  <div class="timetable-name">
+                    {{ item.name | default(item.activity) }}
+                  </div>
+
                   <div class="timetable-meta">
-                    <span class="badge badge-muted">{{ item.duration | default('Estimated') }}</span>
-                    <span class="badge badge-teal">
-                      {{ item.transport_icon | default(plan.transport_icon | default('🚗')) }}
-                      {{ item.transport | default(plan.transport_label | default('Driving')) }}
+                    <span class="badge badge-muted">
+                      {{ item.duration | default('Estimated') }}
                     </span>
                   </div>
+
                   {% if item.waze_url %}
                     <div class="timetable-actions">
-                      <a href="{{ item.waze_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-sm">Waze</a>
+                      <a
+                        href="{{ item.waze_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-accent btn-sm"
+                      >
+                        Waze
+                      </a>
                     </div>
                   {% endif %}
                 </div>
@@ -263,6 +297,7 @@
   </div>
 </div>
 {% endblock %}
+
 {% block extra_scripts %}
 {% if map_data %}
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -272,5 +307,11 @@
 </script>
 {% endif %}
 
-<script src="{{ url_for('static', filename='js/smart_itinerary.js') }}"></script>
+{% if plan %}
+<script id="plan-data" type="application/json">
+{{ plan | tojson }}
+</script>
+{% endif %}
+
+<script type="module" src="{{ url_for('static', filename='js/smart_itinerary.js') }}"></script>
 {% endblock %}

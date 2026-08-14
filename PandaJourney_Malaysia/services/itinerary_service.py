@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from datetime import datetime, timedelta
@@ -48,7 +49,6 @@ def get_default_itinerary_form():
         "available_hours": 6,
         "max_stops": 3,
         "minimum_rating": "4.0",
-        "transport_mode": "driving",
         "selected_attractions": []
     }
 
@@ -100,22 +100,33 @@ TRANSPORT_OPTIONS = {
     "driving": {
         "label": "Driving",
         "icon": "🚗",
-        # Driving uses OSRM driving duration directly.
         "speed_mps": None,
     },
     "walking": {
         "label": "Walking",
         "icon": "🚶",
-        # Approx. normal walking speed: 5 km/h.
         "speed_mps": 1.4,
     },
     "cycling": {
         "label": "Cycling",
         "icon": "🚲",
-        # Approx. city cycling speed: 15 km/h.
         "speed_mps": 4.2,
     },
 }
+
+
+BAD_CANDIDATE_KEYWORDS = [
+    "tour",
+    "tours",
+    "private tour",
+    "sightseeing",
+    "sightseeing tour",
+    "day trip",
+    "package",
+    "experience",
+    "walking tour",
+    "guided tour",
+]
 
 
 def get_transport_option(transport_mode: str | None) -> dict[str, Any]:
@@ -144,6 +155,143 @@ def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
         hours = 6
 
     return max(1, min(hours - 3, 6))
+
+
+def get_serpapi_search_keyword(interests: list[str]) -> str:
+    """Return more suitable Google Maps search keyword based on interest."""
+    interest = interests[0].lower() if interests else "attraction"
+
+    keyword_map = {
+        "food": "restaurants cafe food court",
+        "shopping": "shopping mall",
+        "culture": "cultural attractions",
+        "museum": "museum",
+        "nature": "parks nature attractions",
+    }
+
+    return keyword_map.get(interest, f"{interest} attractions")
+
+
+def calculate_distance_km(
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float
+) -> float:
+    """Calculate distance between two coordinates using Haversine formula."""
+    radius = 6371
+
+    lat1_rad = math.radians(float(lat1))
+    lon1_rad = math.radians(float(lon1))
+    lat2_rad = math.radians(float(lat2))
+    lon2_rad = math.radians(float(lon2))
+
+    diff_lat = lat2_rad - lat1_rad
+    diff_lon = lon2_rad - lon1_rad
+
+    a = (
+        math.sin(diff_lat / 2) ** 2
+        + math.cos(lat1_rad)
+        * math.cos(lat2_rad)
+        * math.sin(diff_lon / 2) ** 2
+    )
+
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+    return radius * c
+
+
+def is_bad_candidate_name(name: str) -> bool:
+    """Remove tour/package type result that is not suitable as stop point."""
+    text = str(name or "").lower()
+
+    return any(keyword in text for keyword in BAD_CANDIDATE_KEYWORDS)
+
+
+def filter_route_relevant_candidates(
+    candidates: list[dict[str, Any]],
+    start: dict[str, Any],
+    end: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Keep candidates that are near the start-end route.
+
+    This prevents the system from choosing far locations just because the
+    interest keyword matches.
+    """
+    if not candidates:
+        return []
+
+    start_lat = start["latitude"]
+    start_lon = start["longitude"]
+    end_lat = end["latitude"]
+    end_lon = end["longitude"]
+
+    direct_distance = calculate_distance_km(
+        start_lat,
+        start_lon,
+        end_lat,
+        end_lon
+    )
+
+    if direct_distance <= 6:
+        max_extra_distance = 4
+        max_nearest_point_distance = 3
+    elif direct_distance <= 15:
+        max_extra_distance = 7
+        max_nearest_point_distance = 5
+    else:
+        max_extra_distance = 10
+        max_nearest_point_distance = 6
+
+    filtered: list[dict[str, Any]] = []
+
+    for candidate in candidates:
+        name = candidate.get("name", "")
+
+        if is_bad_candidate_name(name):
+            continue
+
+        latitude = candidate.get("latitude")
+        longitude = candidate.get("longitude")
+
+        if latitude is None or longitude is None:
+            continue
+
+        distance_from_start = calculate_distance_km(
+            start_lat,
+            start_lon,
+            latitude,
+            longitude
+        )
+
+        distance_from_end = calculate_distance_km(
+            end_lat,
+            end_lon,
+            latitude,
+            longitude
+        )
+
+        extra_distance = (
+            distance_from_start
+            + distance_from_end
+            - direct_distance
+        )
+
+        nearest_point_distance = min(
+            distance_from_start,
+            distance_from_end
+        )
+
+        if (
+            extra_distance <= max_extra_distance
+            or nearest_point_distance <= max_nearest_point_distance
+        ):
+            item = dict(candidate)
+            item["route_extra_km"] = round(extra_distance, 2)
+            item["nearest_point_km"] = round(nearest_point_distance, 2)
+            filtered.append(item)
+
+    return filtered
 
 
 def _request_json(
@@ -401,7 +549,7 @@ def search_attractions_serpapi(
     if not api_key:
         return []
 
-    keyword = interests[0] if interests else "tourist attractions"
+    keyword = get_serpapi_search_keyword(interests)
 
     try:
         data = _request_json(
@@ -409,7 +557,7 @@ def search_attractions_serpapi(
             params={
                 "engine": "google_maps",
                 "type": "search",
-                "q": f"{keyword} tourist attractions",
+                "q": keyword,
                 "ll": f"@{latitude},{longitude},13z",
                 "min_rating": str(minimum_rating),
                 "hl": "en",
@@ -423,7 +571,7 @@ def search_attractions_serpapi(
 
     candidates = []
 
-    for item in data.get("local_results", [])[:10]:
+    for item in data.get("local_results", [])[:12]:
         coordinates = item.get("gps_coordinates") or {}
 
         if "latitude" not in coordinates or "longitude" not in coordinates:
@@ -432,9 +580,20 @@ def search_attractions_serpapi(
         title = item.get("title", "Unnamed attraction")
         item_type = str(item.get("type", "")).lower()
         description = str(item.get("description", "")).lower()
+
+        if is_bad_candidate_name(title):
+            continue
+
         text = f"{title} {item_type} {description}".lower()
 
-        tags = [interest for interest in interests if interest.lower() in text]
+        tags = [
+            interest
+            for interest in interests
+            if interest.lower() in text
+        ]
+
+        if interests and not tags:
+            tags = [interests[0]]
 
         candidates.append(
             {
@@ -485,9 +644,6 @@ def get_route_with_stops(
         duration_s = float(route.get("duration", 0))
         legs = route.get("legs", [])
 
-        # OSRM public demo route is kept for route line geometry.
-        # Driving uses OSRM duration. Walking/Cycling use the same distance
-        # but estimate duration using average travel speed.
         if transport_mode != "driving":
             speed_mps = transport_option.get("speed_mps")
 
@@ -602,6 +758,19 @@ def score_attraction(
             score -= 20
             reasons.append("outdoor option penalised because rain is likely")
 
+    route_extra_km = attraction.get("route_extra_km")
+
+    if route_extra_km is not None:
+        if route_extra_km <= 2:
+            score += 20
+            reasons.append("near selected route")
+        elif route_extra_km <= 5:
+            score += 10
+            reasons.append("reasonably close to route")
+        else:
+            score -= 10
+            reasons.append("less close to route")
+
     return score, reasons
 
 
@@ -613,12 +782,6 @@ def choose_attractions(
     minimum_rating: float,
     max_stops: int
 ) -> list[dict[str, Any]]:
-    """Rank attractions and return up to max_stops.
-
-    Available Hours only controls the maximum selectable stop count.
-    It does not remove attractions using fixed visit duration.
-    The visit duration is assigned later based on available hours.
-    """
     max_stops = max(1, min(int(max_stops), 6))
     ranked: list[dict[str, Any]] = []
 
@@ -656,13 +819,6 @@ def assign_visit_duration_by_available_hours(
     route: dict[str, Any] | None,
     available_hours: int
 ) -> list[dict[str, Any]]:
-    """Distribute remaining available time across selected stops.
-
-    Formula:
-    visit time per stop = (available hours - travel duration) / selected stops
-
-    A minimum of 30 minutes is used when travel duration is high.
-    """
     if not selected:
         return selected
 
@@ -718,9 +874,17 @@ def prepare_selected_attractions(selected: list[dict[str, Any]]) -> list[dict[st
         item = dict(attraction)
 
         item["id"] = item.get("id", index)
-        item["category"] = item.get("category") or ", ".join(item.get("tags", [])[:2]).title() or "Attraction"
+        item["category"] = (
+            item.get("category")
+            or ", ".join(item.get("tags", [])[:2]).title()
+            or "Attraction"
+        )
         item["location"] = item.get("location") or "Malaysia"
-        item["weather_suitability"] = "Indoor" if "indoor" in [tag.lower() for tag in item.get("tags", [])] else "Sunny"
+        item["weather_suitability"] = (
+            "Indoor"
+            if "indoor" in [tag.lower() for tag in item.get("tags", [])]
+            else "Sunny"
+        )
         item["waze_url"] = build_waze_url(item)
 
         prepared.append(item)
@@ -836,7 +1000,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     requested_max_stops = int(form.get("max_stops", stop_limit))
     max_stops = max(1, min(requested_max_stops, stop_limit))
 
-    transport_mode = str(form.get("transport_mode", "driving")).lower()
+    transport_mode = "driving"
     transport_option = get_transport_option(transport_mode)
 
     start = geocode_place(start_text)
@@ -869,13 +1033,26 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     demo_candidates = load_demo_attractions()
 
     if live_candidates:
-        # Use live results first. If live API returns fewer attractions than requested,
-        # add local demo records as backup so the prototype can still show multiple stops.
         candidates = live_candidates + demo_candidates
         source_note = "Live SerpApi Google Maps search with local demo backup"
     else:
         candidates = demo_candidates
         source_note = "Local Kuala Lumpur demonstration dataset. Add SERPAPI_KEY for live attraction search."
+
+    route_relevant_candidates = filter_route_relevant_candidates(
+        candidates,
+        start,
+        end
+    )
+
+    if route_relevant_candidates:
+        candidates = route_relevant_candidates
+    else:
+        candidates = [
+            candidate
+            for candidate in candidates
+            if not is_bad_candidate_name(candidate.get("name", ""))
+        ]
 
     selected = choose_attractions(
         candidates,
@@ -902,8 +1079,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     route = get_route_with_stops(route_points, transport_mode)
 
-    # After route duration is known, distribute the remaining available time
-    # across the selected attraction stops.
     selected = assign_visit_duration_by_available_hours(
         selected,
         route,
@@ -996,10 +1171,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "total_duration": total_duration,
         "travel_duration": travel_duration,
         "itinerary_duration": itinerary_duration,
-        "transport_icon": transport_option["icon"],
-        "transport_mode": transport_mode,
-        "transport_key": transport_mode,
-        "transport_label": transport_option["label"],
         "exceeds_hours": False,
         "image_url": "https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=400&h=200&fit=crop&auto=format",
     }
