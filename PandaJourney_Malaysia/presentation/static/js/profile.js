@@ -209,13 +209,15 @@ async function saveProfile() {
         const userRef =
             doc(db, "users", currentUser.uid);
 
-        await updateDoc(userRef, {
+        await setDoc(userRef, {
 
+            uid: currentUser.uid,
             displayName: name,
             email: email,
+            profilePictureUrl: currentUser.photoURL || "",
             updatedAt: serverTimestamp()
 
-        });
+        }, { merge: true });
 
         await loadUserProfile(currentUser);
 

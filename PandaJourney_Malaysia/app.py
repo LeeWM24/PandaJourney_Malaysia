@@ -35,8 +35,8 @@ def get_current_user():
 def login():
     if request.method == "POST":
         session["user"] = {
-            "display_name": "Ahmad Faris",
-            "email": request.form.get("email") or "ahmad@email.com"
+            "display_name": "User",
+            "email": request.form.get("email") 
         }
         return redirect(url_for("dashboard"))
 

@@ -69,8 +69,8 @@
             <form
               action="{{ url_for('saved_itineraries') }}"
               method="post"
+              class="js-delete-itinerary-form"
               style="display:inline; margin:0;"
-              onsubmit="return confirm('Delete this itinerary?');"
             >
               <input type="hidden" name="_action" value="delete">
               <input type="hidden" name="itinerary_id" value="{{ it.id }}">
@@ -126,4 +126,8 @@
   {% endif %}
 
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/saved_itineraries.js') }}"></script>
 {% endblock %}
