@@ -91,20 +91,21 @@ def smart_itinerary():
     error = None
     map_data = None
 
+    print("[SMART ITINERARY ROUTE]", request.method)
+
     if request.method == "POST":
+        print("[SMART FORM DATA]", request.form)
+
         try:
             plan = make_plan(request.form)
             map_data = build_map_data(plan)
 
-            # Save function will be connected after database is ready.
-            # Do not store full plan in session because route geometry is too large.
-            # session["latest_plan"] = plan
-
         except Exception as e:
+            print("[SMART ERROR]", e)
             error = str(e)
 
     return render_template(
-        "smart_itinerary.html",
+         "smart_itinerary.html",
         active_page="itinerary",
         current_user=get_current_user(),
         plan=plan,

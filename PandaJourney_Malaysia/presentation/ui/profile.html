@@ -524,12 +524,29 @@
   </div>
 
   <nav class="sidebar-nav">
-    <a href="#" class="nav-item"><span class="nav-icon">🏠</span> Dashboard</a>
-    <a href="#" class="nav-item"><span class="nav-icon">🌴</span> Attractions</a>
-    <a href="#" class="nav-item"><span class="nav-icon">📅</span> Itinerary Planner</a>
-    <a href="#" class="nav-item"><span class="nav-icon">💾</span> Saved Itineraries</a>
-    <a href="#" class="nav-item"><span class="nav-icon">👥</span> Collaboration</a>
-    <a href="#" class="nav-item"><span class="nav-icon">🌐</span> Public Itineraries</a>
+   <a href="{{ url_for('dashboard') }}" class="nav-item">
+    <span class="nav-icon">🏠</span> Dashboard
+  </a>
+
+  <a href="{{ url_for('smart_attraction') }}" class="nav-item">
+    <span class="nav-icon">🌴</span> Attractions
+  </a>
+
+  <a href="{{ url_for('smart_itinerary') }}" class="nav-item">
+    <span class="nav-icon">📅</span> Itinerary Planner
+  </a>
+
+  <a href="{{ url_for('saved_itineraries') }}" class="nav-item">
+    <span class="nav-icon">💾</span> Saved Itineraries
+  </a>
+
+  <a href="{{ url_for('collaboration') }}" class="nav-item">
+    <span class="nav-icon">👥</span> Collaboration
+  </a>
+
+  <a href="{{ url_for('public_itinerary') }}" class="nav-item">
+    <span class="nav-icon">🌐</span> Public Itineraries
+  </a>
   </nav>
 
   <div class="sidebar-footer">

@@ -1,90 +1,91 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Sign In — PandaJourney Malaysia</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
-</head>
-<body>
-  <main class="login-page">
-    <section class="login-hero">
-      <div class="login-hero-content">
-        <img
-          class="login-hero-img"
-          src="https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=900&h=420&fit=crop&auto=format"
-          alt="Malaysia travel scene"
-        />
-        <h1 class="login-hero-title">Discover Malaysia</h1>
-        <p class="login-hero-subtitle">
-          From the Petronas Towers to the rainforests of Borneo —
-          explore Malaysia's wonders, intelligently planned just for you.
-        </p>
-        <div class="login-tags">
-          <span class="login-tag">🌆 Kuala Lumpur</span>
-          <span class="login-tag">🌿 Langkawi</span>
-          <span class="login-tag">🏛️ Melaka</span>
-          <span class="login-tag">🏝️ Sabah</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="login-panel">
-      <div class="login-card">
-        <div class="login-brand">
-          <div class="login-logo">
-             <img
-          <img src="{{ url_for('static', filename='images/logo.png') }}">
-           />   
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign In — PandaJourney Malaysia</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  </head>
+  <body>
+    <main class="login-page">
+      <section class="login-hero">
+        <div class="login-hero-content">
+          <img
+            class="login-hero-img"
+            src="https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=900&h=420&fit=crop&auto=format"
+            alt="Malaysia travel scene"
+          />
+          <h1 class="login-hero-title">Discover Malaysia</h1>
+          <p class="login-hero-subtitle">
+            From the Petronas Towers to the rainforests of Borneo —
+            explore Malaysia's wonders, intelligently planned just for you.
+          </p>
+          <div class="login-tags">
+            <span class="login-tag">🌆 Kuala Lumpur</span>
+            <span class="login-tag">🌿 Langkawi</span>
+            <span class="login-tag">🏛️ Melaka</span>
+            <span class="login-tag">🏝️ Sabah</span>
           </div>
-          <div class="login-brand-name">PandaJourney</div>
         </div>
+      </section>
 
-        <p class="login-panel-subtitle">Plan smarter trips across Malaysia</p>
-
-        <button type="button" class="login-google" id="googleLogin">
-          <span style="font-weight:800; color:#4285F4;">G</span>
-          Continue with Google
-        </button>
-
-        <div class="login-divider">or sign in with email</div>
-
-        <form action="{{ url_for('login') }}" method="post" class="login-form">
-          <div class="form-group">
-            <label class="form-label" for="email">Email</label>
-            <div class="form-input-icon">
-              <span class="icon">✉️</span>
-              <input class="form-input" id="email" name="email" type="email"
-                     placeholder="you@example.com" />
+      <section class="login-panel">
+        <div class="login-card">
+          <div class="login-brand">
+            <div class="login-logo">
+              <img
+            <img src="{{ url_for('static', filename='images/logo.png') }}">
+            
+            />   
             </div>
+            <div class="login-brand-name">PandaJourney</div>
           </div>
 
-          <div class="form-group">
-            <label class="form-label" for="password">Password</label>
-            <div class="form-input-icon">
-              <span class="icon">🔒</span>
-              <input class="form-input" id="password" name="password" type="password"
-                     placeholder="••••••••" />
+          <p class="login-panel-subtitle">Plan smarter trips across Malaysia</p>
+
+          <button type="button" class="login-google" id="googleLogin">
+            <span style="font-weight:800; color:#4285F4;">G</span>
+            Continue with Google
+          </button>
+
+          <div class="login-divider">or sign in with email</div>
+
+          <form action="{{ url_for('login') }}" method="post" class="login-form">
+            <div class="form-group">
+              <label class="form-label" for="email">Email</label>
+              <div class="form-input-icon">
+                <span class="icon">✉️</span>
+                <input class="form-input" id="email" name="email" type="email"
+                      placeholder="you@example.com" />
+              </div>
             </div>
+
+            <div class="form-group">
+              <label class="form-label" for="password">Password</label>
+              <div class="form-input-icon">
+                <span class="icon">🔒</span>
+                <input class="form-input" id="password" name="password" type="password"
+                      placeholder="••••••••" />
+              </div>
+            </div>
+
+            <button type="submit" class="login-submit">Sign in</button>
+          </form>
+
+          <div class="login-security">
+            <span>🔐</span>
+            <span>Secured with OAuth 2.0. PandaJourney never stores your Google password.</span>
           </div>
 
-          <button type="submit" class="login-submit">Sign in</button>
-        </form>
-
-        <div class="login-security">
-          <span>🔐</span>
-          <span>Secured with OAuth 2.0. PandaJourney never stores your Google password.</span>
+          <div class="login-link-row">
+            Don't have an account?
+            <a href="{{ url_for('create_account') }}">Create one free</a>
+          </div>
         </div>
-
-        <div class="login-link-row">
-          Don't have an account?
-          <a href="{{ url_for('create_account') }}">Create one free</a>
-        </div>
-      </div>
-    </section>
-  </main>
-  <script type="module" src="{{ url_for('static', filename='js/firebase-auth.js') }}"></script>
-</body>
-</html>
+      </section>
+    </main>
+    <script type="module" src="{{ url_for('static', filename='js/firebase-auth.js') }}"></script>
+  </body>
+  </html>
 
 
