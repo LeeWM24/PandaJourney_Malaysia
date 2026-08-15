@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile — PandaJourney Malaysia{% endblock %}
+{% block page_title %}My Profile{% endblock %}
+{% block page_subtitle %}Manage your account and travel preferences{% endblock %}
+
+{% block topbar_actions %}
+  <button type="button" class="btn btn-danger btn-sm" onclick="confirmLogout()">
+    🚪 Sign out
+  </button>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .profile-edit-fields {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 14px;
+  }
+
+  #identity-edit {
+    display: none;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .edit-actions {
+    display: flex;
+    gap: 12px;
+  }
+
+  .edit-actions.hidden,
+  .avatar-edit-btn.hidden {
+    display: none !important;
+  }
+
+  #avatar-edit-btn:not(.hidden) {
+    display: flex;
+  }
+
+  .profile-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .profile-avatar-letter {
+    pointer-events: none;
+  }
+
+  @media (max-width: 860px) {
+    .profile-edit-fields {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set display_name = current_user.get('display_name') or current_user.get('displayName') or 'User' %}
+{% set email = current_user.get('email') or '' %}
+{% set selected_interests = user_preferences.get('interests', []) if user_preferences else [] %}
+
+<div class="page-inner">
+  <div class="profile-wrap">
+
+    <div class="card profile-identity">
+      <div class="profile-identity-inner">
+        <div class="avatar-edit-wrap">
+          <div class="avatar avatar-xl" id="avatar">{{ display_name[:1] | upper }}<button class="avatar-edit-btn hidden" id="avatar-edit-btn" title="Change photo" type="button">✎</button></div>
+        </div>
+
+        <div class="profile-identity-main">
+          <div id="identity-view">
+            <div class="profile-name identity-name">{{ display_name }}</div>
+            <div class="profile-email identity-email">{{ email }}</div>
+
+            <div class="flex flex-wrap gap-2 mt-2">
+              <span class="provider-badge">Google Sign-In</span>
+              <span class="badge badge-success">✓ Verified</span>
+            </div>
+          </div>
+
+          <div id="identity-edit">
+            <div class="profile-edit-fields">
+              <div class="field">
+                <label for="edit-name">Display Name</label>
+                <input type="text" id="edit-name" value="{{ display_name }}" />
+              </div>
+
+              <div class="field">
+                <label for="edit-email">Email Address</label>
+                <input type="email" id="edit-email" value="{{ email }}" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-card-actions">
+          <button class="btn btn-secondary btn-sm" id="edit-toggle-btn" type="button" onclick="toggleEdit()">
+            ✎ Edit Profile
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="profile-stats">
+      <div class="card profile-stat-card">
+        <div class="profile-stat-icon">💾</div>
+        <div>
+          <div class="profile-stat-value">{{ saved_count | default(0) }}</div>
+          <div class="profile-stat-label">Saved Itineraries</div>
+        </div>
+      </div>
+
+      <div class="card profile-stat-card">
+        <div class="profile-stat-icon">⭐</div>
+        <div>
+          <div class="profile-stat-value">{{ favourite_count | default(0) }}</div>
+          <div class="profile-stat-label">Favourite Attractions</div>
+        </div>
+      </div>
+
+      <div class="card profile-stat-card">
+        <div class="profile-stat-icon">🔗</div>
+        <div>
+          <div class="profile-stat-value">{{ shared_count | default(0) }}</div>
+          <div class="profile-stat-label">Shared Itineraries</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card profile-prefs">
+      <div>
+        <div class="profile-prefs-title">Travel Preferences</div>
+        <div class="profile-prefs-sub">Used to personalise attraction recommendations</div>
+      </div>
+
+      <div>
+        <div class="section-heading">Preferred Interests</div>
+        <div class="chips">
+          {% for interest in ['culture', 'museum', 'nature', 'shopping', 'food'] %}
+            <label class="chip {% if interest in selected_interests %}active{% endif %}" data-chip>
+              <input type="checkbox" name="interests" value="{{ interest }}" {% if interest in selected_interests %}checked{% endif %} hidden>
+              {{ interest.title() }}
+            </label>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="profile-edit-fields">
+        <div class="field">
+          <label for="pref-rating">Preferred Minimum Rating</label>
+          <select id="pref-rating">
+            {% set min_rating = user_preferences.get('min_rating', '4.0') if user_preferences else '4.0' %}
+            <option value="">Any rating</option>
+            <option value="3.0" {% if min_rating == '3.0' %}selected{% endif %}>⭐ 3.0+</option>
+            <option value="4.0" {% if min_rating == '4.0' %}selected{% endif %}>⭐ 4.0+</option>
+            <option value="4.5" {% if min_rating == '4.5' %}selected{% endif %}>⭐ 4.5+</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="pref-area">Preferred Travel Area</label>
+          <div class="input-icon-wrap">
+            <span class="icon">📍</span>
+            <input
+              type="text"
+              id="pref-area"
+              placeholder="e.g. Kuala Lumpur, Penang"
+              value="{{ user_preferences.get('preferred_area', '') if user_preferences else '' }}"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-p">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Favourite Attractions</div>
+          <div class="card-subtitle">Attractions saved by the current user</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button">View all</button>
+      </div>
+
+      {% if favourite_attractions %}
+        {% for attraction in favourite_attractions %}
+          <div class="fav-row">
+            <div class="recent-icon">⭐</div>
+            <div class="fav-row-name">{{ attraction.name }}</div>
+            <button class="fav-remove" type="button">Remove</button>
+          </div>
+        {% endfor %}
+      {% else %}
+        <div class="empty-state" style="min-height: 150px;">
+          <div class="empty-icon">⭐</div>
+          <div class="empty-title">No favourite attractions yet</div>
+          <div class="empty-sub">Saved attractions will appear here after database integration.</div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="edit-actions hidden" id="edit-actions">
+      <button class="btn btn-primary btn-lg" style="flex:1;" type="button" onclick="saveProfile()">
+        💾 Save Changes
+      </button>
+      <button class="btn btn-ghost btn-lg" type="button" onclick="cancelEdit()">
+        Cancel
+      </button>
+    </div>
+
+    <div class="danger-zone">
+      <div>
+        <div class="danger-zone-title">Sign out of PandaJourney</div>
+        <div class="danger-zone-sub">You'll be redirected to the login page.</div>
+      </div>
+      <button class="btn btn-danger btn-sm" type="button" onclick="confirmLogout()">
+        🚪 Sign out
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="save-toast">
+  <span>✅</span>
+  <span>Profile saved successfully!</span>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/profile.js') }}"></script>
+{% endblock %}

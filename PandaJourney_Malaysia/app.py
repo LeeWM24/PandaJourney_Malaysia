@@ -3,16 +3,18 @@ import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 
 from services.itinerary_service import (
-    build_map_data,
-    choose_attractions,
-    geocode_place,
-    get_weather,
-    load_demo_attractions,
     make_plan,
-    prepare_selected_attractions,
-    recommend_attractions,
-    search_attractions_serpapi,
+    build_map_data,
+    get_default_itinerary_form
 )
+
+from services.saved_itinerary_service import (
+    get_saved_itineraries,
+    save_itinerary,
+    delete_itinerary,
+    toggle_publish_status
+)
+
 
 app = Flask(
     __name__,
@@ -31,34 +33,40 @@ def get_current_user():
     })
 
 
-@app.route("/", methods=["GET", "POST"])#jiading
+@app.route("/", methods=["GET", "POST"])  # Jiading
 def login():
     if request.method == "POST":
         session["user"] = {
-            "display_name": "Ahmad Faris",
-            "email": request.form.get("email") or "ahmad@email.com"
+            "display_name": "User",
+            "email": request.form.get("email") 
         }
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
 
 
+@app.route('/create-account')
+def create_account():
+    return render_template('create_account.html')
+
 @app.route("/dashboard")#jiading
 def dashboard():
+    saved_list = get_saved_itineraries()
+
     return render_template(
         "dashboard.html",
         active_page="dashboard",
         current_user=get_current_user(),
-        saved_count=7,
-        favourite_count=24,
-        shared_count=3,
-        upcoming_date="Aug 10",
-        recent_itineraries=[],
-        upcoming_trip=None
+        saved_count=len(saved_list),
+        favourite_count=0,
+        shared_count=0,
+        upcoming_date=saved_list[0].get("date", "No Trip") if saved_list else "No Trip",
+        recent_itineraries=saved_list[:3],
+        upcoming_trip=saved_list[0] if saved_list else None
     )
 
 
-@app.route("/smart-attraction", methods=["GET", "POST"])#Kaixi
+@app.route("/smart-attraction")  # Kaixi
 def smart_attraction():
     filters = {
         "destination": "",
@@ -177,76 +185,76 @@ def smart_attraction():
         "smart_attraction.html",
         active_page="attractions",
         current_user=get_current_user(),
-        filters=filters,
-        weather_status=weather_status,
-        attractions=attractions,
-        source_note=source_note,
-        searched=searched,
-        results_label=results_label,
-        serpapi_key=os.environ.get('SERPAPI_KEY', ''),
-        nominatim_email=os.environ.get('NOMINATIM_EMAIL', ''),
-        nominatim_user_agent=os.environ.get('NOMINATIM_USER_AGENT', ''),
+        filters={
+            "destination": "",
+            "interests": [],
+            "min_rating": "",
+            "weather_aware": True,
+            "sort": "rating"
+        },
+        weather_status="",
+        attractions=[]
     )
 
-@app.route("/smart-itinerary", methods=["GET", "POST"])#Lee
+
+# =========================
+# Lee Part 1: Smart Itinerary Planning
+# =========================
+@app.route("/smart-itinerary", methods=["GET", "POST"])  # Lee
 def smart_itinerary():
-    error = None
     plan = None
+    error = None
     map_data = None
-    form = {
-        "start": "",
-        "end": "",
-        "trip_date": "",
-        "start_time": "09:00",
-        "available_hours": 6,
-        "minimum_rating": "4.0",
-        "interests": "culture",
-    }
+
+    print("[SMART ITINERARY ROUTE]", request.method)
 
     if request.method == "POST":
-        form = {
-            "start": request.form.get("start", ""),
-            "end": request.form.get("end", ""),
-            "trip_date": request.form.get("trip_date", ""),
-            "start_time": request.form.get("start_time", "09:00"),
-            "available_hours": request.form.get("available_hours", 6),
-            "minimum_rating": request.form.get("minimum_rating", "4.0"),
-            "interests": request.form.get("interests", "culture"),
-        }
+        print("[SMART FORM DATA]", request.form)
 
         try:
             plan = make_plan(request.form)
             map_data = build_map_data(plan)
-        except ValueError as exc:
-            error = str(exc)
-        except Exception:
-            error = (
-                "Unable to generate itinerary at this time. "
-                "Please check your inputs and try again."
-            )
+
+        except Exception as e:
+            print("[SMART ERROR]", e)
+            error = str(e)
 
     return render_template(
-        "smart_itinerary.html",
+         "smart_itinerary.html",
         active_page="itinerary",
         current_user=get_current_user(),
         plan=plan,
         error=error,
         map_data=map_data,
-        form=form,
+        form=request.form if request.method == "POST" else get_default_itinerary_form()
     )
 
 
-@app.route("/saved-itineraries", methods=["GET", "POST"])#Lee
+# =========================
+# Lee Part 2: Saved Itineraries
+# =========================
+@app.route("/saved-itineraries", methods=["GET", "POST"])  # Lee
 def saved_itineraries():
     if request.method == "POST":
         action = request.form.get("_action")
+        itinerary_id = request.form.get("itinerary_id")
 
-        if action == "toggle_publish":
-            flash("Publish status updated.", "success")
+        if action == "save":
+            latest_plan = session.get("latest_plan")
+
+            if latest_plan:
+                save_itinerary(latest_plan)
+                flash("Itinerary saved successfully.", "success")
+            else:
+                flash("No generated itinerary found. Please generate a plan first.", "warning")
+
         elif action == "delete":
+            delete_itinerary(itinerary_id)
             flash("Itinerary deleted.", "info")
-        elif action == "save":
-            flash("Itinerary saved.", "success")
+
+        elif action == "toggle_publish":
+            toggle_publish_status(itinerary_id)
+            flash("Publish status updated.", "success")
 
         return redirect(url_for("saved_itineraries"))
 
@@ -254,21 +262,31 @@ def saved_itineraries():
         "saved_itineraries.html",
         active_page="saved",
         current_user=get_current_user(),
-        itineraries=[]
+        itineraries=get_saved_itineraries()
     )
 
 
-@app.route("/collaboration", methods=["GET", "POST"])#Manas
+@app.route("/collaboration", methods=["GET", "POST"])  # Manas
 def collaboration():
     return render_template(
         "collaboration.html",
         active_page="collaboration",
         current_user=get_current_user(),
-        
+        itinerary={
+            "id": 1,
+            "title": "Collaboration Module",
+            "date": "",
+            "stop_count": 0,
+            "duration": "",
+            "stops": []
+        },
+        comments=[],
+        collaborators=[],
+        notifications=[]
     )
 
 
-@app.route("/public-itinerary", methods=["GET", "POST"])#Zham feng
+@app.route("/public-itinerary", methods=["GET", "POST"])  # Zham Feng
 def public_itinerary():
     if request.method == "POST":
         action = request.form.get("_action")
@@ -282,11 +300,18 @@ def public_itinerary():
         "public_itinerary.html",
         active_page="public",
         current_user=get_current_user(),
-        
+        filters={
+            "q": "",
+            "destination": ""
+        },
+        popular_itineraries=[],
+        itineraries=[],
+        destinations=[],
+        pagination=None
     )
 
 
-@app.route("/profile", methods=["GET", "POST"])#Jiading
+@app.route("/profile", methods=["GET", "POST"])  # Jiading
 def profile():
     if request.method == "POST":
         action = request.form.get("_action")
@@ -306,6 +331,8 @@ def profile():
 
         return redirect(url_for("profile"))
 
+    saved_list = get_saved_itineraries()
+
     return render_template(
         "profile.html",
         active_page="profile",
@@ -316,20 +343,20 @@ def profile():
             "preferred_area": ""
         },
         favourite_attractions=[],
-        saved_itineraries_preview=[],
+        saved_itineraries_preview=saved_list[:3],
         shared_itineraries_preview=[],
-        saved_count=7,
-        favourite_count=24,
-        shared_count=3
+        saved_count=len(saved_list),
+        favourite_count=0,
+        shared_count=0
     )
 
 
-@app.route("/user-management")#Jiading
+@app.route("/user-management")  # Jiading
 def user_management():
     return redirect(url_for("profile"))
 
 
-@app.route("/logout", methods=["GET", "POST"])#Jiading
+@app.route("/logout", methods=["GET", "POST"])  # Jiading
 def logout():
     session.clear()
     return redirect(url_for("login"))
@@ -337,5 +364,3 @@ def logout():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
