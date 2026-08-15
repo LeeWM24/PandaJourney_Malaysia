@@ -169,6 +169,75 @@ function normaliseCoordinate(value) {
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
 
+function getTodayDateKey() {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getCurrentTimeKey() {
+  const now = new Date();
+
+  const hour = String(now.getHours()).padStart(2, "0");
+  const minute = String(now.getMinutes()).padStart(2, "0");
+
+  return `${hour}:${minute}`;
+}
+
+function updateDateTimeLimits() {
+  const tripDateInput = document.getElementById("trip_date");
+  const startTimeInput = document.getElementById("start_time");
+
+  if (!tripDateInput || !startTimeInput) return;
+
+  const today = getTodayDateKey();
+  const currentTime = getCurrentTimeKey();
+
+  tripDateInput.min = today;
+
+  if (tripDateInput.value && tripDateInput.value < today) {
+    tripDateInput.value = today;
+  }
+
+  if (tripDateInput.value === today) {
+    startTimeInput.min = currentTime;
+
+    if (startTimeInput.value && startTimeInput.value < currentTime) {
+      startTimeInput.value = currentTime;
+    }
+  } else {
+    startTimeInput.removeAttribute("min");
+  }
+}
+
+function validateTripDateTime() {
+  const tripDateInput = document.getElementById("trip_date");
+  const startTimeInput = document.getElementById("start_time");
+
+  if (!tripDateInput || !startTimeInput) return true;
+
+  const today = getTodayDateKey();
+  const currentTime = getCurrentTimeKey();
+
+  if (tripDateInput.value < today) {
+    alert("Travel date cannot be before today.");
+    tripDateInput.value = today;
+    return false;
+  }
+
+  if (tripDateInput.value === today && startTimeInput.value < currentTime) {
+    alert("Start time cannot be earlier than the current time.");
+    startTimeInput.value = currentTime;
+    return false;
+  }
+
+  return true;
+}
+
 function findTimetableItem(timetable, stopName) {
   if (!Array.isArray(timetable)) return {};
 
@@ -219,6 +288,18 @@ async function saveItinerary() {
 
     const destination = endText;
 
+    const itineraryTitle = prompt(
+      "Enter itinerary title:",
+      destination + " Trip"
+    );
+
+    if (!itineraryTitle || !itineraryTitle.trim()) {
+      alert("Save cancelled. Itinerary title is required.");
+      saveButton.disabled = false;
+      saveButton.textContent = "💾 Save";
+      return;
+    }
+
     const availableHours = Number(getFormValue("available_hours", 6));
     const minimumRating = Number(getFormValue("minimum_rating", 4.0));
 
@@ -242,7 +323,7 @@ async function saveItinerary() {
       itinerary_id: itineraryId,
       user_id: currentUser.uid,
 
-      title: destination + " Trip",
+      title: itineraryTitle.trim(),
       destination: destination,
 
       start_location_name: startText,
@@ -325,6 +406,28 @@ async function saveItinerary() {
 // ================================
 
 document.addEventListener("DOMContentLoaded", function () {
+  updateDateTimeLimits();
+
+  const tripDateInput = document.getElementById("trip_date");
+  const startTimeInput = document.getElementById("start_time");
+  const itineraryForm = document.getElementById("itinerary-form");
+
+  if (tripDateInput) {
+    tripDateInput.addEventListener("change", updateDateTimeLimits);
+  }
+
+  if (startTimeInput) {
+    startTimeInput.addEventListener("change", validateTripDateTime);
+  }
+
+  if (itineraryForm) {
+    itineraryForm.addEventListener("submit", function (event) {
+      if (!validateTripDateTime()) {
+        event.preventDefault();
+      }
+    });
+  }
+
   updateMaximumStopsOptions();
 
   const availableHoursSelect = document.getElementById("available_hours");

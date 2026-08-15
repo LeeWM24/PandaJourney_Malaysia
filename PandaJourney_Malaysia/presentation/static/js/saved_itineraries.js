@@ -22,8 +22,17 @@ const ITINERARY_COLLECTION = "Itinerary";
 const ITINERARY_STOP_COLLECTION = "itinerary_stops";
 
 const loadingElement = document.getElementById("saved-loading");
+
+const upcomingSection = document.getElementById("upcoming-section");
 const listElement = document.getElementById("saved-list");
 const emptyElement = document.getElementById("saved-empty");
+
+const pastControl = document.getElementById("past-control");
+const pastSection = document.getElementById("past-section");
+const pastListElement = document.getElementById("past-list");
+const togglePastButton = document.getElementById("toggle-past-btn");
+
+let pastVisible = false;
 
 // ================================
 // Helper
@@ -36,8 +45,8 @@ function hideLoading() {
 }
 
 function showEmpty() {
-  if (listElement) {
-    listElement.style.display = "none";
+  if (upcomingSection) {
+    upcomingSection.style.display = "none";
   }
 
   if (emptyElement) {
@@ -45,13 +54,13 @@ function showEmpty() {
   }
 }
 
-function showList() {
+function showUpcomingList() {
   if (emptyElement) {
     emptyElement.style.display = "none";
   }
 
-  if (listElement) {
-    listElement.style.display = "block";
+  if (upcomingSection) {
+    upcomingSection.style.display = "block";
   }
 }
 
@@ -69,6 +78,24 @@ function getBadgeClass(status) {
   if (status === "Draft") return "badge-warning";
   if (status === "Upcoming") return "badge-info";
   return "badge-muted";
+}
+
+function getTodayDateKey() {
+  const today = new Date();
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function isPastPlan(dateText) {
+  if (!dateText) return false;
+
+  const todayKey = getTodayDateKey();
+
+  return String(dateText) < todayKey;
 }
 
 function formatDate(dateText) {
@@ -148,20 +175,46 @@ async function loadSavedItineraries(user) {
     });
   }
 
-  itineraries.sort(function (a, b) {
-    const aTime = a.updated_at?.toMillis ? a.updated_at.toMillis() : 0;
-    const bTime = b.updated_at?.toMillis ? b.updated_at.toMillis() : 0;
+  const upcomingPlans = itineraries
+    .filter(function (itinerary) {
+      return !isPastPlan(itinerary.date);
+    })
+    .sort(function (a, b) {
+      return String(a.date).localeCompare(String(b.date));
+    });
 
-    return bTime - aTime;
-  });
+  const pastPlans = itineraries
+    .filter(function (itinerary) {
+      return isPastPlan(itinerary.date);
+    })
+    .sort(function (a, b) {
+      return String(b.date).localeCompare(String(a.date));
+    });
 
-  renderItineraries(itineraries);
+  if (upcomingPlans.length) {
+    renderItineraries(upcomingPlans, listElement);
+    showUpcomingList();
+  } else {
+    showEmpty();
+  }
+
+  if (pastPlans.length) {
+    renderItineraries(pastPlans, pastListElement);
+
+    if (pastControl) {
+      pastControl.style.display = "block";
+    }
+
+    if (togglePastButton) {
+      togglePastButton.textContent = `View Past Plans (${pastPlans.length})`;
+    }
+  }
 }
 
-function renderItineraries(itineraries) {
-  if (!listElement) return;
+function renderItineraries(itineraries, targetElement) {
+  if (!targetElement) return;
 
-  listElement.innerHTML = "";
+  targetElement.innerHTML = "";
 
   itineraries.forEach(function (itinerary) {
     const status = itinerary.status;
@@ -171,7 +224,7 @@ function renderItineraries(itineraries) {
     row.className = "saved-row";
 
     row.innerHTML = `
-      <div class="saved-icon">📅</div>
+      <div class="saved-icon">🗓️</div>
 
       <div class="saved-info">
         <div class="saved-title">
@@ -185,7 +238,7 @@ function renderItineraries(itineraries) {
         <div class="saved-meta">
           📍 ${escapeHtml(itinerary.destination)}
           &nbsp;·&nbsp;
-          📆 ${escapeHtml(formatDate(itinerary.date))}
+          🗓️ ${escapeHtml(formatDate(itinerary.date))}
           &nbsp;·&nbsp;
           ⏱ ${escapeHtml(formatDuration(itinerary.duration))}
           &nbsp;·&nbsp;
@@ -194,7 +247,7 @@ function renderItineraries(itineraries) {
       </div>
 
       <div class="saved-actions">
-        <a href="/smart-itinerary?id=${encodeURIComponent(itinerary.itinerary_id)}" class="btn btn-secondary btn-sm">
+        <a href="/saved-itinerary/${encodeURIComponent(itinerary.id)}" class="btn btn-secondary btn-sm">
           View
         </a>
 
@@ -219,10 +272,26 @@ function renderItineraries(itineraries) {
       deleteItinerary(itinerary.id, itinerary.itinerary_id);
     });
 
-    listElement.appendChild(row);
+    targetElement.appendChild(row);
   });
+}
 
-  showList();
+// ================================
+// Past Plans Toggle
+// ================================
+
+if (togglePastButton) {
+  togglePastButton.addEventListener("click", function () {
+    pastVisible = !pastVisible;
+
+    if (pastSection) {
+      pastSection.style.display = pastVisible ? "block" : "none";
+    }
+
+    togglePastButton.textContent = pastVisible
+      ? "Hide Past Plans"
+      : togglePastButton.textContent.replace("Hide", "View");
+  });
 }
 
 // ================================
