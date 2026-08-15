@@ -8,6 +8,15 @@ from services.itinerary_service import (
     get_default_itinerary_form
 )
 
+from services.smart_attraction import(
+    geocode_place,
+    get_weather,
+    search_attractions_serpapi,
+    load_demo_attractions,
+    recommend_attractions,
+    prepare_selected_attractions
+)
+
 from services.saved_itinerary_service import (
     get_saved_itineraries,
     save_itinerary,
@@ -193,7 +202,11 @@ def smart_attraction():
             "sort": "rating"
         },
         weather_status="",
-        attractions=[]
+        attractions=[],
+        nominatim_email="",
+        nominatim_user_agent=""
+        
+        
     )
 
 
