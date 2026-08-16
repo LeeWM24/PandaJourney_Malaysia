@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
+from datetime import datetime
+from typing import Any
 
 import requests
 from dotenv import load_dotenv
@@ -841,3 +843,163 @@ def format_date_for_display(date_text: str) -> str:
         return dt.strftime("%b %d, %Y")
     except ValueError:
         return date_text
+
+def build_attraction_results(
+    destination_text: str,
+    interest_list: list[str],
+    minimum_rating: float,
+    use_weather: bool,
+    sort_mode: str,
+) -> tuple[list[dict[str, Any]], str, str]:
+
+    destination_text = destination_text.strip()
+
+    if not destination_text:
+        raise ValueError(
+            "Destination is required."
+        )
+
+    # ---------------------------------------------------------
+    # 1. Geocode destination
+    # ---------------------------------------------------------
+
+    destination_place = geocode_place(
+        destination_text
+    )
+
+    if not destination_place:
+        raise ValueError(
+            f"Could not find the destination: {destination_text}"
+        )
+
+    # ---------------------------------------------------------
+    # 2. Weather
+    # ---------------------------------------------------------
+
+    weather = None
+
+    if use_weather:
+        weather = get_weather(
+            destination_place["latitude"],
+            destination_place["longitude"],
+            datetime.now().strftime("%Y-%m-%d"),
+        )
+
+    if use_weather and weather:
+
+        weather_message = (
+            f"{weather['condition']} today in "
+            f"{destination_text.title()} - "
+            f"{weather['min_temp']}°C to "
+            f"{weather['max_temp']}°C"
+        )
+
+    else:
+
+        weather_message = (
+            f"Destination located: "
+            f"{destination_place['display_name']}."
+        )
+
+    # ---------------------------------------------------------
+    # 3. Search live attractions
+    # ---------------------------------------------------------
+
+    candidates = search_attractions_serpapi(
+        destination_place["latitude"],
+        destination_place["longitude"],
+        interest_list,
+        minimum_rating,
+    )
+
+    live_data = bool(candidates)
+
+    # ---------------------------------------------------------
+    # 4. Fallback only when live search has no result
+    # ---------------------------------------------------------
+
+    if not candidates:
+        candidates = load_demo_attractions()
+
+    # ---------------------------------------------------------
+    # 5. Recommendation engine
+    # ---------------------------------------------------------
+
+    selected = recommend_attractions(
+        candidates,
+        interest_list,
+        weather,
+        minimum_rating,
+        max_results=8,
+        filter_partly_cloudy=(
+            use_weather
+            and weather is not None
+            and weather.get(
+                "condition",
+                ""
+            ).lower() == "partly cloudy"
+        ),
+    )
+
+    # ---------------------------------------------------------
+    # 6. Prepare final attraction data
+    # ---------------------------------------------------------
+
+    selected = prepare_selected_attractions(
+        selected,
+        reference_lat=destination_place["latitude"],
+        reference_lon=destination_place["longitude"],
+    )
+
+    # ---------------------------------------------------------
+    # 7. Sort
+    # ---------------------------------------------------------
+
+    if sort_mode == "rating":
+
+        selected.sort(
+            key=lambda item: float(
+                item.get("rating", 0)
+            ),
+            reverse=True,
+        )
+
+    elif sort_mode == "nearest":
+
+        selected.sort(
+            key=lambda item: (
+                item.get("distance_km")
+                if item.get("distance_km") is not None
+                else float("inf")
+            )
+        )
+
+    else:
+
+        selected.sort(
+            key=lambda item: float(
+                item.get("score", 0)
+            ),
+            reverse=True,
+        )
+
+    # ---------------------------------------------------------
+    # 8. Data source note
+    # ---------------------------------------------------------
+
+    if live_data:
+        source_note = (
+            "Live attraction data retrieved through "
+            "SerpAPI Google Maps search."
+        )
+    else:
+        source_note = (
+            "Live attraction search returned no results. "
+            "Development fallback data is being displayed."
+        )
+
+    return (
+        selected,
+        weather_message,
+        source_note,
+    )

@@ -1,4 +1,3 @@
-from datetime import datetime
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 
@@ -8,12 +7,9 @@ from services.itinerary_service import (
     get_default_itinerary_form
 )
 
-from services.smart_attraction import(
-    geocode_place,
-    get_weather,
-    search_attractions_serpapi,
+from services.smart_attraction import (
     load_demo_attractions,
-    recommend_attractions,
+    build_attraction_results,
     prepare_selected_attractions
 )
 
@@ -75,7 +71,7 @@ def dashboard():
     )
 
 
-@app.route("/smart-attraction")  # Kaixi
+@app.route("/smart-attraction", methods=["GET", "POST"]) # Kaixi
 def smart_attraction():
     filters = {
         "destination": "",
@@ -84,129 +80,114 @@ def smart_attraction():
         "weather_aware": True,
         "sort": "score",
     }
+
+    attractions: list[dict] = []
     weather_status = ""
     source_note = ""
     searched = False
     results_label = "Recommended attractions"
-    attractions: list[dict] = []
 
-    def build_results(
-        destination_text: str,
-        interest_list: list[str],
-        minimum_rating: float,
-        use_weather: bool,
-        sort_mode: str,
-    ) -> tuple[list[dict], str, str]:
-        weather = None
-        destination_place = geocode_place(destination_text) if destination_text else None
+    if request.method == "POST":
+        searched = True
 
-        if destination_place and use_weather:
-            weather = get_weather(
-                destination_place["latitude"],
-                destination_place["longitude"],
-                datetime.now().strftime("%Y-%m-%d"),
-            )
-
-        if use_weather and weather and destination_text:
-            weather_message = (
-                f"{weather['condition']} today in {destination_text.title()} - "
-                f"{weather['min_temp']}C to {weather['max_temp']}C"
-            )
-        elif destination_place:
-            weather_message = f"Destination located: {destination_place['display_name']}."
-        else:
-            weather_message = "Using the Kuala Lumpur demonstration dataset while you refine your filters."
-
-        if destination_place:
-            candidates: list[dict] = search_attractions_serpapi(
-                destination_place["latitude"],
-                destination_place["longitude"],
-                interest_list,
-                minimum_rating,
-            ) or load_demo_attractions()
-        else:
-            candidates = load_demo_attractions()
-
-        selected = recommend_attractions(
-            candidates,
-            interest_list,
-            weather,
-            minimum_rating,
-            max_results=8,
-            filter_partly_cloudy=bool(
-                use_weather
-                and weather
-                and weather.get("condition", "").lower() == "partly cloudy"
-            ),
+        filters["destination"] = (
+            request.form.get("destination", "").strip()
         )
 
-        destination_coords = (
-            destination_place["latitude"],
-            destination_place["longitude"],
-        ) if destination_place else (None, None)
-
-        selected = prepare_selected_attractions(
-            selected,
-            reference_lat=destination_coords[0],
-            reference_lon=destination_coords[1],
+        filters["interests"] = request.form.getlist(
+            "interests"
         )
 
-        if sort_mode == "rating":
-            selected.sort(key=lambda item: float(item.get("rating", 0)), reverse=True)
-        elif sort_mode == "nearest":
-            selected.sort(key=lambda item: item.get("distance_km") or float("inf"))
-        else:
-            selected.sort(key=lambda item: float(item.get("score", 0)), reverse=True)
-
-        source = (
-            "Live SerpApi Leaf Maps search"
-            if destination_place and candidates and candidates[0].get("source", "").startswith("SerpApi")
-            else "Local demonstration dataset across all destinations."
+        filters["min_rating"] = request.form.get(
+            "min_rating",
+            "4.0"
         )
-        return selected, weather_message, source
 
-    try:
-        if request.method == "POST":
-            searched = True
-            filters["destination"] = request.form.get("destination", "").strip()
-            filters["interests"] = request.form.getlist("interests")
-            filters["min_rating"] = request.form.get("min_rating", "4.0")
-            filters["weather_aware"] = bool(request.form.get("weather_aware"))
-            filters["sort"] = request.form.get("sort", "score")
-            interest_list = [item for item in filters["interests"] if item]
-            minimum_rating = float(filters["min_rating"] or 4.0)
-            attractions, weather_status, source_note = build_results(
-                filters["destination"],
-                interest_list,
-                minimum_rating,
-                filters["weather_aware"],
-                filters["sort"],
+        filters["weather_aware"] = bool(
+            request.form.get("weather_aware")
+        )
+
+        filters["sort"] = request.form.get(
+            "sort",
+            "score"
+        )
+
+        # Validate destination
+        if not filters["destination"]:
+            flash(
+                "Please enter a destination to receive recommendations.",
+                "error"
             )
-            results_label = f"Showing {len(attractions)} attractions"
+
         else:
-            attractions = prepare_selected_attractions(load_demo_attractions())
-            results_label = "Set filters and click Search"
-    except ValueError:
-        flash("Invalid rating or filter input. Please revise your selection.", "error")
-        attractions = []
+            try:
+                minimum_rating = float(
+                    filters["min_rating"] or 4.0
+                )
+
+                attractions, weather_status, source_note = (
+                    build_attraction_results(
+                        destination_text=filters["destination"],
+                        interest_list=filters["interests"],
+                        minimum_rating=minimum_rating,
+                        use_weather=filters["weather_aware"],
+                        sort_mode=filters["sort"],
+                    )
+                )
+
+                results_label = (
+                    f"Showing {len(attractions)} attractions"
+                )
+
+            except ValueError:
+                flash(
+                    "Invalid rating or filter input. "
+                    "Please revise your selection.",
+                    "error"
+                )
+
+            except Exception as error:
+                print(
+                    f"[SMART ATTRACTION ERROR] {error}"
+                )
+
+                flash(
+                    "Unable to load attraction recommendations "
+                    "at this time. Please try again.",
+                    "error"
+                )
+
+                attractions = []
+
+    else:
+        # GET request:
+        # Show initial demonstration attractions.
+        try:
+            attractions = prepare_selected_attractions(
+                load_demo_attractions()
+            )
+        except Exception as error:
+            print(
+                f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}"
+            )
+            attractions = []
+
+        results_label = (
+            "Set filters and click Search"
+        )
 
     return render_template(
         "smart_attraction.html",
         active_page="attractions",
         current_user=get_current_user(),
-        filters={
-            "destination": "",
-            "interests": [],
-            "min_rating": "",
-            "weather_aware": True,
-            "sort": "rating"
-        },
-        weather_status="",
-        attractions=[],
-        nominatim_email="",
-        nominatim_user_agent=""
-        
-        
+        filters=filters,
+        weather_status=weather_status,
+        attractions=attractions,
+        source_note=source_note,
+        searched=searched,
+        results_label=results_label,
+        nominatim_email=os.environ.get("NOMINATIM_EMAIL", ""),
+        nominatim_user_agent=os.environ.get("NOMINATIM_USER_AGENT", ""),
     )
 
 
