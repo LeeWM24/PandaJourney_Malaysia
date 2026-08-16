@@ -34,10 +34,7 @@ const db = getFirestore(app);
 let currentUser = null;
 let editMode = false;
 
-
-// ================================
 // Check Login
-// ================================
 
 onAuthStateChanged(auth, async (user) => {
 
@@ -53,10 +50,7 @@ onAuthStateChanged(auth, async (user) => {
     await loadUserProfile(user);
 });
 
-
-// ================================
 // Load User Profile
-// ================================
 
 async function loadUserProfile(user) {
 
@@ -111,10 +105,7 @@ async function loadUserProfile(user) {
     }
 }
 
-
-// ================================
 // Avatar
-// ================================
 
 function setAvatarInitials(name) {
 
@@ -132,9 +123,7 @@ function setAvatarInitials(name) {
 }
 
 
-// ================================
 // Edit Profile
-// ================================
 
 function toggleEdit() {
 
@@ -182,10 +171,7 @@ async function cancelEdit() {
     applyEditMode();
 }
 
-
-// ================================
 // Save Profile
-// ================================
 
 async function saveProfile() {
 
@@ -236,9 +222,7 @@ async function saveProfile() {
 }
 
 
-// ================================
 // Toast
-// ================================
 
 function showToast() {
 
@@ -252,9 +236,7 @@ function showToast() {
     }, 3000);
 }
 
-// ================================
 // Logout
-// ================================
 
 async function confirmLogout() {
 
@@ -270,10 +252,7 @@ async function confirmLogout() {
     }
 }
 
-
-// ================================
 // Logout Modal
-// ================================
 
 function openLogoutModal() {
 
@@ -291,7 +270,6 @@ function closeLogoutModal() {
 
 
 // Close modal when clicking outside
-
 document
     .getElementById("logout-modal")
     .addEventListener("click", function (e) {
@@ -301,10 +279,7 @@ document
         }
     });
 
-
-// ================================
 // Make functions available to HTML
-// ================================
 
 window.toggleEdit = toggleEdit;
 window.cancelEdit = cancelEdit;

@@ -1,20 +1,26 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 
+// Firebase Authentication
 import {
   getAuth,
   GoogleAuthProvider,
   signInWithPopup,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  sendEmailVerification,
+  signOut
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
+// Firebase Firestore
 import {
   getFirestore,
   doc,
+  getDoc,
   setDoc,
   serverTimestamp
-} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+}
+from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -51,18 +57,29 @@ if (googleLogin) {
       console.log("Name:", user.displayName);
       console.log("Email:", user.email);
       console.log("UID:", user.uid);
+      
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
 
-      await setDoc(
-        doc(db, "users", user.uid),
-        {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || "",
-          profilePictureUrl: user.photoURL || null,
-          updatedAt: serverTimestamp()
-        },
-        { merge: true }
-      );
+      if (!userSnap.exists()) {
+
+        await setDoc(userRef, {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName || "",
+            profilePictureUrl: user.photoURL || null,
+
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+    } else {
+
+        await setDoc(userRef, {
+            updatedAt: serverTimestamp()
+        }, { merge: true });
+
+    }
 
       console.log("User saved to Firestore!");
 
@@ -131,6 +148,17 @@ if (loginForm && document.getElementById("email")) {
         );
 
         const user = result.user;
+
+        if (!user.emailVerified) {
+
+            await signOut(auth);
+
+            alert(
+              "Please verify your email before logging in."
+            );
+
+            return;
+        }
 
         console.log("Email Login successful!");
         console.log("UID:", user.uid);
@@ -206,11 +234,12 @@ if (registerForm) {
         displayName: name
       });
 
+      await sendEmailVerification(user);
+
       await setDoc(
         doc(db, "users", user.uid),
         {
           uid: user.uid,
-          name: name,
           email: user.email,
           displayName: name,
           profilePictureUrl: null,
@@ -220,9 +249,11 @@ if (registerForm) {
         { merge: true }
       );
 
-      console.log("User saved to Firestore!");
+      alert(
+        "Account created successfully!\n\nPlease check your email and click the verification link before logging in."
+      );
 
-      window.location.href = "/profile";
+      window.location.href = "/login";
 
     } catch (error) {
       console.error("Create Account failed:", error);
