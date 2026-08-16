@@ -207,203 +207,14 @@ Explore community favorites, search destinations, and save routes in a tap.
 {% endblock %}
 
 {% block extra_scripts %}
+  <script id="itinerary-data" type="application/json">
+    {{ itineraries | tojson }}
+  </script>
 
   <script>
-    const itineraries = [
-      {
-        id: 1,
-        title: 'KL Night Lights & Heritage Loop',
-        author: 'Aina',
-        destination: 'Kuala Lumpur',
-        duration: '1 day',
-        stops: 5,
-        description: 'A polished evening route through iconic skyline, street food, and historic corners.',
-        image: 'https://images.unsplash.com/photo-1520106212299-d99c443e4568?auto=format&fit=crop&w=1200&q=80',
-        views: 1296,
-        createdAt: '2026-07-16',
-        likes: 684,
-        saves: 218,
-        isYours: false,
-        stopList: [
-          { time: '18:30', place: 'Petronas Twin Towers', note: 'Golden hour skyline photos' },
-          { time: '19:30', place: 'Jalan Alor', note: 'Street food crawl' },
-          { time: '21:00', place: 'Merdeka Square', note: 'Night architecture walk' },
-          { time: '22:00', place: 'Rooftop Bar', note: 'Cocktails and views' },
-          { time: '23:00', place: 'Changkat', note: 'Late-night dessert stop' }
-        ]
-      },
-      {
-        id: 2,
-        title: 'George Town Heritage Stroll',
-        author: 'Hafiz',
-        destination: 'Penang',
-        duration: '1 day',
-        stops: 4,
-        description: 'A vivid mix of murals, heritage shophouses, and local brunch classics.',
-        image: 'https://images.unsplash.com/photo-1601732410115-6a09d4a2f5ce?auto=format&fit=crop&w=1200&q=80',
-        views: 1147,
-        createdAt: '2026-07-10',
-        likes: 512,
-        saves: 147,
-        isYours: true,
-        stopList: [
-          { time: '09:00', place: 'Khoo Kongsi', note: 'Clanhouse heritage visit' },
-          { time: '11:00', place: 'Little India', note: 'Temple and spice markets' },
-          { time: '13:00', place: 'Cheong Fatt Tze Mansion', note: 'Photo stop' },
-          { time: '15:30', place: 'Esplanade', note: 'Coffee and sea breeze' }
-        ]
-      },
-      {
-        id: 3,
-        title: 'Cameron Highlands Tea & Mist',
-        author: 'Lina',
-        destination: 'Cameron Highlands',
-        duration: '2 days',
-        stops: 6,
-        description: 'Cool climate, tea plantation walks, and quiet villages at every turn.',
-        image: 'https://images.unsplash.com/photo-1517760444937-f6397edcbbcd?auto=format&fit=crop&w=1200&q=80',
-        views: 968,
-        createdAt: '2026-06-22',
-        likes: 428,
-        saves: 132,
-        isYours: false,
-        stopList: [
-          { time: '08:30', place: 'Boh Tea Plantation', note: 'Tea tasting' },
-          { time: '10:30', place: 'Mossy Forest', note: 'Boardwalk stroll' },
-          { time: '13:00', place: 'Strawberry Farm', note: 'Snack break' },
-          { time: '15:30', place: 'Brinchang', note: 'Local market browse' },
-          { time: '19:00', place: 'Homestay Cabin', note: 'Relax and enjoy mist' }
-        ]
-      },
-      {
-        id: 4,
-        title: 'Langkawi Sunset & Island Hop',
-        author: 'Nadia',
-        destination: 'Langkawi',
-        duration: '3+ days',
-        stops: 6,
-        description: 'An island-hopping route that pairs sandy beaches with sunset cruises.',
-        image: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
-        views: 842,
-        createdAt: '2026-06-14',
-        likes: 390,
-        saves: 103,
-        isYours: false,
-        stopList: [
-          { time: '09:00', place: 'Pantai Cenang', note: 'Beach breakfast' },
-          { time: '11:00', place: 'Island Hopping Jetty', note: 'Day cruise' },
-          { time: '14:00', place: 'Tropical Fish Farm', note: 'Snorkeling' },
-          { time: '17:30', place: 'Sunset Cruise', note: 'Golden-hour sail' },
-          { time: '20:00', place: 'Seafood Market', note: 'Dinner by the water' }
-        ]
-      },
-      {
-        id: 5,
-        title: 'Malacca River & Food Trail',
-        author: 'Jun',
-        destination: 'Malacca',
-        duration: 'Half day',
-        stops: 4,
-        description: 'River views, heritage lanes, and a well-paced food crawl in one afternoon.',
-        image: 'https://images.unsplash.com/photo-1548013146-72479768bada?auto=format&fit=crop&w=1200&q=80',
-        views: 731,
-        createdAt: '2026-05-28',
-        likes: 367,
-        saves: 94,
-        isYours: false,
-        stopList: [
-          { time: '15:00', place: 'Jonker Walk', note: 'Street snacks' },
-          { time: '16:00', place: 'River Cruise', note: 'Scenic route' },
-          { time: '17:30', place: 'Dutch Square', note: 'Photo stop' },
-          { time: '19:00', place: 'Night Hawker Centre', note: 'Dinner' }
-        ]
-      },
-      {
-        id: 6,
-        title: 'Sabah Coastal Morning',
-        author: 'Dani',
-        destination: 'Sabah',
-        duration: '3+ days',
-        stops: 5,
-        description: 'A slow-paced coastal itinerary with markets, viewpoints, and sea breezes.',
-        image: 'https://images.unsplash.com/photo-1500375592092-40eb2168fd21?auto=format&fit=crop&w=1200&q=80',
-        views: 654,
-        createdAt: '2026-05-19',
-        likes: 312,
-        saves: 83,
-        isYours: false,
-        stopList: [
-          { time: '08:00', place: 'Waterfront Promenade', note: 'Breakfast with sea views' },
-          { time: '10:00', place: 'Handicraft Market', note: 'Local shopping' },
-          { time: '12:30', place: 'Viewpoint Stop', note: 'Panoramic lookout' },
-          { time: '15:00', place: 'Beach Club', note: 'Relax and swim' },
-          { time: '19:00', place: 'Sunset Dinner', note: 'Seafood dinner' }
-        ]
-      },
-      {
-        id: 7,
-        title: 'Ipoh Heritage & Breakfast',
-        author: 'Mina',
-        destination: 'Kuala Lumpur',
-        duration: '1 day',
-        stops: 4,
-        description: 'A cozy day of old streets, bean curd desserts, and famous breakfast stops.',
-        image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
-        views: 588,
-        createdAt: '2026-04-30',
-        likes: 298,
-        saves: 74,
-        isYours: false,
-        stopList: [
-          { time: '09:00', place: 'Old Town', note: 'Breakfast' },
-          { time: '11:00', place: 'Mural Walk', note: 'Street art and photo spots' },
-          { time: '13:00', place: 'Cafes', note: 'Coffee pause' },
-          { time: '15:00', place: 'Heritage Lane', note: 'Shopping and snacks' }
-        ]
-      },
-      {
-        id: 8,
-        title: 'Borneo Rainforest Escape',
-        author: 'Siti',
-        destination: 'Sabah',
-        duration: '2 days',
-        stops: 5,
-        description: 'Waterfalls, river trails, and a lodge stay for a nature-first weekend.',
-        image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
-        views: 521,
-        createdAt: '2026-04-18',
-        likes: 274,
-        saves: 69,
-        isYours: false,
-        stopList: [
-          { time: '08:00', place: 'Rainforest Entrance', note: 'Start the hike' },
-          { time: '10:30', place: 'Waterfall Viewpoint', note: 'Rest and photos' },
-          { time: '13:00', place: 'Riverbank Picnic', note: 'Lunch stop' },
-          { time: '16:00', place: 'Lodge', note: 'Check-in and unwind' },
-          { time: '19:00', place: 'Night Walk', note: 'Wildlife spotting' }
-        ]
-      },
-      {
-        id: 9,
-        title: 'Island Breeze & Coffee',
-        author: 'Rina',
-        destination: 'Langkawi',
-        duration: 'Half day',
-        stops: 3,
-        description: 'A calm half-day route for beach views and breezy cafés.',
-        image: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=80',
-        views: 476,
-        createdAt: '2026-03-24',
-        likes: 248,
-        saves: 62,
-        isYours: false,
-        stopList: [
-          { time: '10:30', place: 'Beachfront Cafe', note: 'Coffee and pastries' },
-          { time: '12:00', place: 'Pier Walk', note: 'Sea breeze and photos' },
-          { time: '15:00', place: 'Sunset Point', note: 'Early evening stop' }
-        ]
-      }
-    ];
+    const itineraries = JSON.parse(
+      document.getElementById('itinerary-data').textContent
+    );
 
     const state = {
       search: '',
@@ -412,8 +223,18 @@ Explore community favorites, search destinations, and save routes in a tap.
       sort: 'popular',
       selectedId: null,
       popoverOpen: false,
-      likedIds: new Set(),
-      savedIds: new Set()
+
+      likedIds: new Set(
+        itineraries
+        .filter((item) => item.isLiked)
+        .map((item) => item.id)
+      ),
+
+      savedIds: new Set(
+        itineraries
+        .filter((item) => item.isSaved)
+        .map((item) => item.id)
+      )
     };
 
     const searchInput = document.getElementById('searchInput');
@@ -689,7 +510,7 @@ Explore community favorites, search destinations, and save routes in a tap.
 
     function bindCards() {
       document.querySelectorAll('[data-open]').forEach((button) => {
-        button.addEventListener('click', () => openDetail(Number(button.dataset.open)));
+        button.addEventListener('click', () => openDetail(button.dataset.open));
       });
 
       document.querySelectorAll('.tab-btn[data-sort]').forEach((button) => {
@@ -704,7 +525,14 @@ Explore community favorites, search destinations, and save routes in a tap.
 
     function openDetail(id) {
       const item = itineraries.find((entry) => entry.id === id);
-      if (!item) return;
+      if (!item){
+        return;
+      } 
+        
+      fetch(`/public-itineraries/${id}/view`, {
+        method: 'POST'
+      });
+
       item.views += 1;
       state.selectedId = id;
       detailDrawer.innerHTML = `
@@ -747,33 +575,71 @@ Explore community favorites, search destinations, and save routes in a tap.
       `;
       detailOverlay.classList.add('active');
       detailDrawer.classList.add('active');
-      detailDrawer.querySelector('[data-like]').addEventListener('click', (event) => {
-        const wasLiked = state.likedIds.has(item.id);
-        if (wasLiked) {
-          state.likedIds.delete(item.id);
-          item.likes = Math.max(0, item.likes - 1);
-        } else {
-          state.likedIds.add(item.id);
-          item.likes += 1;
+      detailDrawer.querySelector('[data-like]').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+
+        try {
+          const response = await fetch(`/public-itineraries/${item.id}/like`, {
+            method: 'POST'
+          });
+
+          const data = await response.json();
+
+          if (data.liked) {
+            state.likedIds.add(item.id);
+            item.likes += 1;
+          } else {
+            state.likedIds.delete(item.id);
+            item.likes = Math.max(0, item.likes - 1);
+          }
+
+          button.textContent = data.liked ? 'Unlike' : 'Like';
+          button.classList.toggle('active', data.liked);
+          button.setAttribute('aria-pressed', String(data.liked));
+
+          detailDrawer.querySelector('[data-like-count]').textContent = item.likes;
+
+        } catch (error) {
+          console.error('Like update failed:', error);
         }
-        const isLiked = !wasLiked;
-        event.currentTarget.textContent = isLiked ? 'Unlike' : 'Like';
-        event.currentTarget.classList.toggle('active', isLiked);
-        event.currentTarget.setAttribute('aria-pressed', String(isLiked));
-        detailDrawer.querySelector('[data-like-count]').textContent = item.likes;
       });
 
       const saveButton = detailDrawer.querySelector('[data-save]');
+
       if (saveButton) {
-        saveButton.addEventListener('click', (event) => {
-          if (state.savedIds.has(item.id)) return;
-          state.savedIds.add(item.id);
-          item.saves += 1;
-          event.currentTarget.textContent = 'Saved';
-          event.currentTarget.classList.add('active');
-          event.currentTarget.setAttribute('aria-pressed', 'true');
-          detailDrawer.querySelector('[data-save-count]').textContent = item.saves;
-          showToast('Itinerary saved to your list');
+        saveButton.addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+
+          try {
+            const response = await fetch(`/public-itineraries/${item.id}/save`, {
+              method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.saved) {
+              state.savedIds.add(item.id);
+              item.saves += 1;
+            } else {
+              state.savedIds.delete(item.id);
+              item.saves = Math.max(0, item.saves - 1);
+            }
+
+            button.textContent = data.saved ? 'Saved' : 'Save';
+            button.classList.toggle('active', data.saved);
+            button.setAttribute('aria-pressed', String(data.saved));
+
+            detailDrawer.querySelector('[data-save-count]').textContent = item.saves;
+
+            showToast(
+              data.saved
+                ? 'Itinerary saved'
+                : 'Itinerary removed from saved'
+            );
+
+          } catch (error) {
+            console.error('Save update failed:', error);
+          }
         });
       }
 

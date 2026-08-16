@@ -1,4 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
+from services.public_itinerary_service import (get_public_itineraries, increment_view, toggle_like, toggle_save)
 
 app = Flask(
     __name__,
@@ -118,12 +119,43 @@ def public_itinerary():
 
         return redirect(url_for("public_itinerary"))
 
+    current_user = get_current_user()
+
+    itineraries = get_public_itineraries()
+
     return render_template(
         "public_itineraries.html",
         active_page="public",
         current_user=get_current_user(),
+        itineraries=itineraries
     )
 
+@app.route("/public-itineraries/<itinerary_id>/view", methods=["POST"]) #Zham feng
+def increment_itinerary_view(itinerary_id):
+    increment_view(itinerary_id)
+    return {"success": True}
+
+@app.route("/public-itineraries/<itinerary_id>/like", methods=["POST"]) #Zham feng
+def like_public_itinerary(itinerary_id):
+    current_user = get_current_user()
+
+    is_liked = toggle_like(itinerary_id)
+
+    return {
+        "success": True,
+        "liked": is_liked
+    }
+
+@app.route("/public-itineraries/<itinerary_id>/save", methods=["POST"]) #Zham feng
+def save_public_itinerary(itinerary_id):
+    current_user = get_current_user()
+
+    is_saved = toggle_save(itinerary_id)
+
+    return {
+        "success": True,
+        "saved": is_saved
+    }
 
 @app.route("/profile", methods=["GET", "POST"])#Jiading
 def profile():
