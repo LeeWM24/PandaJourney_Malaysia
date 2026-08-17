@@ -2,7 +2,9 @@
 
 {% block title %}Dashboard — PandaJourney Malaysia{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
-{% block page_subtitle %}Welcome back, {{ current_user.display_name }}{% endblock %}
+{% block page_subtitle %}
+Welcome back, <span id="dashboardName">{{ current_user.display_name }}</span>
+{% endblock %}
 
 {% block topbar_actions %}
   <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">✈️ Plan a Trip</a>
@@ -19,7 +21,9 @@
 
   <div class="hero-content">
     <div>
-      <p class="hero-greeting">Good morning, {{ current_user.display_name }} 👋</p>
+      <p class="hero-greeting">
+      Good morning, <span id="heroName">{{ current_user.display_name }}</span> 👋
+      </p>
       <h2 class="hero-title">Where to next?</h2>
       <a href="{{ url_for('smart_itinerary') }}" class="btn btn-accent btn-lg">✈️ Plan a Trip</a>
     </div>
@@ -27,12 +31,30 @@
 
   <div class="hero-user">
     <div>
-      <div class="hero-user-name">{{ current_user.display_name }}</div>
-      <div class="hero-user-email">{{ current_user.email }}</div>
+      <div class="hero-user-name" id="heroUserName">
+          {{ current_user.display_name }}
+      </div>
+      <div class="hero-user-email" id="heroUserEmail">
+        {{ current_user.email }}
+      </div>
     </div>
-    <a href="{{ url_for('profile') }}" class="avatar avatar-lg" style="text-decoration:none;">
-      {{ current_user.display_name[:2]|upper }}
-    </a>
+    <a href="{{ url_for('profile') }}"
+        class="avatar avatar-lg"
+        id="dashboardAvatar"
+        style="text-decoration:none; overflow:hidden;">
+
+          <span id="avatarInitials">
+              {{ current_user.display_name[:2]|upper }}
+          </span>
+
+          <img
+              id="avatarImage"
+              src=""
+              alt="Profile"
+              style="width:100%; height:100%; object-fit:cover; display:none;"
+          >
+
+      </a>
   </div>
 </div>
 
@@ -119,4 +141,9 @@
 
 </div>
 
+<script
+  type="module"
+  src="{{ url_for('static', filename='js/dashboard.js') }}">
+</script>
 {% endblock %}
+

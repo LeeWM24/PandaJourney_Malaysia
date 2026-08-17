@@ -3,8 +3,10 @@
 {% block title %}Itinerary Planner — PandaJourney Malaysia{% endblock %}
 {% block page_title %}Smart Itinerary Planner{% endblock %}
 {% block page_subtitle %}Generate an optimised route and timetable for your Malaysia trip{% endblock %}
+
 {% block extra_head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
 <style>
   #routeMap {
     width: 100%;
@@ -20,7 +22,9 @@
 <div class="page-inner">
 
   {% if error %}
-    <div class="alert alert-error mb-4" role="alert">⛔ {{ error }}</div>
+    <div class="alert alert-error mb-4" role="alert">
+      ⛔ {{ error }}
+    </div>
   {% endif %}
 
   <div class="itinerary-layout">
@@ -34,39 +38,67 @@
 
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
+
             <div class="form-input-icon">
               <span class="icon">🟢</span>
-              <input class="form-input" id="start" name="start" type="text"
-                     placeholder="e.g. KL Sentral"
-                     value="{{ form.start | default('') }}" required />
+              <input
+                class="form-input"
+                id="start"
+                name="start"
+                type="text"
+                placeholder="e.g. KL Sentral"
+                value="{{ form.start | default('') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="end">End Location</label>
+
             <div class="form-input-icon">
               <span class="icon">🔴</span>
-              <input class="form-input" id="end" name="end" type="text"
-                     placeholder="e.g. Petronas Twin Towers"
-                     value="{{ form.end | default('') }}" required />
+              <input
+                class="form-input"
+                id="end"
+                name="end"
+                type="text"
+                placeholder="e.g. Petronas Twin Towers"
+                value="{{ form.end | default('') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-row-2 mb-3">
             <div class="form-group">
               <label class="form-label" for="trip_date">Travel Date</label>
-              <input class="form-input" id="trip_date" name="trip_date" type="date"
-                     value="{{ form.trip_date | default('') }}" required />
+              <input
+                class="form-input"
+                id="trip_date"
+                name="trip_date"
+                type="date"
+                value="{{ form.trip_date | default('') }}"
+                required
+              />
             </div>
+
             <div class="form-group">
               <label class="form-label" for="start_time">Start Time</label>
-              <input class="form-input" id="start_time" name="start_time" type="time"
-                     value="{{ form.start_time | default('09:00') }}" required />
+              <input
+                class="form-input"
+                id="start_time"
+                name="start_time"
+                type="time"
+                value="{{ form.start_time | default('09:00') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="available_hours">Available Hours</label>
+
             <select class="form-select" id="available_hours" name="available_hours">
               {% for h in [4, 5, 6, 7, 8, 9, 10] %}
                 <option value="{{ h }}" {% if form.available_hours | default(6) | int == h %}selected{% endif %}>
@@ -77,23 +109,43 @@
           </div>
 
           <div class="form-group mb-3">
+            <label class="form-label" for="max_stops">Maximum Stops</label>
+
+            {% set max_stops = form.get("max_stops", 3) | int %}
+
+            <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops }}">
+              {% for n in [1, 2, 3, 4, 5, 6] %}
+                <option value="{{ n }}" {% if max_stops == n %}selected{% endif %}>
+                  {{ n }} stop{% if n > 1 %}s{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
             <label class="form-label" for="minimum_rating">Minimum Rating</label>
+
+            {% set minimum_rating = form.get("minimum_rating", "4.0") %}
+
             <select class="form-select" id="minimum_rating" name="minimum_rating">
-              <option value="3.0">⭐ 3.0+</option>
-              <option value="3.5">⭐ 3.5+</option>
-              <option value="4.0" selected>⭐ 4.0+</option>
-              <option value="4.5">⭐ 4.5+</option>
+              <option value="3.0" {% if minimum_rating == "3.0" %}selected{% endif %}>⭐ 3.0+</option>
+              <option value="3.5" {% if minimum_rating == "3.5" %}selected{% endif %}>⭐ 3.5+</option>
+              <option value="4.0" {% if minimum_rating == "4.0" %}selected{% endif %}>⭐ 4.0+</option>
+              <option value="4.5" {% if minimum_rating == "4.5" %}selected{% endif %}>⭐ 4.5+</option>
             </select>
           </div>
 
           <div class="form-group mb-4">
             <label class="form-label" for="interests">Travel Interest</label>
+
+            {% set selected_interest = form.get("interests", "culture") %}
+
             <select class="form-select" id="interests" name="interests">
-              <option value="culture">Culture</option>
-              <option value="museum">Museum</option>
-              <option value="nature">Nature</option>
-              <option value="shopping">Shopping</option>
-              <option value="food">Food</option>
+              <option value="culture" {% if selected_interest == "culture" %}selected{% endif %}>Culture</option>
+              <option value="museum" {% if selected_interest == "museum" %}selected{% endif %}>Museum</option>
+              <option value="nature" {% if selected_interest == "nature" %}selected{% endif %}>Nature</option>
+              <option value="shopping" {% if selected_interest == "shopping" %}selected{% endif %}>Shopping</option>
+              <option value="food" {% if selected_interest == "food" %}selected{% endif %}>Food</option>
             </select>
           </div>
 
@@ -110,7 +162,11 @@
         <div class="card">
           <div class="empty-state">
             <div class="empty-icon">🗺️</div>
-            <div class="empty-title">Ready to plan your trip</div>
+
+            <div class="empty-title">
+              Ready to plan your trip
+            </div>
+
             <div class="empty-sub">
               Fill in the form and click Generate Itinerary to see your personalised route and timetable.
             </div>
@@ -120,19 +176,18 @@
 
         <div class="trip-summary-grid">
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Total Duration</div>
-            <div class="trip-summary-value">{{ plan.total_duration | default('Estimated') }}</div>
-          </div>
-          <div class="card trip-summary-card">
-            <div class="trip-summary-label">Weather</div>
+            <div class="trip-summary-label">Travel Duration</div>
+
             <div class="trip-summary-value">
-              {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
+              {{ plan.travel_duration | default(plan.total_duration | default('Estimated')) }}
             </div>
           </div>
+
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Transport</div>
+            <div class="trip-summary-label">Weather</div>
+
             <div class="trip-summary-value">
-              {{ plan.transport_icon | default('🚗') }} {{ plan.transport_mode | default('Driving') }}
+              {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
             </div>
           </div>
         </div>
@@ -143,21 +198,21 @@
           </div>
         {% endif %}
 
-        <div class="alert alert-info">
-          ℹ️ Distances and durations are estimates based on routing API data.
-        </div>
-
         <div class="card card-p">
           <div class="card-header">
             <span class="card-title">Timetable</span>
+
             <div style="display:flex; gap:8px;">
-              <a href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
-                 class="btn btn-secondary btn-sm">🔄 Regenerate</a>
-              <form action="{{ url_for('saved_itineraries') }}" method="post" style="display:inline; margin:0;">
-                <input type="hidden" name="_action" value="save" />
-                <input type="hidden" name="plan_id" value="{{ plan.id | default(1) }}" />
-                <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
-              </form>
+              <a
+                href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
+                class="btn btn-secondary btn-sm"
+              >
+                🔄 Regenerate
+              </a>
+
+              <button type="button" class="btn btn-primary btn-sm" id="save-itinerary-btn">
+                💾 Save
+              </button>
             </div>
           </div>
 
@@ -165,8 +220,14 @@
             {% for attraction in plan["selected"] %}
               <div class="stop-item">
                 <span class="stop-handle">⠿</span>
-                <span class="stop-name">{{ loop.index }}. {{ attraction.name }}</span>
-                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">✕</a>
+
+                <span class="stop-name">
+                  {{ loop.index }}. {{ attraction.name }}
+                </span>
+
+                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">
+                  ✕
+                </a>
               </div>
             {% endfor %}
           </div>
@@ -176,6 +237,7 @@
               <div class="timetable-row">
                 <div class="timeline-col">
                   <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}"></div>
+
                   {% if not loop.last %}
                     <div class="timeline-line"></div>
                   {% endif %}
@@ -186,14 +248,27 @@
                     {{ item.arrival_time | default(item.time | default('')) }}
                     {% if item.departure_time %} – {{ item.departure_time }}{% endif %}
                   </div>
-                  <div class="timetable-name">{{ item.name | default(item.activity) }}</div>
-                  <div class="timetable-meta">
-                    <span class="badge badge-muted">{{ item.duration | default('Estimated') }}</span>
-                    <span class="badge badge-teal">🚗 {{ item.transport | default('Driving') }}</span>
+
+                  <div class="timetable-name">
+                    {{ item.name | default(item.activity) }}
                   </div>
+
+                  <div class="timetable-meta">
+                    <span class="badge badge-muted">
+                      {{ item.duration | default('Estimated') }}
+                    </span>
+                  </div>
+
                   {% if item.waze_url %}
                     <div class="timetable-actions">
-                      <a href="{{ item.waze_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-sm">Waze</a>
+                      <a
+                        href="{{ item.waze_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-accent btn-sm"
+                      >
+                        Waze
+                      </a>
                     </div>
                   {% endif %}
                 </div>
@@ -203,17 +278,17 @@
         </div>
 
         <div class="card card-p">
-                    {% if map_data %}
+          {% if map_data %}
             <div id="routeMap"></div>
-            {% else %}
+          {% else %}
             <div class="map-placeholder" style="min-height:280px;">
-                <div class="map-inner">
+              <div class="map-inner">
                 <div class="map-icon">🗺️</div>
                 <div class="map-label">Route Map</div>
                 <div class="map-sub">Map will appear after route is generated</div>
-                </div>
+              </div>
             </div>
-            {% endif %}
+          {% endif %}
         </div>
 
       {% endif %}
@@ -223,7 +298,6 @@
 </div>
 {% endblock %}
 
-
 {% block extra_scripts %}
 {% if map_data %}
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -231,53 +305,13 @@
 <script id="map-data" type="application/json">
 {{ map_data | tojson }}
 </script>
+{% endif %}
 
-<script>
-  const mapData = JSON.parse(document.getElementById("map-data").textContent);
-
-  const startPoint = mapData.start;
-  const endPoint = mapData.end;
-  const attractions = mapData.attractions || [];
-  const routeGeometry = mapData.routeGeometry;
-
-  const map = L.map("routeMap").setView(
-    [startPoint.latitude, startPoint.longitude],
-    13
-  );
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(map);
-
-  const markerGroup = L.featureGroup();
-
-  const startMarker = L.marker([startPoint.latitude, startPoint.longitude])
-    .bindPopup("Start: " + mapData.startText)
-    .addTo(map);
-
-  markerGroup.addLayer(startMarker);
-
-  attractions.forEach((place, index) => {
-    const marker = L.marker([place.latitude, place.longitude])
-      .bindPopup((index + 1) + ". " + place.name)
-      .addTo(map);
-
-    markerGroup.addLayer(marker);
-  });
-
-  const endMarker = L.marker([endPoint.latitude, endPoint.longitude])
-    .bindPopup("End: " + mapData.endText)
-    .addTo(map);
-
-  markerGroup.addLayer(endMarker);
-
-  if (routeGeometry) {
-    const routeLayer = L.geoJSON(routeGeometry).addTo(map);
-    map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
-  } else {
-    map.fitBounds(markerGroup.getBounds(), { padding: [24, 24] });
-  }
+{% if plan %}
+<script id="plan-data" type="application/json">
+{{ plan | tojson }}
 </script>
 {% endif %}
-{% endblock %}x
+
+<script type="module" src="{{ url_for('static', filename='js/smart_itinerary.js') }}"></script>
+{% endblock %}
