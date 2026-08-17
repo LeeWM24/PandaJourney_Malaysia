@@ -850,6 +850,7 @@ def build_attraction_results(
     minimum_rating: float,
     use_weather: bool,
     sort_mode: str,
+    keyword: str = "",
 ) -> tuple[list[dict[str, Any]], str, str]:
 
     destination_text = destination_text.strip()
@@ -920,6 +921,23 @@ def build_attraction_results(
 
     if not candidates:
         candidates = load_demo_attractions()
+
+    # ---------------------------------------------------------
+    # 4b. Keyword search (searches attraction name and tags)
+    # ---------------------------------------------------------
+
+    keyword = (keyword or "").strip().lower()
+
+    if keyword:
+        candidates = [
+            attraction
+            for attraction in candidates
+            if keyword in str(attraction.get("name", "")).lower()
+            or any(
+                keyword in str(tag).lower()
+                for tag in attraction.get("tags", [])
+            )
+        ]
 
     # ---------------------------------------------------------
     # 5. Recommendation engine

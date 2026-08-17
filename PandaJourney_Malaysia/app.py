@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 from services.itinerary_service import (
     make_plan,
@@ -20,6 +20,13 @@ from services.saved_itinerary_service import (
     toggle_publish_status
 )
 
+from services.favorite_service import (
+    get_favourites,
+    get_favourite_names,
+    toggle_favourite,
+    remove_favourite as remove_favourite_entry
+)
+
 
 app = Flask(
     __name__,
@@ -36,6 +43,17 @@ def get_current_user():
         "display_name": "Ahmad Faris",
         "email": "ahmad@email.com"
     })
+
+
+def mark_favourites(attractions):
+    """Flag each attraction with is_favourite so the UI can render the
+    correct star state on page load (instead of only after a toggle)."""
+    favourite_names = get_favourite_names()
+
+    for item in attractions:
+        item["is_favourite"] = item.get("name") in favourite_names
+
+    return attractions
 
 
 @app.route("/", methods=["GET", "POST"])  # Jiading
@@ -135,6 +153,8 @@ def smart_attraction():
                     )
                 )
 
+                attractions = mark_favourites(attractions)
+
                 results_label = (
                     f"Showing {len(attractions)} attractions"
                 )
@@ -166,6 +186,7 @@ def smart_attraction():
             attractions = prepare_selected_attractions(
                 load_demo_attractions()
             )
+            attractions = mark_favourites(attractions)
         except Exception as error:
             print(
                 f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}"
@@ -189,6 +210,24 @@ def smart_attraction():
         nominatim_email=os.environ.get("NOMINATIM_EMAIL", ""),
         nominatim_user_agent=os.environ.get("NOMINATIM_USER_AGENT", ""),
     )
+
+
+@app.route("/api/favourites/toggle", methods=["POST"])  # Kaixi
+def api_toggle_favourite():
+    """Adds/removes an attraction from the persisted favourites store.
+
+    smart_attraction.js already POSTs here on every star click, but the
+    route never existed, so every request 404'd and nothing was ever
+    saved. This wires it up to the existing favorite_service module.
+    """
+    payload = request.get_json(silent=True) or {}
+
+    if not payload.get("name"):
+        return jsonify({"error": "Attraction name is required."}), 400
+
+    is_favourite_now, _ = toggle_favourite(payload)
+
+    return jsonify({"is_favourite": is_favourite_now})
 
 
 # =========================
@@ -321,11 +360,17 @@ def profile():
             flash("Preferences saved.", "success")
 
         elif action == "remove_favourite":
+            name = request.form.get("name")
+
+            if name:
+                remove_favourite_entry(name)
+
             flash("Favourite attraction removed.", "info")
 
         return redirect(url_for("profile"))
 
     saved_list = get_saved_itineraries()
+    favourites_list = get_favourites()
 
     return render_template(
         "profile.html",
@@ -336,11 +381,11 @@ def profile():
             "min_rating": "",
             "preferred_area": ""
         },
-        favourite_attractions=[],
+        favourite_attractions=favourites_list,
         saved_itineraries_preview=saved_list[:3],
         shared_itineraries_preview=[],
         saved_count=len(saved_list),
-        favourite_count=0,
+        favourite_count=len(favourites_list),
         shared_count=0
     )
 

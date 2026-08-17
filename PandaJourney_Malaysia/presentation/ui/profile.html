@@ -190,7 +190,11 @@
           <div class="fav-row">
             <div class="recent-icon">⭐</div>
             <div class="fav-row-name">{{ attraction.name }}</div>
-            <button class="fav-remove" type="button">Remove</button>
+            <form method="post" style="display:inline;">
+              <input type="hidden" name="_action" value="remove_favourite">
+              <input type="hidden" name="name" value="{{ attraction.name }}">
+              <button class="fav-remove" type="submit">Remove</button>
+            </form>
           </div>
         {% endfor %}
       {% else %}

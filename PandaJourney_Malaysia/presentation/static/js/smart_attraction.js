@@ -15,7 +15,13 @@ function readJsonData(elementId, fallback) {
 
 const attractionsData = readJsonData('attraction-data', []);
 
-const favourites = new Set(getFavouriteIds());
+// Favourite state is loaded from the server (attraction.is_favourite, set
+// by app.py from the persisted favourites store), not from localStorage,
+// so favourites are shared across devices/browsers instead of being
+// stuck on whichever browser starred them.
+const favourites = new Set(
+  attractionsData.filter((item) => item.is_favourite).map((item) => item.id)
+);
 let hasSearched = false;
 let appliedFilters = { dest: '', interests: [], minRating: '0', weather: false };
 let currentAttr = null;
@@ -28,19 +34,6 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCards();
   updateFavUI();
 });
-
-function getFavouriteIds() {
-  try {
-    const saved = localStorage.getItem('smartAttractionFavourites');
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveFavouriteIds(ids) {
-  localStorage.setItem('smartAttractionFavourites', JSON.stringify(ids));
-}
 
 function initializeChipState() {
   document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
@@ -220,9 +213,18 @@ function getFilteredAttractions() {
   if (!hasSearched) return Array.isArray(attractionsData) ? [...attractionsData] : [];
   return attractionsData.filter((item) => {
     if (appliedFilters.dest) {
+      // Match the destination box against the attraction's name, tags and
+      // location/area — the demo data's "location" field is almost always
+      // just the data source label, so matching on location alone meant a
+      // typed destination (e.g. "museum", "Bukit Bintang") would rarely
+      // find anything.
       const query = appliedFilters.dest.toLowerCase();
+      const name = String(item.name || '').toLowerCase();
       const location = String(item.location || item.area || '').toLowerCase();
-      if (!location.includes(query)) return false;
+      const tagsRaw = item.interest_tags || item.tags || [];
+      const tags = (Array.isArray(tagsRaw) ? tagsRaw : [tagsRaw]).map((tag) => String(tag).toLowerCase());
+      const matches = name.includes(query) || location.includes(query) || tags.some((tag) => tag.includes(query));
+      if (!matches) return false;
     }
     if (appliedFilters.interests.length > 0) {
       // match when the attraction has any of the selected interests (OR logic)
@@ -341,19 +343,44 @@ function updateCardFavourites() {
   });
 }
 
-function toggleFavourite(id) {
-  const isSaved = favourites.has(id);
-  if (isSaved) {
-    favourites.delete(id);
-    showToast('Removed from favourites');
-  } else {
-    favourites.add(id);
-    showToast('★ Saved to favourites!');
+async function toggleFavourite(id) {
+  const attraction = attractionsData.find((item) => item.id === id);
+  if (!attraction) return;
+
+  try {
+    const response = await fetch('/api/favourites/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: attraction.name,
+        category: attraction.category || '',
+        rating: attraction.rating || 0,
+        image_url: attraction.image_url || '',
+        area: attraction.area || attraction.location || '',
+        waze_url: attraction.waze_url || '',
+      }),
+    });
+
+    if (!response.ok) throw new Error('Request failed');
+
+    const result = await response.json();
+
+    if (result.is_favourite) {
+      favourites.add(id);
+      attraction.is_favourite = true;
+      showToast('★ Saved to favourites!');
+    } else {
+      favourites.delete(id);
+      attraction.is_favourite = false;
+      showToast('Removed from favourites');
+    }
+
+    renderCards();
+    updateFavUI();
+    syncDetailFavourite(id, favourites.has(id));
+  } catch (error) {
+    showToast('Could not update favourites — please try again.');
   }
-  saveFavouriteIds([...favourites]);
-  renderCards();
-  updateFavUI();
-  syncDetailFavourite(id, favourites.has(id));
 }
 
 function updateFavUI() {
