@@ -247,7 +247,7 @@ function renderItineraries(itineraries, targetElement) {
       </div>
 
       <div class="saved-actions">
-        <a href="/saved-itinerary/${encodeURIComponent(itinerary.id)}" class="btn btn-secondary btn-sm">
+        <a href="/saved-itineraries/${encodeURIComponent(itinerary.id)}" class="btn btn-secondary btn-sm">
           View
         </a>
 

@@ -11,14 +11,19 @@ import {
   collection,
   doc,
   setDoc,
-  serverTimestamp
+  serverTimestamp,
+  query,
+  where,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 let currentUser = null;
 
-// Change this if your Firebase collection name is lowercase.
 const ITINERARY_COLLECTION = "Itinerary";
 const ITINERARY_STOP_COLLECTION = "itinerary_stops";
+const FAVOURITES_COLLECTION = "Favourites";
+
+let favouritePlaces = [];
 
 // ================================
 // Auth
@@ -32,6 +37,15 @@ onAuthStateChanged(auth, function (user) {
   if (saveButton && !user) {
     saveButton.disabled = true;
     saveButton.textContent = "Login required";
+  }
+
+  if (user) {
+    loadFavouritePlaces(user).catch(function (error) {
+      console.error("Failed to load favourite places:", error);
+      renderFavouriteError();
+    });
+  } else {
+    renderFavouriteLoginRequired();
   }
 });
 
@@ -100,7 +114,7 @@ function initRouteMap() {
     13
   );
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{y}.png".replace("{y}", "{y}"), {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
@@ -168,6 +182,279 @@ function normaliseCoordinate(value) {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : 0;
 }
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+// ================================
+// Favourite Places
+// ================================
+
+function normaliseFavouritePlace(docSnap) {
+  const data = docSnap.data();
+
+  return {
+    id: docSnap.id,
+    place_id: docSnap.id,
+    name: data.name || "Unnamed Favourite",
+    area: data.area || "",
+    category: data.category || "Favourite",
+    latitude: Number(data.latitude || 0),
+    longitude: Number(data.longitude || 0),
+    rating: Number(data.rating || 0),
+    image_url: data.image_url || "",
+    waze_url: data.waze_url || "",
+    source: "Favourites"
+  };
+}
+
+async function loadFavouritePlaces(user) {
+  const loadingElement = document.getElementById("favourites-loading");
+
+  const favouriteQuery = query(
+    collection(db, FAVOURITES_COLLECTION),
+    where("user_id", "==", user.uid)
+  );
+
+  const snapshot = await getDocs(favouriteQuery);
+
+  favouritePlaces = [];
+
+  snapshot.forEach(function (docSnap) {
+    favouritePlaces.push(normaliseFavouritePlace(docSnap));
+  });
+
+  if (loadingElement) {
+    loadingElement.style.display = "none";
+  }
+
+  renderFavouritePlaces();
+}
+
+function renderFavouriteLoginRequired() {
+  const loadingElement = document.getElementById("favourites-loading");
+
+  if (loadingElement) {
+    loadingElement.textContent = "Login is required to load favourite places.";
+  }
+}
+
+function renderFavouriteError() {
+  const loadingElement = document.getElementById("favourites-loading");
+
+  if (loadingElement) {
+    loadingElement.textContent = "Unable to load favourite places.";
+  }
+}
+
+function getMaxStopsValue() {
+  const maxStopsSelect = document.getElementById("max_stops");
+  return maxStopsSelect ? Number(maxStopsSelect.value || 1) : 1;
+}
+
+function getSelectedFavouriteIds() {
+  return Array.from(document.querySelectorAll(".js-favourite-place:checked"))
+    .map(function (checkbox) {
+      return checkbox.value;
+    });
+}
+
+function getSelectedFavouritePlaces() {
+  const selectedIds = getSelectedFavouriteIds();
+
+  return selectedIds
+    .map(function (id) {
+      return favouritePlaces.find(function (place) {
+        return place.id === id;
+      });
+    })
+    .filter(Boolean);
+}
+
+function updateSelectedFavouritesHidden() {
+  const hiddenInput = document.getElementById("selected_favourites_json");
+
+  if (!hiddenInput) return;
+
+  hiddenInput.value = JSON.stringify(getSelectedFavouritePlaces());
+}
+
+function enforceFavouriteLimit() {
+  const maxStops = getMaxStopsValue();
+  const selectedIds = getSelectedFavouriteIds();
+  const checkboxes = document.querySelectorAll(".js-favourite-place");
+  const helperText = document.getElementById("favourite-helper-text");
+
+  checkboxes.forEach(function (checkbox) {
+    checkbox.disabled = !checkbox.checked && selectedIds.length >= maxStops;
+  });
+
+  if (helperText) {
+    helperText.textContent = `Select up to ${maxStops} favourite place${maxStops > 1 ? "s" : ""}. Selected favourites will use the available stop slots.`;
+  }
+
+  updateSelectedFavouritesHidden();
+}
+
+function renderFavouritePlaces() {
+  const listElement = document.getElementById("favourites-list");
+
+  if (!listElement) return;
+
+  if (!favouritePlaces.length) {
+    listElement.innerHTML = `
+      <div class="favourite-place-meta">
+        No favourite places found. Add favourites from the Attractions page first.
+      </div>
+    `;
+    return;
+  }
+
+  listElement.innerHTML = "";
+
+  favouritePlaces.forEach(function (place) {
+    const label = document.createElement("label");
+    label.className = "favourite-place-option";
+
+    label.innerHTML = `
+      <input type="checkbox" class="js-favourite-place" value="${escapeHtml(place.id)}">
+      <span>
+        <span class="favourite-place-name">${escapeHtml(place.name)}</span>
+        <br>
+        <span class="favourite-place-meta">
+          ${escapeHtml(place.category)}${place.rating ? ` · ⭐ ${escapeHtml(place.rating)}` : ""}
+          ${place.area ? `<br>${escapeHtml(place.area)}` : ""}
+        </span>
+      </span>
+    `;
+
+    const checkbox = label.querySelector(".js-favourite-place");
+
+    checkbox.addEventListener("change", function () {
+      const maxStops = getMaxStopsValue();
+      const selectedCount = getSelectedFavouriteIds().length;
+
+      if (selectedCount > maxStops) {
+        checkbox.checked = false;
+        alert(`You can only select up to ${maxStops} favourite place${maxStops > 1 ? "s" : ""}.`);
+      }
+
+      enforceFavouriteLimit();
+    });
+
+    listElement.appendChild(label);
+  });
+
+  restoreSelectedFavouritesFromHidden();
+  enforceFavouriteLimit();
+}
+
+function restoreSelectedFavouritesFromHidden() {
+  const hiddenInput = document.getElementById("selected_favourites_json");
+
+  if (!hiddenInput || !hiddenInput.value) return;
+
+  try {
+    const selected = JSON.parse(hiddenInput.value);
+
+    const selectedIds = selected.map(function (place) {
+      return place.id || place.place_id;
+    });
+
+    selectedIds.forEach(function (id) {
+      const checkbox = document.querySelector(`.js-favourite-place[value="${CSS.escape(String(id))}"]`);
+
+      if (checkbox) {
+        checkbox.checked = true;
+      }
+    });
+  } catch (error) {
+    console.warn("Unable to restore selected favourites:", error);
+  }
+}
+
+// ================================
+// Remove Stop
+// ================================
+
+function getExcludedStopNames() {
+  const hiddenInput = document.getElementById("excluded_stop_names");
+
+  if (!hiddenInput || !hiddenInput.value) return [];
+
+  try {
+    const names = JSON.parse(hiddenInput.value);
+    return Array.isArray(names) ? names : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function setExcludedStopNames(names) {
+  const hiddenInput = document.getElementById("excluded_stop_names");
+
+  if (hiddenInput) {
+    hiddenInput.value = JSON.stringify(names);
+  }
+}
+
+function setRegenerateToken() {
+  const tokenInput = document.getElementById("regenerate_token");
+
+  if (tokenInput) {
+    tokenInput.value = String(Date.now());
+  }
+}
+
+function validateFavouriteSelection() {
+  const maxStops = getMaxStopsValue();
+  const selectedCount = getSelectedFavouriteIds().length;
+
+  if (selectedCount > maxStops) {
+    alert(`Selected favourite places cannot exceed maximum stops (${maxStops}).`);
+    return false;
+  }
+
+  updateSelectedFavouritesHidden();
+  return true;
+}
+
+function submitPlannerForm() {
+  const itineraryForm = document.getElementById("itinerary-form");
+
+  if (!itineraryForm) return;
+
+  if (!validateTripDateTime()) return;
+  if (!validateFavouriteSelection()) return;
+
+  if (itineraryForm.requestSubmit) {
+    itineraryForm.requestSubmit();
+  } else {
+    itineraryForm.submit();
+  }
+}
+
+function removeStopAndRefresh(stopName) {
+  const names = getExcludedStopNames();
+
+  if (!names.includes(stopName)) {
+    names.push(stopName);
+  }
+
+  setExcludedStopNames(names);
+  setRegenerateToken();
+  submitPlannerForm();
+}
+
+// ================================
+// Date / Time Validation
+// ================================
 
 function getTodayDateKey() {
   const now = new Date();
@@ -238,6 +525,10 @@ function validateTripDateTime() {
   return true;
 }
 
+// ================================
+// Save Itinerary
+// ================================
+
 function findTimetableItem(timetable, stopName) {
   if (!Array.isArray(timetable)) return {};
 
@@ -245,10 +536,6 @@ function findTimetableItem(timetable, stopName) {
     return item.name === stopName || item.activity === stopName;
   }) || {};
 }
-
-// ================================
-// Save Itinerary
-// ================================
 
 async function saveItinerary() {
   const saveButton = document.getElementById("save-itinerary-btn");
@@ -314,11 +601,11 @@ async function saveItinerary() {
     const totalDurationMinutes =
       availableHours * 60;
 
-
     const selectedStops =
       plan.selected ||
       mapData.attractions ||
       [];
+
     await setDoc(itineraryRef, {
       itinerary_id: itineraryId,
       user_id: currentUser.uid,
@@ -352,8 +639,6 @@ async function saveItinerary() {
       updated_at: serverTimestamp(),
       published_at: null
     });
-
-    
 
     for (let index = 0; index < selectedStops.length; index += 1) {
       const stop = selectedStops[index];
@@ -422,7 +707,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (itineraryForm) {
     itineraryForm.addEventListener("submit", function (event) {
-      if (!validateTripDateTime()) {
+      if (!validateTripDateTime() || !validateFavouriteSelection()) {
         event.preventDefault();
       }
     });
@@ -433,8 +718,27 @@ document.addEventListener("DOMContentLoaded", function () {
   const availableHoursSelect = document.getElementById("available_hours");
 
   if (availableHoursSelect) {
-    availableHoursSelect.addEventListener("change", updateMaximumStopsOptions);
+    availableHoursSelect.addEventListener("change", function () {
+      updateMaximumStopsOptions();
+      enforceFavouriteLimit();
+    });
   }
+
+  const maxStopsSelect = document.getElementById("max_stops");
+
+  if (maxStopsSelect) {
+    maxStopsSelect.addEventListener("change", enforceFavouriteLimit);
+  }
+
+  document.querySelectorAll(".js-remove-stop").forEach(function (button) {
+    button.addEventListener("click", function () {
+      const stopName = button.dataset.stopName;
+
+      if (stopName) {
+        removeStopAndRefresh(stopName);
+      }
+    });
+  });
 
   initRouteMap();
 
