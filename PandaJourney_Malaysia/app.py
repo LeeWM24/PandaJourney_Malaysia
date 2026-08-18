@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash
-from services.public_itinerary_service import (get_public_itineraries, increment_view, toggle_like, toggle_save)
+# from services.public_itinerary_service import (get_public_itineraries, increment_view, toggle_like, toggle_save)
 
 from services.itinerary_service import (
     make_plan,
@@ -180,9 +180,7 @@ def collaboration():
         notifications=[]
     )
 
-
-@app.route("/public-itinerary", methods=["GET", "POST"])#Zham feng
-@app.route("/public-itineraries", methods=["GET", "POST"])#Zham feng
+@app.route("/public-itineraries", methods=["GET", "POST"])
 def public_itinerary():
     if request.method == "POST":
         action = request.form.get("_action")
@@ -192,43 +190,39 @@ def public_itinerary():
 
         return redirect(url_for("public_itinerary"))
 
-    current_user = get_current_user()
-
-    itineraries = get_public_itineraries()
-
     return render_template(
         "public_itineraries.html",
         active_page="public",
         current_user=get_current_user(),
-        itineraries=itineraries
+        itineraries=[]
     )
 
-@app.route("/public-itineraries/<itinerary_id>/view", methods=["POST"]) #Zham feng
-def increment_itinerary_view(itinerary_id):
-    increment_view(itinerary_id)
-    return {"success": True}
+# @app.route("/public-itineraries/<itinerary_id>/view", methods=["POST"]) #Zham feng
+# def increment_itinerary_view(itinerary_id):
+#     increment_view(itinerary_id)
+#     return {"success": True}
 
-@app.route("/public-itineraries/<itinerary_id>/like", methods=["POST"]) #Zham feng
-def like_public_itinerary(itinerary_id):
-    current_user = get_current_user()
+# @app.route("/public-itineraries/<itinerary_id>/like", methods=["POST"]) #Zham feng
+# def like_public_itinerary(itinerary_id):
+#     current_user = get_current_user()
 
-    is_liked = toggle_like(itinerary_id)
+#     is_liked = toggle_like(itinerary_id)
 
-    return {
-        "success": True,
-        "liked": is_liked
-    }
+#     return {
+#         "success": True,
+#         "liked": is_liked
+#     }
 
-@app.route("/public-itineraries/<itinerary_id>/save", methods=["POST"]) #Zham feng
-def save_public_itinerary(itinerary_id):
-    current_user = get_current_user()
+# @app.route("/public-itineraries/<itinerary_id>/save", methods=["POST"]) #Zham feng
+# def save_public_itinerary(itinerary_id):
+#     current_user = get_current_user()
 
-    is_saved = toggle_save(itinerary_id)
+#     is_saved = toggle_save(itinerary_id)
 
-    return {
-        "success": True,
-        "saved": is_saved
-    }
+#     return {
+#         "success": True,
+#         "saved": is_saved
+#     }
 
 @app.route("/profile", methods=["GET", "POST"])  # Jiading
 def profile():

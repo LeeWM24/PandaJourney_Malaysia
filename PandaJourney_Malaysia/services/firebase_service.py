@@ -1,23 +1,17 @@
-import os
-import firebase_admin
-from firebase_admin import credentials
-from firebase_admin import firestore
+# import os
+# import firebase_admin
+# from firebase_admin import credentials
+# from firebase_admin import firestore
 
+# SERVICE_ACCOUNT_PATH = os.getenv("FIREBASE_SERVICE_ACCOUNT")
 
-BASE_DIR = os.path.dirname(
-    os.path.dirname(os.path.abspath(__file__))
-)
+# if not firebase_admin._apps:
+#     if not SERVICE_ACCOUNT_PATH:
+#         raise RuntimeError(
+#             "FIREBASE_SERVICE_ACCOUNT environment variable is not set."
+#         )
 
-SERVICE_ACCOUNT_PATH = os.path.join(
-    BASE_DIR,
-    "config",
-    "firebase-service-account.json"
-)
+#     cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
+#     firebase_admin.initialize_app(cred)
 
-
-if not firebase_admin._apps:
-    cred = credentials.Certificate(SERVICE_ACCOUNT_PATH)
-    firebase_admin.initialize_app(cred)
-
-
-db = firestore.client()
+# db = firestore.client()

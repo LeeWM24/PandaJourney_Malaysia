@@ -9,139 +9,13 @@
 Explore community favorites, search destinations, and save routes in a tap.
 {% endblock %}
 
-{% block extra_head %}
-  <style>
-    .page-shell { display: flex; flex-direction: column; gap: 18px; }
-    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); }
-    .search-card { padding: 20px 22px; }
-    .search-row { display: flex; gap: 12px; align-items: center; }
-    .search-input-wrap { position: relative; flex: 1; }
-    .search-input-wrap input {
-      width: 100%;
-      min-height: 48px;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 0 48px 0 16px;
-      outline: none;
-      background: #fcfffd;
-      color: var(--fg);
-    }
-    .search-input-wrap input:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,138,103,.10); }
-    .clear-btn {
-      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 32px; height: 32px; border: 0; border-radius: 50%; background: transparent; cursor: pointer; color: var(--muted-fg);
-    }
-    .clear-btn:hover { background: var(--muted-bg); }
-    .filter-btn {
-      min-height: 46px; padding: 0 16px; border: 1px solid var(--border); border-radius: 999px;
-      background: white; color: var(--fg-2); cursor: pointer; white-space: nowrap; font-weight: 700;
-    }
-    .filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-    .filter-popover {
-      position: absolute; top: 100%; right: 0; margin-top: 10px; width: min(420px, 90vw);
-      background: white; border: 1px solid var(--border); box-shadow: var(--shadow); border-radius: 18px; padding: 16px; z-index: 30; display: none;
-    }
-    .filter-popover.open { display: block; }
-    .popover-section { margin-top: 12px; }
-    .popover-title { font-weight: 800; margin-bottom: 10px; color: var(--fg-2); }
-    .chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip { padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border); background: #fbfffd; cursor: pointer; color: var(--fg-2); font-size: 13px; }
-    .chip.active { background: var(--primary-soft); color: var(--primary-dark); border-color: var(--primary); }
-    .popover-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
-    .btn { border: 0; border-radius: 999px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
-    .btn-ghost { background: var(--muted-bg); color: var(--fg-2); }
-    .btn-primary { background: var(--primary); color: white; }
-    .results-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .filter-pill { display: inline-flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); font-weight: 700; font-size: 12px; }
-    .filter-pill button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; }
-
-    .mode-tabs { display: flex; gap: 8px; align-items: center; }
-    .tab-btn { border: 1px solid var(--border); background: white; color: var(--fg-2); border-radius: 999px; padding: 8px 12px; cursor: pointer; font-weight: 700; }
-    .tab-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-
-    .popular-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-    .community-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
-    .card-content { padding: 16px; }
-    .popular-card { position: relative; overflow: hidden; }
-    .popular-card .image { height: 170px; background: linear-gradient(135deg, #cfe8df, #86b6a0); }
-    .popular-card .image img { width: 100%; height: 100%; object-fit: cover; }
-    .medal { position: absolute; top: 12px; left: 12px; display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border-radius: 50%; background: rgba(255,255,255,.86); font-size: 18px; }
-    .card-title { font-weight: 800; margin: 0 0 8px; font-size: 16px; }
-    .meta-line { font-size: 13px; color: var(--muted-fg); margin-top: 4px; }
-    .pill-stack { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .tag { padding: 5px 8px; border-radius: 999px; background: var(--muted-bg); color: var(--fg-2); font-size: 11px; font-weight: 700; }
-    .card-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 14px; }
-    .small-btn { border: 0; border-radius: 999px; padding: 8px 12px; background: var(--primary-soft); color: var(--primary-dark); cursor: pointer; font-weight: 700; }
-    .list-card { padding: 0; overflow: hidden; display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, .85fr); height: 240px; }
-    .list-card-content { padding: 16px; min-width: 0; display: flex; flex-direction: column; }
-    .list-card-content .card-actions { margin-top: auto; }
-    .list-card-image { height: 240px; min-height: 0; background: linear-gradient(135deg, #cfe8df, #86b6a0); overflow: hidden; }
-    .list-card-image img { width: 100%; height: 100%; object-fit: cover; }
-    .stop-preview { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-    .stop-chip { font-size: 11px; padding: 5px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary-dark); }
-
-    .results-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
-    .result-card { padding: 16px; }
-    .result-card .title-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .highlight { background: #fff4c7; padding: 0 2px; border-radius: 4px; }
-    .result-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .result-actions { display: flex; justify-content: space-between; margin-top: 14px; }
-    .empty-state { padding: 24px; text-align: center; color: var(--muted-fg); border: 1px dashed var(--border); border-radius: 18px; background: #fcfffd; }
-
-    .detail-overlay { position: fixed; inset: 0; background: rgba(4, 23, 16, .35); opacity: 0; pointer-events: none; transition: opacity .2s ease; z-index: 40; }
-    .detail-overlay.active { opacity: 1; pointer-events: auto; }
-    .detail-drawer {
-      position: fixed; right: 0; top: 0; bottom: 0; width: min(430px, 100%); background: white; box-shadow: -10px 0 35px rgba(0,0,0,.15);
-      transform: translateX(100%); transition: transform .25s ease; z-index: 41; display: flex; flex-direction: column;
-    }
-    .detail-drawer.active { transform: translateX(0); }
-    .detail-header img { width: 100%; height: 220px; object-fit: cover; background: #cfe8df; }
-    .detail-body { padding: 18px 18px 16px; overflow: auto; }
-    .detail-title { font-family: var(--font-display); font-size: 24px; margin: 0; }
-    .meta-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-    .stats-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
-    .stat-box { background: var(--muted-bg); border-radius: 12px; padding: 10px; text-align: center; }
-    .stat-box strong { display: block; font-size: 15px; }
-    .stat-box span { font-size: 11px; color: var(--muted-fg); text-transform: uppercase; font-weight: 700; }
-    .timeline { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
-    .timeline-item { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; }
-    .timeline-time { font-size: 12px; color: var(--muted-fg); font-weight: 700; padding-top: 2px; }
-    .timeline-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: #fcfffd; }
-    .timeline-card strong { display: block; margin-bottom: 4px; }
-    .timeline-card small { color: var(--muted-fg); }
-    .detail-footer { border-top: 1px solid var(--border); padding: 14px 18px; display: flex; gap: 10px; }
-    .detail-footer .btn { flex: 1; }
-    .btn-primary.active { background: var(--primary-dark); }
-    .toast {
-      position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%) translateY(20px);
-      background: #0f2f22; color: white; padding: 12px 18px; border-radius: 999px; box-shadow: var(--shadow);
-      opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; z-index: 50; font-weight: 700;
-    }
-    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-    @media (max-width: 1100px) {
-      .popular-grid, .results-grid, .community-list { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 840px) {
-      .search-row { flex-direction: column; align-items: stretch; }
-      .filter-popover { width: calc(100vw - 24px); right: 12px; }
-    }
-    @media (max-width: 560px) {
-      .list-card { grid-template-columns: 1fr; height: auto; }
-      .list-card-image { height: 180px; min-height: 180px; order: -1; }
-    }
-  </style>
-  {% endblock %}
-
   {% block content %}
 
   <div class="page-inner">
     <div class="page-shell">
           <section class="card search-card">
             <div class="search-row">
-              <div class="search-input-wrap" style="position: relative;">
+              <div class="search-input-wrap">
                 <input id="searchInput" type="text" placeholder="Search itinerary title, city, stop, or vibe" />
                 <button id="clearSearch" class="clear-btn" type="button" aria-label="Clear search">✕</button>
               </div>
@@ -149,32 +23,29 @@ Explore community favorites, search destinations, and save routes in a tap.
                 <button id="filterToggle" class="filter-btn" type="button">Filters ▾</button>
                 <div id="filterPopover" class="filter-popover" role="dialog" aria-label="Filter itineraries">
                   <div class="popover-section">
-                    <div class="popover-title">Destination</div>
-                    <div class="chip-row" data-group="destination">
-                      <button class="chip" type="button" data-value="Kuala Lumpur">Kuala Lumpur</button>
-                      <button class="chip" type="button" data-value="Penang">Penang</button>
-                      <button class="chip" type="button" data-value="Cameron Highlands">Cameron Highlands</button>
-                      <button class="chip" type="button" data-value="Langkawi">Langkawi</button>
-                      <button class="chip" type="button" data-value="Malacca">Malacca</button>
-                      <button class="chip" type="button" data-value="Sabah">Sabah</button>
+                    <div class="popover-title">Interest</div>
+                    <div class="chip-row" data-group="interest">
+                      <button class="chip" type="button" data-value="Culture">Culture</button>
+                      <button class="chip" type="button" data-value="Museum">Museum</button>
+                      <button class="chip" type="button" data-value="Nature">Nature</button>
+                      <button class="chip" type="button" data-value="Shopping">Shopping</button>
+                      <button class="chip" type="button" data-value="Food">Food</button>
                     </div>
                   </div>
                   <div class="popover-section">
                     <div class="popover-title">Travel duration</div>
                     <div class="chip-row" data-group="duration">
-                      <button class="chip" type="button" data-value="Half day">Half day</button>
-                      <button class="chip" type="button" data-value="1 day">1 day</button>
-                      <button class="chip" type="button" data-value="2 days">2 days</button>
-                      <button class="chip" type="button" data-value="3+ days">3+ days</button>
+                      <button class="chip" type="button" data-value="below 4 hours">Under 4 hours</button>
+                      <button class="chip" type="button" data-value="4-8 hours">4–8 hours</button>
+                      <button class="chip" type="button" data-value="8+ hours">8+ hours</button>
                     </div>
                   </div>
                   <div class="popover-section">
                     <div class="popover-title">Number of stops</div>
                     <div class="chip-row" data-group="stops">
-                      <button class="chip" type="button" data-value="3">3</button>
-                      <button class="chip" type="button" data-value="4">4</button>
-                      <button class="chip" type="button" data-value="5">5</button>
-                      <button class="chip" type="button" data-value="6">6</button>
+                      <button class="chip" type="button" data-value="1-3 stops">1–3 stops</button>
+                      <button class="chip" type="button" data-value="4-5 stops">4–5 stops</button>
+                      <button class="chip" type="button" data-value="6+ stops">6+ stops</button>
                     </div>
                   </div>
                   <div class="popover-actions">
@@ -207,18 +78,21 @@ Explore community favorites, search destinations, and save routes in a tap.
 {% endblock %}
 
 {% block extra_scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/public_itineraries.js') }}"></script>
+  
   <script id="itinerary-data" type="application/json">
     {{ itineraries | tojson }}
   </script>
 
   <script>
-    const itineraries = JSON.parse(
+    let itineraries = JSON.parse(
       document.getElementById('itinerary-data').textContent
     );
 
     const state = {
       search: '',
-      filters: { destination: [], duration: [], stops: [] },
+      filters: { interest: [], duration: [], stops: [] },
       mode: 'browse',
       sort: 'popular',
       selectedId: null,
@@ -247,6 +121,24 @@ Explore community favorites, search destinations, and save routes in a tap.
     const detailOverlay = document.getElementById('detailOverlay');
     const detailDrawer = document.getElementById('detailDrawer');
     const copyToast = document.getElementById('copyToast');
+
+    window.addEventListener("publicItinerariesLoaded", () => {
+      itineraries = window.publicItineraries || [];
+
+      state.savedIds = new Set(
+        itineraries
+          .filter((item) => item.isSaved)
+          .map((item) => item.id)
+      );
+
+      state.likedIds = new Set(
+        itineraries
+          .filter((item) => item.isLiked)
+          .map((item) => item.id)
+      );
+
+      render();
+    });
 
     function init() {
       searchInput.addEventListener('input', (event) => {
@@ -300,7 +192,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       });
 
       document.getElementById('resetFilters').addEventListener('click', () => {
-        state.filters = { destination: [], duration: [], stops: [] };
+        state.filters = { interest: [], duration: [], stops: [] };
         updateMode();
         render();
       });
@@ -317,15 +209,56 @@ Explore community favorites, search destinations, and save routes in a tap.
 
     function getFilteredItineraries() {
       return itineraries.filter((item) => {
-        const matchesSearch = !state.search || [item.title, item.description, item.destination, item.author, item.stopList.map((s) => s.place).join(' ')]
-          .join(' ')
-          .toLowerCase()
-          .includes(state.search);
 
-        const matchesDestination = state.filters.destination.length === 0 || state.filters.destination.includes(item.destination);
-        const matchesDuration = state.filters.duration.length === 0 || state.filters.duration.includes(item.duration);
-        const matchesStops = state.filters.stops.length === 0 || state.filters.stops.includes(String(item.stops));
-        return matchesSearch && matchesDestination && matchesDuration && matchesStops;
+        const matchesSearch =
+          !state.search ||
+          [
+            item.title,
+            item.destination,
+            item.author,
+            item.interest,
+            item.stopList.map((s) => s.place).join(' ')
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(state.search);
+
+        const durationMinutes = Number(item.total_duration_minutes ?? 0);
+        const matchesDuration =
+          state.filters.duration.length === 0 ||
+          state.filters.duration.some((range) => {
+            if (range === 'under4') {
+              return durationMinutes < 240;
+            } else if (range === '4to8') {
+              return durationMinutes >= 240 && durationMinutes < 480;
+            } else if (range === '8plus') {
+              return durationMinutes >= 480;
+            }else {
+              return false;
+            }
+          });
+
+        const stopCount = Number(item.stops ?? 0);
+        const matchesStops =
+          state.filters.stops.length === 0 ||
+          state.filters.stops.some((range) => {
+            if (range === '1to3') {
+              return stopCount >= 1 && stopCount <= 3;
+            } else if (range === '4to5') {
+              return stopCount >= 4 && stopCount <= 5;
+            } else if (range === '6plus') {
+              return stopCount >= 6;
+            } else {
+            return false;
+            }
+          });
+
+        const itemInterest = String(item.interest ?? '').toLowerCase();
+        const matchesInterest = state.filters.interest.length === 0 || state.filters.interest.some(
+          (interest) => itemInterest === interest.toLowerCase()
+          );
+
+        return (matchesSearch && matchesDuration && matchesStops && matchesInterest);
       });
     }
 
@@ -353,7 +286,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       syncFilterChips();
       const counts = [];
       const addFilter = (label, values) => values.forEach((value) => counts.push({ label, value }));
-      addFilter('Destination', state.filters.destination);
+      addFilter('Interest', state.filters.interest);
       addFilter('Duration', state.filters.duration);
       addFilter('Stops', state.filters.stops);
 
@@ -372,7 +305,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       activeFilters.querySelectorAll('button[data-remove]').forEach((btn) => {
         btn.addEventListener('click', () => {
           const [label, value] = btn.dataset.remove.split(':');
-          if (label === 'Destination') state.filters.destination = state.filters.destination.filter((item) => item !== value);
+          if (label === 'Interest') state.filters.interest = state.filters.interest.filter((item) => item !== value);
           if (label === 'Duration') state.filters.duration = state.filters.duration.filter((item) => item !== value);
           if (label === 'Stops') state.filters.stops = state.filters.stops.filter((item) => item !== value);
           updateMode();
@@ -432,15 +365,14 @@ Explore community favorites, search destinations, and save routes in a tap.
                 <div class="image"><img src="${item.image}" alt="${escapeHtml(item.title)}" /></div>
                 <div class="card-content">
                   <div class="card-title">${escapeHtml(item.title)}</div>
-                  <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
                   <div class="pill-stack">
-                    <span class="tag">${escapeHtml(item.author)}</span>
                     <span class="tag">${item.views.toLocaleString()} views</span>
                     <span class="tag">${item.likes} likes</span>
                   </div>
                   <div class="card-actions">
                     <button class="small-btn" type="button" data-open="${item.id}">Open</button>
-                    <span class="meta-line">${item.isYours ? 'Yours' : 'Community'}</span>
+                    <span class="tag">by ${escapeHtml(item.author)}</span>
                   </div>
                 </div>
               </article>
@@ -460,12 +392,13 @@ Explore community favorites, search destinations, and save routes in a tap.
               <article class="list-card card">
                 <div class="list-card-content">
                   <div class="card-title">${escapeHtml(item.title)}</div>
-                  <div class="meta-line">${escapeHtml(item.destination)} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
-                  <div class="stop-preview">
-                    ${item.stopList.slice(0, 3).map((stop) => `<span class="stop-chip">${escapeHtml(stop.place)}</span>`).join('')}
+                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="community-stats">
+                    <span class="tag">${item.views.toLocaleString()} views</span>
+                    <span class="tag">${item.likes} likes</span>
                   </div>
                   <div class="card-actions">
-                    <button class="small-btn" type="button" data-open="${item.id}">Open itinerary</button>
+                    <button class="small-btn" type="button" data-open="${item.id}">Open</button>
                     <span class="meta-line">${escapeHtml(item.author)}</span>
                   </div>
                 </div>
@@ -493,13 +426,13 @@ Explore community favorites, search destinations, and save routes in a tap.
               </div>
               <div class="meta-line">${highlightText(item.description, state.search)}</div>
               <div class="result-meta">
-                <span class="tag">${escapeHtml(item.destination)}</span>
+                <span class="tag">${escapeHtml(item.interest || 'General')}</span>
                 <span class="tag">${escapeHtml(item.duration)}</span>
                 <span class="tag">${item.stops} stops</span>
                 <span class="tag">${escapeHtml(item.author)}</span>
               </div>
               <div class="result-actions">
-                <button class="small-btn" type="button" data-open="${item.id}">View itinerary</button>
+                <button class="small-btn" type="button" data-open="${item.id}">Open</button>
                 <span class="meta-line">${item.views.toLocaleString()} views</span>
               </div>
             </article>
@@ -523,17 +456,19 @@ Explore community favorites, search destinations, and save routes in a tap.
       });
     }
 
-    function openDetail(id) {
+    async function openDetail(id) {
       const item = itineraries.find((entry) => entry.id === id);
       if (!item){
         return;
       } 
         
-      fetch(`/public-itineraries/${id}/view`, {
-        method: 'POST'
-      });
+      try {
+        await window.addPublicItineraryView(item.id);
+        item.views += 1;
+      } catch (error) {
+        console.error("View update failed:", error);
+      }
 
-      item.views += 1;
       state.selectedId = id;
       detailDrawer.innerHTML = `
         <div class="detail-header">
@@ -542,7 +477,7 @@ Explore community favorites, search destinations, and save routes in a tap.
         <div class="detail-body">
           <h3 class="detail-title">${escapeHtml(item.title)}</h3>
           <div class="meta-strip">
-            <span class="tag">${escapeHtml(item.destination)}</span>
+            <span class="tag">${escapeHtml(item.interest || 'General')}</span>
             <span class="tag">${escapeHtml(item.duration)}</span>
             <span class="tag">${item.stops} stops</span>
             <span class="tag">by ${escapeHtml(item.author)}</span>
@@ -577,15 +512,12 @@ Explore community favorites, search destinations, and save routes in a tap.
       detailDrawer.classList.add('active');
       detailDrawer.querySelector('[data-like]').addEventListener('click', async (event) => {
         const button = event.currentTarget;
+        const isLiked = state.likedIds.has(item.id);
 
         try {
-          const response = await fetch(`/public-itineraries/${item.id}/like`, {
-            method: 'POST'
-          });
+          const liked = await window.likePublicItinerary(item.id, isLiked);
 
-          const data = await response.json();
-
-          if (data.liked) {
+          if (liked) {
             state.likedIds.add(item.id);
             item.likes += 1;
           } else {
@@ -593,9 +525,9 @@ Explore community favorites, search destinations, and save routes in a tap.
             item.likes = Math.max(0, item.likes - 1);
           }
 
-          button.textContent = data.liked ? 'Unlike' : 'Like';
-          button.classList.toggle('active', data.liked);
-          button.setAttribute('aria-pressed', String(data.liked));
+          button.textContent = liked ? 'Unlike' : 'Like';
+          button.classList.toggle('active', liked);
+          button.setAttribute('aria-pressed', String(liked));
 
           detailDrawer.querySelector('[data-like-count]').textContent = item.likes;
 
@@ -610,32 +542,22 @@ Explore community favorites, search destinations, and save routes in a tap.
         saveButton.addEventListener('click', async (event) => {
           const button = event.currentTarget;
 
+          if (state.savedIds.has(item.id)) {
+            return;
+          }
+
           try {
-            const response = await fetch(`/public-itineraries/${item.id}/save`, {
-              method: 'POST'
-            });
+            await window.savePublicItineraryCopy(item);
 
-            const data = await response.json();
+            state.savedIds.add(item.id);
+            item.saves += 1;
 
-            if (data.saved) {
-              state.savedIds.add(item.id);
-              item.saves += 1;
-            } else {
-              state.savedIds.delete(item.id);
-              item.saves = Math.max(0, item.saves - 1);
-            }
-
-            button.textContent = data.saved ? 'Saved' : 'Save';
-            button.classList.toggle('active', data.saved);
-            button.setAttribute('aria-pressed', String(data.saved));
+            button.textContent = 'Saved';
+            button.classList.add('active');
+            button.disabled = true;
+            button.setAttribute('aria-pressed', 'true');
 
             detailDrawer.querySelector('[data-save-count]').textContent = item.saves;
-
-            showToast(
-              data.saved
-                ? 'Itinerary saved'
-                : 'Itinerary removed from saved'
-            );
 
           } catch (error) {
             console.error('Save update failed:', error);
@@ -696,4 +618,4 @@ Explore community favorites, search destinations, and save routes in a tap.
     init();
   </script>
 
-{% endblock %}
+{% endblock %} 
