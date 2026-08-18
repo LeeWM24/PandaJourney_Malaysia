@@ -59,6 +59,25 @@
     font-size: 12px;
     line-height: 1.5;
   }
+
+  .favourites-search {
+    margin-bottom: 10px;
+  }
+
+  .favourites-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+
+  .favourites-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .favourites-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
 </style>
 {% endblock %}
 
@@ -217,10 +236,17 @@
               <div class="favourite-picker-sub" id="favourite-helper-text">
                 Select favourite places to include as itinerary stops. Selected favourites will use the available stop slots.
               </div>
+              <input
+                type="text"
+                id="favourites-search"
+                class="form-input favourites-search"
+                placeholder="Search favourite place..."
+              />
+
               <div id="favourites-loading" class="favourite-place-meta">
                 Loading favourite places...
               </div>
-              <div id="favourites-list"></div>
+              <div id="favourites-list" class="favourites-scroll"></div>
             </div>
           </div>
 

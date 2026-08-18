@@ -396,3 +396,19 @@ button, input, select, textarea { font: inherit; }
   opacity: 1;
   transform: translateX(-50%) translateY(0);
 }
+
+
+.favourites-scroll {
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.favourites-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.favourites-scroll::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 999px;
+}
