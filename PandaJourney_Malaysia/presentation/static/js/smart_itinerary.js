@@ -24,6 +24,7 @@ const ITINERARY_STOP_COLLECTION = "itinerary_stops";
 const FAVOURITES_COLLECTION = "Favourites";
 
 let favouritePlaces = [];
+let favouriteSearchText = "";
 
 // ================================
 // Auth
@@ -114,7 +115,7 @@ function initRouteMap() {
     13
   );
 
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{y}.png".replace("{y}", "{y}"), {
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "&copy; OpenStreetMap contributors"
   }).addTo(map);
@@ -127,7 +128,7 @@ function initRouteMap() {
 
   markerGroup.addLayer(startMarker);
 
-  attractions.forEach((place, index) => {
+  attractions.forEach(function (place, index) {
     const marker = L.marker([place.latitude, place.longitude])
       .bindPopup((index + 1) + ". " + place.name)
       .addTo(map);
@@ -174,7 +175,26 @@ function getFormValue(id, fallback = "") {
 function extractNumberFromText(text) {
   if (!text) return 0;
 
-  const match = String(text).match(/\d+/);
+  const value = String(text).toLowerCase();
+
+  const hourMatch = value.match(/(\d+)\s*(hr|hour|hours|h)/);
+  const minuteMatch = value.match(/(\d+)\s*(min|minute|minutes|m)/);
+
+  let totalMinutes = 0;
+
+  if (hourMatch) {
+    totalMinutes += parseInt(hourMatch[1], 10) * 60;
+  }
+
+  if (minuteMatch) {
+    totalMinutes += parseInt(minuteMatch[1], 10);
+  }
+
+  if (totalMinutes > 0) {
+    return totalMinutes;
+  }
+
+  const match = value.match(/\d+/);
   return match ? parseInt(match[0], 10) : 0;
 }
 
@@ -190,6 +210,14 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function escapeCssValue(value) {
+  if (window.CSS && CSS.escape) {
+    return CSS.escape(String(value));
+  }
+
+  return String(value).replace(/"/g, '\\"');
 }
 
 // ================================
@@ -285,6 +313,22 @@ function updateSelectedFavouritesHidden() {
   hiddenInput.value = JSON.stringify(getSelectedFavouritePlaces());
 }
 
+function getFilteredFavouritePlaces() {
+  const keyword = favouriteSearchText.trim().toLowerCase();
+
+  if (!keyword) {
+    return favouritePlaces;
+  }
+
+  return favouritePlaces.filter(function (place) {
+    return (
+      String(place.name || "").toLowerCase().includes(keyword) ||
+      String(place.category || "").toLowerCase().includes(keyword) ||
+      String(place.area || "").toLowerCase().includes(keyword)
+    );
+  });
+}
+
 function enforceFavouriteLimit() {
   const maxStops = getMaxStopsValue();
   const selectedIds = getSelectedFavouriteIds();
@@ -316,9 +360,20 @@ function renderFavouritePlaces() {
     return;
   }
 
+  const filteredFavouritePlaces = getFilteredFavouritePlaces();
+
+  if (!filteredFavouritePlaces.length) {
+    listElement.innerHTML = `
+      <div class="favourite-place-meta">
+        No favourite place matched your search.
+      </div>
+    `;
+    return;
+  }
+
   listElement.innerHTML = "";
 
-  favouritePlaces.forEach(function (place) {
+  filteredFavouritePlaces.forEach(function (place) {
     const label = document.createElement("label");
     label.className = "favourite-place-option";
 
@@ -368,7 +423,9 @@ function restoreSelectedFavouritesFromHidden() {
     });
 
     selectedIds.forEach(function (id) {
-      const checkbox = document.querySelector(`.js-favourite-place[value="${CSS.escape(String(id))}"]`);
+      const checkbox = document.querySelector(
+        `.js-favourite-place[value="${escapeCssValue(id)}"]`
+      );
 
       if (checkbox) {
         checkbox.checked = true;
@@ -728,6 +785,15 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (maxStopsSelect) {
     maxStopsSelect.addEventListener("change", enforceFavouriteLimit);
+  }
+
+  const favouritesSearchInput = document.getElementById("favourites-search");
+
+  if (favouritesSearchInput) {
+    favouritesSearchInput.addEventListener("input", function () {
+      favouriteSearchText = favouritesSearchInput.value || "";
+      renderFavouritePlaces();
+    });
   }
 
   document.querySelectorAll(".js-remove-stop").forEach(function (button) {
