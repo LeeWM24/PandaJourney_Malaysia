@@ -17,7 +17,18 @@
     Loading saved itineraries...
   </div>
 
-  <div id="saved-list" class="card" style="overflow:hidden; display:none;"></div>
+  <div id="upcoming-section" style="display:none;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div>
+        <h3 style="margin:0;">Upcoming Plans</h3>
+        <div style="color:var(--text-muted); font-size:14px;">
+          Showing today's and future itinerary plans
+        </div>
+      </div>
+    </div>
+
+    <div id="saved-list" class="card" style="overflow:hidden;"></div>
+  </div>
 
   <div id="saved-empty" class="card" style="margin-top:8px; display:none;">
     <div
@@ -45,17 +56,36 @@
       </div>
 
       <div class="empty-title" style="margin-bottom:8px;">
-        No saved itinerary available
+        No upcoming itinerary available
       </div>
 
       <div class="empty-sub" style="margin-bottom:18px;">
-        Plan your first trip and save it here.
+        Plan your next trip and save it here.
       </div>
 
       <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">
         Plan a Trip
       </a>
     </div>
+  </div>
+
+  <div id="past-control" style="display:none; margin-top:18px;">
+    <button type="button" id="toggle-past-btn" class="btn btn-secondary btn-md">
+      View Past Plans
+    </button>
+  </div>
+
+  <div id="past-section" style="display:none; margin-top:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div>
+        <h3 style="margin:0;">Past Plans</h3>
+        <div style="color:var(--text-muted); font-size:14px;">
+          Itinerary plans before today
+        </div>
+      </div>
+    </div>
+
+    <div id="past-list" class="card" style="overflow:hidden;"></div>
   </div>
 
 </div>

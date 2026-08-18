@@ -15,6 +15,50 @@
     border: 1px solid var(--border);
     overflow: hidden;
   }
+
+  .favourite-picker {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: var(--surface);
+  }
+
+  .favourite-picker-title {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .favourite-picker-sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .favourite-place-option {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .favourite-place-option:first-of-type {
+    border-top: none;
+  }
+
+  .favourite-place-name {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .favourite-place-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
 </style>
 {% endblock %}
 
@@ -35,6 +79,24 @@
 
         <form action="{{ url_for('smart_itinerary') }}" method="post" id="itinerary-form">
           <input type="hidden" name="_action" value="generate" />
+          <input
+            type="hidden"
+            name="selected_favourites_json"
+            id="selected_favourites_json"
+            value="{{ form.selected_favourites_json | default('[]') | e }}"
+          />
+          <input
+            type="hidden"
+            name="excluded_stop_names"
+            id="excluded_stop_names"
+            value="{{ form.excluded_stop_names | default('[]') | e }}"
+          />
+          <input
+            type="hidden"
+            name="regenerate_token"
+            id="regenerate_token"
+            value=""
+          />
 
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
@@ -149,6 +211,19 @@
             </select>
           </div>
 
+          <div class="form-group mb-4" id="favourite-section">
+            <div class="favourite-picker">
+              <div class="favourite-picker-title">Favourite Places</div>
+              <div class="favourite-picker-sub" id="favourite-helper-text">
+                Select favourite places to include as itinerary stops. Selected favourites will use the available stop slots.
+              </div>
+              <div id="favourites-loading" class="favourite-place-meta">
+                Loading favourite places...
+              </div>
+              <div id="favourites-list"></div>
+            </div>
+          </div>
+
           <button type="submit" class="btn btn-primary btn-lg btn-full">
             ⚡ Generate Itinerary
           </button>
@@ -203,13 +278,6 @@
             <span class="card-title">Timetable</span>
 
             <div style="display:flex; gap:8px;">
-              <a
-                href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
-                class="btn btn-secondary btn-sm"
-              >
-                🔄 Regenerate
-              </a>
-
               <button type="button" class="btn btn-primary btn-sm" id="save-itinerary-btn">
                 💾 Save
               </button>
@@ -225,9 +293,14 @@
                   {{ loop.index }}. {{ attraction.name }}
                 </span>
 
-                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">
+                <button
+                  type="button"
+                  class="stop-remove js-remove-stop"
+                  data-stop-name="{{ attraction.name | e }}"
+                  aria-label="Remove {{ attraction.name | e }}"
+                >
                   ✕
-                </a>
+                </button>
               </div>
             {% endfor %}
           </div>

@@ -294,6 +294,109 @@ def filter_route_relevant_candidates(
     return filtered
 
 
+def normalise_name_key(name: str) -> str:
+    return str(name or "").strip().lower()
+
+
+def parse_json_list(value: Any) -> list[Any]:
+    if not value:
+        return []
+
+    if isinstance(value, list):
+        return value
+
+    try:
+        parsed = json.loads(str(value))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+
+    return parsed if isinstance(parsed, list) else []
+
+
+def parse_excluded_stop_names(form: dict[str, Any]) -> set[str]:
+    raw_names = form.get("excluded_stop_names", "[]")
+    names = parse_json_list(raw_names)
+
+    return {
+        normalise_name_key(name)
+        for name in names
+        if str(name or "").strip()
+    }
+
+
+def parse_selected_favourites(form: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_favourites = form.get("selected_favourites_json", "[]")
+    favourites = parse_json_list(raw_favourites)
+    selected: list[dict[str, Any]] = []
+
+    for index, favourite in enumerate(favourites, start=1):
+        if not isinstance(favourite, dict):
+            continue
+
+        name = str(favourite.get("name", "")).strip()
+        latitude = favourite.get("latitude")
+        longitude = favourite.get("longitude")
+
+        if not name or latitude is None or longitude is None:
+            continue
+
+        category = str(favourite.get("category") or "Favourite").strip()
+        category_tag = category.lower() if category else "favourite"
+
+        try:
+            rating = float(favourite.get("rating") or 0)
+        except (TypeError, ValueError):
+            rating = 0
+
+        selected.append(
+            {
+                "id": favourite.get("id") or favourite.get("place_id") or f"fav_{index}",
+                "place_id": favourite.get("place_id") or favourite.get("id") or f"fav_{index}",
+                "name": name,
+                "latitude": float(latitude),
+                "longitude": float(longitude),
+                "tags": ["favourite", category_tag],
+                "category": category,
+                "estimated_minutes": 90,
+                "rating": rating,
+                "source": "User Favourite",
+                "waze_url": favourite.get("waze_url", ""),
+                "is_favourite": True,
+            }
+        )
+
+    return selected
+
+
+def remove_excluded_candidates(
+    candidates: list[dict[str, Any]],
+    excluded_names: set[str]
+) -> list[dict[str, Any]]:
+    if not excluded_names:
+        return candidates
+
+    return [
+        candidate
+        for candidate in candidates
+        if normalise_name_key(candidate.get("name", "")) not in excluded_names
+    ]
+
+
+def rotate_candidates_for_regenerate(
+    candidates: list[dict[str, Any]],
+    regenerate_token: str
+) -> list[dict[str, Any]]:
+    if not regenerate_token or len(candidates) <= 1:
+        return candidates
+
+    offset = sum(ord(char) for char in str(regenerate_token)) % len(candidates)
+
+    if offset == 0:
+        offset = 1
+
+    return candidates[offset:] + candidates[:offset]
+
+
 def _request_json(
     url: str,
     *,
@@ -1153,6 +1256,16 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     requested_max_stops = int(form.get("max_stops", stop_limit))
     max_stops = max(1, min(requested_max_stops, stop_limit))
 
+    excluded_stop_names = parse_excluded_stop_names(form)
+    selected_favourites = parse_selected_favourites(form)
+    selected_favourites = remove_excluded_candidates(
+        selected_favourites,
+        excluded_stop_names
+    )
+    selected_favourites = selected_favourites[:max_stops]
+    remaining_stop_slots = max(0, max_stops - len(selected_favourites))
+    regenerate_token = str(form.get("regenerate_token", "")).strip()
+
     transport_mode = "driving"
     transport_option = get_transport_option(transport_mode)
 
@@ -1207,25 +1320,44 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             if not is_bad_candidate_name(candidate.get("name", ""))
         ]
 
-    selected = choose_attractions(
+    favourite_names = {
+        normalise_name_key(favourite.get("name", ""))
+        for favourite in selected_favourites
+    }
+
+    candidates = remove_excluded_candidates(
         candidates,
-        interests,
-        weather,
-        available_hours * 60,
-        minimum_rating,
-        max_stops
+        excluded_stop_names.union(favourite_names)
     )
 
-    if not selected:
-        selected = choose_attractions(
+    candidates = rotate_candidates_for_regenerate(
+        candidates,
+        regenerate_token
+    )
+
+    recommended_selected: list[dict[str, Any]] = []
+
+    if remaining_stop_slots > 0:
+        recommended_selected = choose_attractions(
+            candidates,
+            interests,
+            weather,
+            available_hours * 60,
+            minimum_rating,
+            remaining_stop_slots
+        )
+
+    if not recommended_selected and remaining_stop_slots > 0:
+        recommended_selected = choose_attractions(
             candidates,
             interests,
             weather,
             available_hours * 60,
             0,
-            max_stops
+            remaining_stop_slots
         )
 
+    selected = selected_favourites + recommended_selected
     selected = prepare_selected_attractions(selected)
 
     route_points = [start] + selected + [end]
@@ -1304,6 +1436,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "actual_stop_count": len(selected),
         "stop_limit_message": "",
         "interests": interests,
+        "selected_favourites_count": len(selected_favourites),
+        "excluded_stop_names": list(excluded_stop_names),
 
         "weather": weather,
         "weather_icon": "🌧️" if is_rainy(weather) else "☀️",

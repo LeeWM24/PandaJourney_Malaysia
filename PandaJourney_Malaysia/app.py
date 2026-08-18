@@ -272,6 +272,15 @@ def saved_itineraries():
         itineraries=get_saved_itineraries()
     )
 
+@app.route("/saved-itineraries/<itinerary_id>")
+def saved_itinerary_detail(itinerary_id):
+    return render_template(
+        "saved_itinerary_detail.html",
+        active_page="saved",
+        current_user=get_current_user(),
+        itinerary_id=itinerary_id
+    )
+
 
 @app.route("/collaboration", methods=["GET", "POST"])  # Manas
 def collaboration():
