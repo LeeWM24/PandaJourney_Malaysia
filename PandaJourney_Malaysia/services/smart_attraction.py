@@ -1,30 +1,24 @@
 from __future__ import annotations
 
-import json
 import math
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
-from datetime import datetime
-from typing import Any
 
 import requests
 from dotenv import load_dotenv
 
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 SERPAPI_URL = "https://serpapi.com/search.json"
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 load_dotenv(BASE_DIR / ".env")
-
-DEMO_ATTRACTIONS_FILE = BASE_DIR / "data" / "demo_attractions.json"
 
 USER_AGENT = os.getenv(
     "NOMINATIM_USER_AGENT",
@@ -42,41 +36,41 @@ print(
 GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
 
 
-def get_default_itinerary_form() -> dict[str, Any]:
-    return {
-        "start": "",
-        "end": "",
-        "trip_date": "",
-        "start_time": "09:00",
-        "available_hours": 6,
-        "interests": "culture",
-        "minimum_rating": "4.0",
-        "selected_attractions": []
+BAD_CANDIDATE_KEYWORDS = [
+    "tour",
+    "tours",
+    "private tour",
+    "sightseeing",
+    "sightseeing tour",
+    "day trip",
+    "package",
+    "experience",
+    "walking tour",
+    "guided tour",
+]
+
+
+def is_bad_candidate_name(name: str) -> bool:
+    """Remove tour/package type result that is not suitable as a real attraction."""
+    text = str(name or "").lower()
+
+    return any(keyword in text for keyword in BAD_CANDIDATE_KEYWORDS)
+
+
+def get_serpapi_search_keyword(interests: list[str]) -> str:
+    """Return a more suitable Google Maps search keyword based on interest."""
+    interest = interests[0].lower() if interests else "attraction"
+
+    keyword_map = {
+        "food": "restaurants cafe food court",
+        "shopping": "shopping mall",
+        "culture": "cultural attractions",
+        "museum": "museum",
+        "nature": "parks nature attractions",
     }
 
+    return keyword_map.get(interest, f"{interest} attractions")
 
-DEMO_LOCATIONS = {
-    "kl sentral": {
-        "display_name": "KL Sentral, Kuala Lumpur",
-        "latitude": 3.1349,
-        "longitude": 101.6860,
-    },
-    "petronas twin towers": {
-        "display_name": "Petronas Twin Towers, Kuala Lumpur",
-        "latitude": 3.1579,
-        "longitude": 101.7123,
-    },
-    "bukit bintang": {
-        "display_name": "Bukit Bintang, Kuala Lumpur",
-        "latitude": 3.1467,
-        "longitude": 101.7100,
-    },
-    "merdeka square": {
-        "display_name": "Merdeka Square, Kuala Lumpur",
-        "latitude": 3.1479,
-        "longitude": 101.6953,
-    },
-}
 
 WEATHER_LABELS = {
     0: "Clear sky",
@@ -241,17 +235,6 @@ def geocode_place(query: str) -> dict[str, Any] | None:
         GEOCODE_CACHE[key] = serpapi_result
         return serpapi_result
 
-    if key in DEMO_LOCATIONS:
-        result = {
-            **DEMO_LOCATIONS[key],
-            "source": "Local demo fallback",
-        }
-
-        GEOCODE_CACHE[key] = result
-
-        print(f"[GEOCODE DEMO] {query}", flush=True)
-        return result
-
     GEOCODE_CACHE[key] = None
     return None
 
@@ -297,51 +280,6 @@ def get_weather(latitude: float, longitude: float, trip_date: str) -> dict[str, 
         return None
 
 
-def load_demo_attractions() -> list[dict[str, Any]]:
-    if DEMO_ATTRACTIONS_FILE.exists():
-        with DEMO_ATTRACTIONS_FILE.open("r", encoding="utf-8") as file:
-            return json.load(file)
-
-    return [
-        {
-            "name": "Batu Caves",
-            "latitude": 3.2379,
-            "longitude": 101.6840,
-            "tags": ["culture", "heritage", "outdoor"],
-            "estimated_minutes": 90,
-            "rating": 4.7,
-            "source": "Local fallback data",
-        },
-        {
-            "name": "Petronas Twin Towers",
-            "latitude": 3.1579,
-            "longitude": 101.7123,
-            "tags": ["landmark", "culture", "indoor"],
-            "estimated_minutes": 90,
-            "rating": 4.8,
-            "source": "Local fallback data",
-        },
-        {
-            "name": "Central Market Kuala Lumpur",
-            "latitude": 3.1459,
-            "longitude": 101.6955,
-            "tags": ["shopping", "culture", "indoor"],
-            "estimated_minutes": 75,
-            "rating": 4.4,
-            "source": "Local fallback data",
-        },
-        {
-            "name": "Perdana Botanical Garden",
-            "latitude": 3.1436,
-            "longitude": 101.6841,
-            "tags": ["nature", "outdoor"],
-            "estimated_minutes": 90,
-            "rating": 4.6,
-            "source": "Local fallback data",
-        },
-    ]
-
-
 def search_attractions_serpapi(
     latitude: float,
     longitude: float,
@@ -351,9 +289,16 @@ def search_attractions_serpapi(
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
+        print("[SERPAPI SEARCH] No SERPAPI_KEY configured.", flush=True)
         return []
 
-    keyword = interests[0] if interests else "tourist attractions"
+    keyword = get_serpapi_search_keyword(interests)
+
+    print(
+        f"[SERPAPI SEARCH] query={keyword!r} near ({latitude}, {longitude}) "
+        f"min_rating={minimum_rating}",
+        flush=True,
+    )
 
     try:
         data = _request_json(
@@ -361,7 +306,7 @@ def search_attractions_serpapi(
             params={
                 "engine": "google_maps",
                 "type": "search",
-                "q": f"{keyword} tourist attractions",
+                "q": keyword,
                 "ll": f"@{latitude},{longitude},13z",
                 "min_rating": str(minimum_rating),
                 "hl": "en",
@@ -370,12 +315,20 @@ def search_attractions_serpapi(
             },
         )
 
-    except requests.RequestException:
+    except requests.RequestException as error:
+        print(f"[SERPAPI SEARCH ERROR] {error}", flush=True)
         return []
+
+    if data.get("error"):
+        print(f"[SERPAPI SEARCH ERROR] API responded: {data['error']}", flush=True)
+        return []
+
+    raw_results = data.get("local_results", [])
+    print(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps", flush=True)
 
     candidates = []
 
-    for item in data.get("local_results", [])[:10]:
+    for item in data.get("local_results", [])[:20]:
         coordinates = item.get("gps_coordinates") or {}
 
         if "latitude" not in coordinates or "longitude" not in coordinates:
@@ -383,10 +336,29 @@ def search_attractions_serpapi(
 
         title = item.get("title", "Unnamed attraction")
         item_type = str(item.get("type", "")).lower()
-        description = str(item.get("description", "")).lower()
+        raw_description = str(item.get("description", ""))
+        description = raw_description.lower()
+
+        if is_bad_candidate_name(title):
+            continue
+
         text = f"{title} {item_type} {description}".lower()
 
-        tags = [interest for interest in interests if interest.lower() in text]
+        tags = [
+            interest
+            for interest in interests
+            if interest.lower() in text
+        ]
+
+        if interests and not tags:
+            tags = [interests[0]]
+
+        # data from SerpApi
+        thumbnail = item.get("thumbnail") or ""
+        address = item.get("address") or ""
+        hours = item.get("hours") or ""
+        price = item.get("price") or ""
+        place_id = item.get("place_id") or item.get("data_id") or ""
 
         candidates.append(
             {
@@ -396,95 +368,23 @@ def search_attractions_serpapi(
                 "tags": tags or [keyword],
                 "estimated_minutes": 90,
                 "rating": float(item.get("rating") or 0),
-                "source": "SerpApi",
+                "source": "SerpApi (Google Maps)",
+                "place_id": place_id,
+                "category": item.get("type", "") or "",
+                "location": address,
+                "area": address,
+                "description": raw_description,
+                "hours": hours,
+                "entry_fee": price,
+                "photo_urls": [thumbnail] if thumbnail else [],
+                "image_url": thumbnail,
+                "maps_url": f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else "",
             }
         )
 
+    print(f"[SERPAPI SEARCH] {len(candidates)} candidate(s) kept after filtering", flush=True)
+
     return candidates
-
-
-def get_route_with_stops(points: list[dict[str, Any]]) -> dict[str, Any] | None:
-    if len(points) < 2:
-        return None
-
-    coordinates = ";".join(
-        f"{point['longitude']},{point['latitude']}"
-        for point in points
-    )
-
-    try:
-        data = _request_json(
-            f"{OSRM_URL}{coordinates}",
-            params={
-                "overview": "full",
-                "geometries": "geojson",
-                "steps": "false"
-            },
-        )
-
-        routes = data.get("routes", [])
-
-        if not routes:
-            return None
-
-        route = routes[0]
-
-        return {
-            "distance_m": route.get("distance", 0),
-            "duration_s": route.get("duration", 0),
-            "geometry": route.get("geometry", {}),
-            "legs": route.get("legs", []),
-        }
-
-    except requests.RequestException:
-        return None
-
-
-def get_serpapi_direction(
-    start: str,
-    end: str,
-    travel_mode: str,
-    depart_at: datetime
-) -> dict[str, Any] | None:
-    api_key = os.getenv("SERPAPI_KEY", "").strip()
-
-    if not api_key:
-        return None
-
-    mode_value = "0" if travel_mode == "driving" else "3"
-
-    params: dict[str, Any] = {
-        "engine": "google_maps_directions",
-        "start_addr": start,
-        "end_addr": end,
-        "travel_mode": mode_value,
-        "distance_unit": "0",
-        "hl": "en",
-        "gl": "my",
-        "api_key": api_key,
-        "time": f"depart_at:{int(depart_at.timestamp())}",
-    }
-
-    if travel_mode == "transit":
-        params["prefer"] = "bus"
-
-    try:
-        data = _request_json(SERPAPI_URL, params=params)
-        direction = next(iter(data.get("directions", [])), None)
-
-        if not direction:
-            return None
-
-        return {
-            "mode": direction.get("travel_mode", travel_mode.title()),
-            "duration_seconds": direction.get("duration"),
-            "duration": direction.get("formatted_duration", "Not available"),
-            "distance": direction.get("formatted_distance", "Not available"),
-            "extensions": direction.get("extensions", []),
-        }
-
-    except requests.RequestException:
-        return None
 
 
 def is_rainy(weather: dict[str, Any] | None) -> bool:
@@ -531,46 +431,6 @@ def score_attraction(
     return score, reasons
 
 
-def choose_attractions(
-    candidates: list[dict[str, Any]],
-    interests: list[str],
-    weather: dict[str, Any] | None,
-    available_minutes: int,
-    minimum_rating: float
-) -> list[dict[str, Any]]:
-    ranked: list[dict[str, Any]] = []
-
-    for attraction in candidates:
-        rating = float(attraction.get("rating") or 0)
-
-        if rating and rating < minimum_rating:
-            continue
-
-        score, reasons = score_attraction(attraction, interests, weather)
-
-        item = dict(attraction)
-        item["score"] = score
-        item["reasons"] = reasons
-
-        ranked.append(item)
-
-    ranked.sort(key=lambda item: item["score"], reverse=True)
-
-    visit_budget = max(60, available_minutes - 90)
-
-    chosen: list[dict[str, Any]] = []
-    spent = 0
-
-    for attraction in ranked:
-        visit_minutes = int(attraction.get("estimated_minutes", 90))
-
-        if spent + visit_minutes <= visit_budget and len(chosen) < 3:
-            chosen.append(attraction)
-            spent += visit_minutes
-
-    return chosen
-
-
 def recommend_attractions(
     candidates: list[dict[str, Any]],
     interests: list[str],
@@ -608,16 +468,6 @@ def recommend_attractions(
 
     ranked.sort(key=lambda item: item["score"], reverse=True)
     return ranked[:max_results]
-
-
-def human_duration(seconds: float | int | None) -> str:
-    if seconds is None:
-        return "Not available"
-
-    minutes = max(1, round(float(seconds) / 60))
-    hours, remainder = divmod(minutes, 60)
-
-    return f"{hours} hr {remainder} min" if hours else f"{remainder} min"
 
 
 def build_waze_url(place: dict[str, Any]) -> str:
@@ -763,87 +613,6 @@ def prepare_selected_attractions(
     return prepared
 
 
-def build_timetable(
-    start_datetime: datetime,
-    start_name: str,
-    selected: list[dict[str, Any]],
-    end_name: str,
-    route: dict[str, Any] | None
-) -> list[dict[str, str]]:
-    timetable: list[dict[str, str]] = []
-    current_time = start_datetime
-    legs = route.get("legs", []) if route else []
-
-    timetable.append(
-        {
-            "time": current_time.strftime("%H:%M"),
-            "arrival_time": current_time.strftime("%I:%M %p"),
-            "departure_time": "",
-            "name": f"Start at {start_name}",
-            "activity": f"Start at {start_name}",
-            "duration": "Start point",
-            "transport": "Driving",
-            "waze_url": "",
-        }
-    )
-
-    for index, attraction in enumerate(selected):
-        leg_seconds = legs[index].get("duration") if index < len(legs) else 0
-        current_time += timedelta(seconds=float(leg_seconds))
-
-        arrival_time = current_time
-        visit_minutes = int(attraction.get("estimated_minutes", 90))
-
-        current_time += timedelta(minutes=visit_minutes)
-        departure_time = current_time
-
-        timetable.append(
-            {
-                "time": arrival_time.strftime("%H:%M"),
-                "arrival_time": arrival_time.strftime("%I:%M %p"),
-                "departure_time": departure_time.strftime("%I:%M %p"),
-                "name": attraction["name"],
-                "activity": attraction["name"],
-                "duration": f"{visit_minutes} mins",
-                "transport": f"Driving · {human_duration(leg_seconds)}",
-                "waze_url": attraction.get("waze_url", ""),
-            }
-        )
-
-    final_leg_index = len(selected)
-
-    if final_leg_index < len(legs):
-        final_leg_seconds = legs[final_leg_index].get("duration")
-    else:
-        final_leg_seconds = 0
-
-    current_time += timedelta(seconds=float(final_leg_seconds or 0))
-
-    timetable.append(
-        {
-            "time": current_time.strftime("%H:%M"),
-            "arrival_time": current_time.strftime("%I:%M %p"),
-            "departure_time": "",
-            "name": f"Arrive at {end_name}",
-            "activity": f"Arrive at {end_name}",
-            "duration": "End point",
-            "transport": f"Driving · {human_duration(final_leg_seconds)}",
-            "waze_url": "",
-        }
-    )
-
-    return timetable
-
-
-
-
-def format_date_for_display(date_text: str) -> str:
-    try:
-        dt = datetime.strptime(date_text, "%Y-%m-%d")
-        return dt.strftime("%b %d, %Y")
-    except ValueError:
-        return date_text
-
 def build_attraction_results(
     destination_text: str,
     interest_list: list[str],
@@ -860,9 +629,7 @@ def build_attraction_results(
             "Destination is required."
         )
 
-    # ---------------------------------------------------------
     # 1. Geocode destination
-    # ---------------------------------------------------------
 
     destination_place = geocode_place(
         destination_text
@@ -873,9 +640,7 @@ def build_attraction_results(
             f"Could not find the destination: {destination_text}"
         )
 
-    # ---------------------------------------------------------
     # 2. Weather
-    # ---------------------------------------------------------
 
     weather = None
 
@@ -902,9 +667,7 @@ def build_attraction_results(
             f"{destination_place['display_name']}."
         )
 
-    # ---------------------------------------------------------
     # 3. Search live attractions
-    # ---------------------------------------------------------
 
     candidates = search_attractions_serpapi(
         destination_place["latitude"],
@@ -915,16 +678,7 @@ def build_attraction_results(
 
     live_data = bool(candidates)
 
-    # ---------------------------------------------------------
-    # 4. Fallback only when live search has no result
-    # ---------------------------------------------------------
-
-    if not candidates:
-        candidates = load_demo_attractions()
-
-    # ---------------------------------------------------------
-    # 4b. Keyword search (searches attraction name and tags)
-    # ---------------------------------------------------------
+    # 4. Keyword search (searches attraction name and tags)
 
     keyword = (keyword or "").strip().lower()
 
@@ -939,16 +693,14 @@ def build_attraction_results(
             )
         ]
 
-    # ---------------------------------------------------------
     # 5. Recommendation engine
-    # ---------------------------------------------------------
 
     selected = recommend_attractions(
         candidates,
         interest_list,
         weather,
         minimum_rating,
-        max_results=8,
+        max_results=20,
         filter_partly_cloudy=(
             use_weather
             and weather is not None
@@ -959,9 +711,7 @@ def build_attraction_results(
         ),
     )
 
-    # ---------------------------------------------------------
     # 6. Prepare final attraction data
-    # ---------------------------------------------------------
 
     selected = prepare_selected_attractions(
         selected,
@@ -969,10 +719,8 @@ def build_attraction_results(
         reference_lon=destination_place["longitude"],
     )
 
-    # ---------------------------------------------------------
     # 7. Sort
-    # ---------------------------------------------------------
-
+    
     if sort_mode == "rating":
 
         selected.sort(
@@ -1001,9 +749,7 @@ def build_attraction_results(
             reverse=True,
         )
 
-    # ---------------------------------------------------------
     # 8. Data source note
-    # ---------------------------------------------------------
 
     if live_data:
         source_note = (
@@ -1012,8 +758,9 @@ def build_attraction_results(
         )
     else:
         source_note = (
-            "Live attraction search returned no results. "
-            "Development fallback data is being displayed."
+            "No live attractions found via SerpAPI for this "
+            "destination/filter combination. Try a different "
+            "destination, interest, or a lower minimum rating."
         )
 
     return (

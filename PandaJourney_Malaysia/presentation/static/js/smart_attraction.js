@@ -1,7 +1,24 @@
-// ================================
-// Smart Attraction Recommendation
-// (Kaixi)
-// ================================
+import {
+  auth,
+  db
+} from "./firebase-config.js";
+
+import {
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  addDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+const FAVOURITES_COLLECTION = "Favourites";
 
 function readJsonData(elementId, fallback) {
   const el = document.getElementById(elementId);
@@ -15,17 +32,32 @@ function readJsonData(elementId, fallback) {
 
 const attractionsData = readJsonData('attraction-data', []);
 
-// Favourite state is loaded from the server (attraction.is_favourite, set
-// by app.py from the persisted favourites store), not from localStorage,
-// so favourites are shared across devices/browsers instead of being
-// stuck on whichever browser starred them.
-const favourites = new Set(
-  attractionsData.filter((item) => item.is_favourite).map((item) => item.id)
-);
-let hasSearched = false;
-let appliedFilters = { dest: '', interests: [], minRating: '0', weather: false };
+const searchState = readJsonData('search-state', {
+  searched: false,
+  filters: { destination: '', interests: [], min_rating: '0', weather_aware: false },
+});
+
+const favourites = new Set();
+
+const favouriteDocIds = new Map();
+let currentUser = null;
+let hasSearched = !!searchState.searched;
+let appliedFilters = {
+  dest: searchState.filters.destination || '',
+  interests: searchState.filters.interests || [],
+  minRating: searchState.filters.min_rating || '0',
+  weather: !!searchState.filters.weather_aware,
+};
 let currentAttr = null;
 let toastTimer = null;
+
+// Pagination: render only PAGE_SIZE cards at a time and reveal more via the "Show more" button
+const PAGE_SIZE = 5;
+let visibleCount = PAGE_SIZE;
+
+function resetPagination() {
+  visibleCount = PAGE_SIZE;
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   initializeChipState();
@@ -33,7 +65,53 @@ document.addEventListener('DOMContentLoaded', () => {
   bindPanelEvents();
   renderCards();
   updateFavUI();
+
+  const clearBtn = document.getElementById('clear-filters');
+  if (clearBtn && hasSearched) {
+    clearBtn.removeAttribute('hidden');
+    clearBtn.style.display = '';
+  }
 });
+
+onAuthStateChanged(auth, (user) => {
+  currentUser = user;
+
+  if (user) {
+    loadFavourites(user);
+  } else {
+    favourites.clear();
+    favouriteDocIds.clear();
+    renderCards();
+    updateFavUI();
+  }
+});
+
+async function loadFavourites(user) {
+  try {
+    const favouritesQuery = query(
+      collection(db, FAVOURITES_COLLECTION),
+      where('user_id', '==', user.uid)
+    );
+
+    const snapshot = await getDocs(favouritesQuery);
+
+    favourites.clear();
+    favouriteDocIds.clear();
+
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      favouriteDocIds.set(data.name, docSnap.id);
+
+      const match = attractionsData.find((item) => item.name === data.name);
+      if (match) favourites.add(match.id);
+    });
+
+    renderCards();
+    updateFavUI();
+  } catch (error) {
+    console.error('Failed to load favourites:', error);
+  }
+}
 
 function initializeChipState() {
   document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
@@ -55,10 +133,7 @@ function initializeChipState() {
 }
 
 // Leaflet (OpenStreetMap) integration
-// Leaflet is loaded eagerly via a plain <script> tag in smart_attraction.html
-// (same pattern as the itinerary planner's routeMap), so `L` is already
-// available globally by the time this file runs — no dynamic script
-// injection needed.
+
 let _map = null;
 let _marker = null;
 
@@ -91,8 +166,7 @@ function updateMapForAttraction(attraction) {
     return;
   }
 
-  // Delay to ensure the detail panel is fully visible before initializing
-  // the map, since Leaflet needs a laid-out container to size itself.
+  // Delay to ensure the detail panel is fully visible before initializing the map
   setTimeout(() => {
     const map = createMap();
     if (!map) return;
@@ -130,17 +204,18 @@ function updateMapForAttraction(attraction) {
 }
 
 function bindFilterEvents() {
-  document.getElementById('filter-form').addEventListener('submit', (event) => {
-    event.preventDefault();
-    handleSearch();
-  });
 
-  document.getElementById('sort-select').addEventListener('change', renderCards);
-  document.getElementById('filter-rating').addEventListener('change', () => { if (hasSearched) renderCards(); });
-  document.getElementById('destination').addEventListener('input', () => { if (hasSearched) renderCards(); });
-  document.getElementById('weather_aware').addEventListener('change', () => { if (hasSearched) renderCards(); });
+  document.getElementById('sort-select').addEventListener('change', () => { resetPagination(); renderCards(); });
   const clearFiltersButton = document.getElementById('clear-filters');
   if (clearFiltersButton) clearFiltersButton.addEventListener('click', clearFilters);
+
+  const showMoreButton = document.getElementById('show-more-btn');
+  if (showMoreButton) {
+    showMoreButton.addEventListener('click', () => {
+      visibleCount += PAGE_SIZE;
+      renderCards();
+    });
+  }
 }
 
 function bindPanelEvents() {
@@ -167,43 +242,8 @@ function getMapsUrl(attraction, zoom = 17) {
   return `https://www.openstreetmap.org/search?query=${encodeURIComponent(query)}`;
 }
 
-function handleSearch() {
-  appliedFilters = {
-    dest: document.getElementById('destination').value.trim(),
-    interests: getSelectedInterests(),
-    minRating: document.getElementById('filter-rating').value || '0',
-    weather: document.getElementById('weather_aware').checked,
-  };
-  hasSearched = true;
-  const clearBtn = document.getElementById('clear-filters');
-  if (clearBtn) {
-    clearBtn.removeAttribute('hidden');
-    clearBtn.style.display = '';
-  }
-  renderCards();
-}
-
 function clearFilters() {
-  document.getElementById('filter-form').reset();
-  appliedFilters = { dest: '', interests: [], minRating: '0', weather: false };
-  hasSearched = false;
-  const clearBtn = document.getElementById('clear-filters');
-  if (clearBtn) {
-    clearBtn.setAttribute('hidden', '');
-    clearBtn.style.display = 'none';
-  }
-  document.querySelectorAll('.chip[data-chip]').forEach((chip) => {
-    const checkbox = chip.querySelector('input[type="checkbox"]');
-    if (checkbox) {
-      checkbox.checked = false;
-      chip.classList.remove('active');
-    }
-  });
-  renderCards();
-}
-
-function getSelectedInterests() {
-  return [...document.querySelectorAll('input[name="interests"]:checked')].map((input) => input.value);
+  window.location.href = window.location.pathname;
 }
 
 const RATING_MIN = { '0': 0, '3.0': 3, '4.0': 4, '4.5': 4.5 };
@@ -213,11 +253,6 @@ function getFilteredAttractions() {
   if (!hasSearched) return Array.isArray(attractionsData) ? [...attractionsData] : [];
   return attractionsData.filter((item) => {
     if (appliedFilters.dest) {
-      // Match the destination box against the attraction's name, tags and
-      // location/area — the demo data's "location" field is almost always
-      // just the data source label, so matching on location alone meant a
-      // typed destination (e.g. "museum", "Bukit Bintang") would rarely
-      // find anything.
       const query = appliedFilters.dest.toLowerCase();
       const name = String(item.name || '').toLowerCase();
       const location = String(item.location || item.area || '').toLowerCase();
@@ -252,13 +287,15 @@ function getSortedAttractions(list) {
 function renderCards() {
   const filtered = getFilteredAttractions();
   const sorted = getSortedAttractions(filtered);
+  const visible = sorted.slice(0, visibleCount);
   const grid = document.getElementById('cards-grid');
   const countEl = document.getElementById('results-count');
   const noteEl = document.getElementById('results-note');
   const weatherEl = document.getElementById('weather-note');
+  const showMoreButton = document.getElementById('show-more-btn');
 
   const label = hasSearched ? `result${sorted.length !== 1 ? 's' : ''}` : 'attractions';
-  countEl.innerHTML = `Showing <strong>${sorted.length}</strong> ${label}`;
+  countEl.innerHTML = `Showing <strong>${visible.length}</strong> of <strong>${sorted.length}</strong> ${label}`;
   if (!hasSearched) {
     noteEl.textContent = 'Showing all attractions — apply filters to refine results.';
   } else if (sorted.length === 0) {
@@ -276,6 +313,7 @@ function renderCards() {
   }
 
   if (sorted.length === 0) {
+    if (showMoreButton) showMoreButton.style.display = 'none';
     if (!hasSearched) {
       grid.innerHTML = '';
       return;
@@ -291,8 +329,18 @@ function renderCards() {
     return;
   }
 
-  grid.innerHTML = sorted.map((attraction) => buildCard(attraction)).join('');
+  grid.innerHTML = visible.map((attraction) => buildCard(attraction)).join('');
   updateCardFavourites();
+
+  if (showMoreButton) {
+    const remaining = sorted.length - visible.length;
+    if (remaining > 0) {
+      showMoreButton.style.display = '';
+      showMoreButton.textContent = `Show ${Math.min(PAGE_SIZE, remaining)} more`;
+    } else {
+      showMoreButton.style.display = 'none';
+    }
+  }
 }
 
 function buildCard(attraction) {
@@ -347,38 +395,44 @@ async function toggleFavourite(id) {
   const attraction = attractionsData.find((item) => item.id === id);
   if (!attraction) return;
 
+  if (!currentUser) {
+    showToast('Please log in to save favourites.');
+    return;
+  }
+
   try {
-    const response = await fetch('/api/favourites/toggle', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: attraction.name,
-        category: attraction.category || '',
-        rating: attraction.rating || 0,
-        image_url: attraction.image_url || '',
-        area: attraction.area || attraction.location || '',
-        waze_url: attraction.waze_url || '',
-      }),
-    });
+    const existingDocId = favouriteDocIds.get(attraction.name);
 
-    if (!response.ok) throw new Error('Request failed');
-
-    const result = await response.json();
-
-    if (result.is_favourite) {
-      favourites.add(id);
-      attraction.is_favourite = true;
-      showToast('★ Saved to favourites!');
-    } else {
+    if (existingDocId) {
+      await deleteDoc(doc(db, FAVOURITES_COLLECTION, existingDocId));
+      favouriteDocIds.delete(attraction.name);
       favourites.delete(id);
       attraction.is_favourite = false;
       showToast('Removed from favourites');
+    } else {
+      const docRef = await addDoc(collection(db, FAVOURITES_COLLECTION), {
+        user_id: currentUser.uid,
+        name: attraction.name,
+        category: attraction.category || '',
+        rating: attraction.rating || 0,
+        latitude: attraction.latitude ?? null,
+        longitude: attraction.longitude ?? null,
+        image_url: attraction.image_url || '',
+        area: attraction.area || attraction.location || '',
+        waze_url: attraction.waze_url || '',
+        created_at: serverTimestamp(),
+      });
+      favouriteDocIds.set(attraction.name, docRef.id);
+      favourites.add(id);
+      attraction.is_favourite = true;
+      showToast('★ Saved to favourites!');
     }
 
     renderCards();
     updateFavUI();
     syncDetailFavourite(id, favourites.has(id));
   } catch (error) {
+    console.error('Failed to update favourites:', error);
     showToast('Could not update favourites — please try again.');
   }
 }
@@ -434,7 +488,7 @@ function openDetail(id) {
   durationEl.textContent = attraction.estimated_minutes ? `${attraction.estimated_minutes} mins` : 'N/A';
   descEl.textContent = attraction.description || 'No description available.';
   areaEl.textContent = attraction.area || attraction.location || 'Unknown location';
-  sourceEl.textContent = attraction.source || 'Local demo dataset';
+  sourceEl.textContent = attraction.source || 'SerpApi (Google Maps)';
 
   reasonsEl.innerHTML = (attraction.reason_tags || []).map((reason) => `<span class="detail-pill">${reason}</span>`).join('');
   interestsEl.innerHTML = (attraction.interest_tags || attraction.interests || []).map((interest) => `<span class="detail-pill">${interest}</span>`).join('');
@@ -477,3 +531,10 @@ function showToast(message) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600);
 }
+
+
+// Expose to window
+
+window.openDetail = openDetail;
+window.toggleFavourite = toggleFavourite;
+window.setGalleryImg = setGalleryImg;

@@ -309,13 +309,16 @@
           <select class="sort-select" id="sort-select">
             <option value="score">Most Relevant</option>
             <option value="rating">Highest Rated</option>
-            <option value="nearest">Nearest</option>
+            <option value="nearest" selected>Nearest</option>
           </select>
         </div>
       </div>
     </div>
 
     <div id="cards-grid" class="cards-grid"></div>
+    <div class="show-more-wrap" style="display:flex; justify-content:center; margin-top: 1.25rem;">
+      <button id="show-more-btn" type="button" class="btn btn-ghost" style="display:none;">Show 5 more</button>
+    </div>
   </section>
 </div>
 
@@ -408,10 +411,12 @@
 <script id="attraction-data" type="application/json">
 {{ attractions | tojson }}
 </script>
+<script id="search-state" type="application/json">
+{{ {"searched": searched, "filters": filters} | tojson }}
+</script>
 <script id="nominatim-config" type="application/json">
 {{ {"email": nominatim_email, "user_agent": nominatim_user_agent} | tojson }}
 </script>
 
-<script src="{{ url_for('static', filename='js/smart_attraction.js') }}"></script>
+<script src="{{ url_for('static', filename='js/smart_attraction.js') }}" type="module"></script>
 {% endblock %}
-

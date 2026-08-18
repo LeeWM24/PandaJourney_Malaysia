@@ -117,7 +117,7 @@
       <div class="card profile-stat-card">
         <div class="profile-stat-icon">⭐</div>
         <div>
-          <div class="profile-stat-value">{{ favourite_count | default(0) }}</div>
+          <div class="profile-stat-value" id="fav-count-stat">0</div>
           <div class="profile-stat-label">Favourite Attractions</div>
         </div>
       </div>
@@ -185,25 +185,17 @@
         <button class="btn btn-ghost btn-sm" type="button">View all</button>
       </div>
 
-      {% if favourite_attractions %}
-        {% for attraction in favourite_attractions %}
-          <div class="fav-row">
-            <div class="recent-icon">⭐</div>
-            <div class="fav-row-name">{{ attraction.name }}</div>
-            <form method="post" style="display:inline;">
-              <input type="hidden" name="_action" value="remove_favourite">
-              <input type="hidden" name="name" value="{{ attraction.name }}">
-              <button class="fav-remove" type="submit">Remove</button>
-            </form>
-          </div>
-        {% endfor %}
-      {% else %}
-        <div class="empty-state" style="min-height: 150px;">
-          <div class="empty-icon">⭐</div>
-          <div class="empty-title">No favourite attractions yet</div>
-          <div class="empty-sub">Saved attractions will appear here after database integration.</div>
-        </div>
-      {% endif %}
+      <div id="fav-loading" style="padding: 12px 0; color: var(--fg-2);">
+        Loading favourite attractions...
+      </div>
+
+      <div id="fav-list" style="display:none;"></div>
+
+      <div id="fav-empty" class="empty-state" style="min-height: 150px; display:none;">
+        <div class="empty-icon">⭐</div>
+        <div class="empty-title">No favourite attractions yet</div>
+        <div class="empty-sub">Star an attraction on the Smart Attraction page to save it here.</div>
+      </div>
     </div>
 
     <div class="edit-actions hidden" id="edit-actions">
