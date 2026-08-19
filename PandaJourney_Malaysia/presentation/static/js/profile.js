@@ -13,6 +13,12 @@ import {
   doc,
   getDoc,
   setDoc,
+  updateDoc,
+  deleteDoc,
+  collection,
+  query,
+  where,
+  getDocs,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
@@ -51,6 +57,7 @@ const avatarOptions =
 const interestHint =
   document.getElementById("interest-hint");
 
+const FAVOURITES_COLLECTION = "Favourites";
 
 // ================================
 // Current / Original Values
@@ -131,6 +138,92 @@ onAuthStateChanged(auth, async (user) => {
 
   }
 
+// ================================
+// Favourite Attractions
+// ================================
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+async function loadFavourites(user) {
+
+    const loadingEl = document.getElementById("fav-loading");
+    const listEl = document.getElementById("fav-list");
+    const emptyEl = document.getElementById("fav-empty");
+    const countEl = document.getElementById("fav-count-stat");
+
+    try {
+
+        const favouritesQuery = query(
+            collection(db, FAVOURITES_COLLECTION),
+            where("user_id", "==", user.uid)
+        );
+
+        const snapshot = await getDocs(favouritesQuery);
+
+        if (loadingEl) loadingEl.style.display = "none";
+
+        if (countEl) countEl.textContent = `${snapshot.size}`;
+
+        if (snapshot.empty) {
+            if (listEl) listEl.style.display = "none";
+            if (emptyEl) emptyEl.style.display = "block";
+            return;
+        }
+
+        if (emptyEl) emptyEl.style.display = "none";
+        if (!listEl) return;
+
+        listEl.style.display = "block";
+        listEl.innerHTML = "";
+
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+
+            const row = document.createElement("div");
+            row.className = "fav-row";
+
+            row.innerHTML = `
+                <div class="recent-icon">⭐</div>
+                <div class="fav-row-name">${escapeHtml(data.name)}</div>
+                <button class="fav-remove" type="button">Remove</button>
+            `;
+
+            row.querySelector(".fav-remove").addEventListener("click", () => {
+                removeFavourite(docSnap.id, user);
+            });
+
+            listEl.appendChild(row);
+        });
+
+    } catch (error) {
+
+        console.error("Failed to load favourites:", error);
+
+        if (loadingEl) loadingEl.style.display = "none";
+        if (emptyEl) emptyEl.style.display = "block";
+    }
+}
+
+async function removeFavourite(documentId, user) {
+
+    try {
+
+        await deleteDoc(doc(db, FAVOURITES_COLLECTION, documentId));
+
+        await loadFavourites(user);
+
+    } catch (error) {
+
+        console.error("Failed to remove favourite:", error);
+    }
+}
 
   // ================================
   // Get Firestore User Profile
