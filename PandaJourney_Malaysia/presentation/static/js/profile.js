@@ -12,6 +12,11 @@ import {
     getDoc,
     setDoc,
     updateDoc,
+    deleteDoc,
+    collection,
+    query,
+    where,
+    getDocs,
     serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
@@ -31,6 +36,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+const FAVOURITES_COLLECTION = "Favourites";
+
 let currentUser = null;
 let editMode = false;
 
@@ -48,6 +55,7 @@ onAuthStateChanged(auth, async (user) => {
     console.log("Current user:", user.uid);
 
     await loadUserProfile(user);
+    await loadFavourites(user);
 });
 
 // Load User Profile

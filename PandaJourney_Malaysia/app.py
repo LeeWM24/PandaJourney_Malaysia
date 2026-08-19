@@ -1,9 +1,14 @@
+import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash
 
 from services.itinerary_service import (
     make_plan,
     build_map_data,
     get_default_itinerary_form
+)
+
+from services.smart_attraction import (
+    build_attraction_results,
 )
 
 from services.saved_itinerary_service import (
@@ -64,21 +69,138 @@ def dashboard():
     )
 
 
-@app.route("/smart-attraction")  # Kaixi
+@app.route("/smart-attraction", methods=["GET", "POST"]) # Kaixi
 def smart_attraction():
+    filters = {
+        "destination": "",
+        "interests": [],
+        "min_rating": "4.0",
+        "weather_aware": True,
+        "sort": "score",
+    }
+
+    attractions: list[dict] = []
+    weather_status = ""
+    source_note = ""
+    searched = False
+    results_label = "Recommended attractions"
+
+    if request.method == "POST":
+        searched = True
+
+        filters["destination"] = (
+            request.form.get("destination", "").strip()
+        )
+
+        filters["interests"] = request.form.getlist(
+            "interests"
+        )
+
+        filters["min_rating"] = request.form.get(
+            "min_rating",
+            "4.0"
+        )
+
+        filters["weather_aware"] = bool(
+            request.form.get("weather_aware")
+        )
+
+        filters["sort"] = request.form.get(
+            "sort",
+            "score"
+        )
+
+        # Validate destination
+        if not filters["destination"]:
+            flash(
+                "Please enter a destination to receive recommendations.",
+                "error"
+            )
+
+        else:
+            try:
+                minimum_rating = float(
+                    filters["min_rating"] or 4.0
+                )
+
+                attractions, weather_status, source_note = (
+                    build_attraction_results(
+                        destination_text=filters["destination"],
+                        interest_list=filters["interests"],
+                        minimum_rating=minimum_rating,
+                        use_weather=filters["weather_aware"],
+                        sort_mode=filters["sort"],
+                    )
+                )
+
+                results_label = (
+                    f"Showing {len(attractions)} attractions"
+                )
+
+            except ValueError:
+                flash(
+                    "Invalid rating or filter input. "
+                    "Please revise your selection.",
+                    "error"
+                )
+
+            except Exception as error:
+                print(
+                    f"[SMART ATTRACTION ERROR] {error}"
+                )
+
+                flash(
+                    "Unable to load attraction recommendations "
+                    "at this time. Please try again.",
+                    "error"
+                )
+
+                attractions = []
+
+    else:
+        filters["destination"] = "Kuala Lumpur"
+        filters["interests"] = ["culture"]
+
+        try:
+            attractions, weather_status, source_note = (
+                build_attraction_results(
+                    destination_text=filters["destination"],
+                    interest_list=filters["interests"],
+                    minimum_rating=float(filters["min_rating"]),
+                    use_weather=filters["weather_aware"],
+                    sort_mode=filters["sort"],
+                )
+            )
+
+            results_label = (
+                f"Showing {len(attractions)} attractions near "
+                f"{filters['destination']}"
+            )
+
+        except Exception as error:
+            print(
+                f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}"
+            )
+
+            attractions = []
+            source_note = (
+                "Could not load live attractions right now. "
+                "Please try searching directly."
+            )
+            results_label = "Set filters and click Search"
+
     return render_template(
         "smart_attraction.html",
         active_page="attractions",
         current_user=get_current_user(),
-        filters={
-            "destination": "",
-            "interests": [],
-            "min_rating": "",
-            "weather_aware": True,
-            "sort": "rating"
-        },
-        weather_status="",
-        attractions=[]
+        filters=filters,
+        weather_status=weather_status,
+        attractions=attractions,
+        source_note=source_note,
+        searched=searched,
+        results_label=results_label,
+        nominatim_email=os.environ.get("NOMINATIM_EMAIL", ""),
+        nominatim_user_agent=os.environ.get("NOMINATIM_USER_AGENT", ""),
     )
 
 
@@ -221,6 +343,9 @@ def profile():
             flash("Preferences saved.", "success")
 
         elif action == "remove_favourite":
+            # Favourites now live in Firestore (see profile.js /
+            # smart_attraction.js), removed client-side via deleteDoc —
+            # nothing for Flask to do here anymore.
             flash("Favourite attraction removed.", "info")
 
         return redirect(url_for("profile"))
@@ -236,7 +361,6 @@ def profile():
             "min_rating": "",
             "preferred_area": ""
         },
-        favourite_attractions=[],
         saved_itineraries_preview=saved_list[:3],
         shared_itineraries_preview=[],
         saved_count=len(saved_list),

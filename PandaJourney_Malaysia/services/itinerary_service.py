@@ -444,7 +444,7 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
             "display_name": f"{title}, {address}".strip(", "),
             "latitude": float(coordinates["latitude"]),
             "longitude": float(coordinates["longitude"]),
-            "source": "SerpApi Google Maps fallback",
+            "source": "SerpApi fallback",
         }
 
         print(
@@ -706,7 +706,7 @@ def search_attractions_serpapi(
                 "tags": tags or [keyword],
                 "estimated_minutes": 90,
                 "rating": float(item.get("rating") or 0),
-                "source": "SerpApi Google Maps",
+                "source": "SerpApi",
             }
         )
 
@@ -907,6 +907,45 @@ def choose_attractions(
     return ranked[:max_stops]
 
 
+def recommend_attractions(
+    candidates: list[dict[str, Any]],
+    interests: list[str],
+    weather: dict[str, Any] | None,
+    minimum_rating: float,
+    max_results: int = 8,
+    filter_partly_cloudy: bool = False,
+) -> list[dict[str, Any]]:
+    ranked: list[dict[str, Any]] = []
+
+    for attraction in candidates:
+        tags = {tag.lower() for tag in attraction.get("tags", [])}
+        rating = float(attraction.get("rating") or 0)
+
+        if rating and rating < minimum_rating:
+            continue
+
+        if (
+            filter_partly_cloudy
+            and weather
+            and weather.get("condition", "").lower() == "partly cloudy"
+            and "outdoor" in tags
+        ):
+            continue
+
+        score, reasons = score_attraction(attraction, interests, weather)
+
+        item = dict(attraction)
+        item["score"] = score
+        item["reasons"] = reasons
+        item["rating"] = rating
+        item["tags"] = list(tags)
+
+        ranked.append(item)
+
+    ranked.sort(key=lambda item: item["score"], reverse=True)
+    return ranked[:max_results]
+
+
 def human_duration(seconds: float | int | None) -> str:
     if seconds is None:
         return "Not available"
@@ -970,7 +1009,85 @@ def build_waze_url(place: dict[str, Any]) -> str:
     return f"https://waze.com/ul?q={name}&ll={latitude},{longitude}&navigate=yes"
 
 
-def prepare_selected_attractions(selected: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def compute_distance_km(
+    lat1: float,
+    lon1: float,
+    lat2: float,
+    lon2: float,
+) -> float:
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+
+    a = (
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    )
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1 - a)))
+    return 6371.0 * c
+
+
+DEFAULT_ATTRACTION_IMAGES: dict[str, list[str]] = {
+    "culture": [
+        "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1494526585095-c41746248156?auto=format&fit=crop&w=900&q=80",
+    ],
+    "museum": [
+        "https://images.unsplash.com/photo-1534452203293-494d7ddbf7e0?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1519677100203-a0e668c92439?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80",
+    ],
+    "nature": [
+        "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80",
+    ],
+    "shopping": [
+        "https://images.unsplash.com/photo-1495121605193-b116b5b9c5d8?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1470337458703-46ad1756a187?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1533196350647-8cef3c2d9f85?auto=format&fit=crop&w=900&q=80",
+    ],
+    "food": [
+        "https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1528716321682-0a570e4cc34e?auto=format&fit=crop&w=900&q=80",
+    ],
+    "adventure": [
+        "https://images.unsplash.com/photo-1493558103817-58b2924bce98?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80",
+    ],
+    "beach": [
+        "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
+    ],
+    "heritage": [
+        "https://images.unsplash.com/photo-1526481280694-3df0480fd2f7?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=900&q=80",
+        "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=900&q=80",
+    ],
+}
+
+
+def get_attraction_images(tags: list[str]) -> list[str]:
+    images: list[str] = []
+    for tag in tags:
+        key = tag.lower()
+        if key in DEFAULT_ATTRACTION_IMAGES:
+            images.extend(DEFAULT_ATTRACTION_IMAGES[key])
+    if not images:
+        images = [item for sublist in DEFAULT_ATTRACTION_IMAGES.values() for item in sublist][:3]
+    return images[:3]
+
+
+def prepare_selected_attractions(
+    selected: list[dict[str, Any]],
+    reference_lat: float | None = None,
+    reference_lon: float | None = None,
+) -> list[dict[str, Any]]:
     prepared = []
 
     for index, attraction in enumerate(selected, start=1):
@@ -989,6 +1106,42 @@ def prepare_selected_attractions(selected: list[dict[str, Any]]) -> list[dict[st
             else "Sunny"
         )
         item["waze_url"] = build_waze_url(item)
+        item["photo_urls"] = item.get("photo_urls") or get_attraction_images([tag.lower() for tag in item.get("tags", [])])
+        item["image_url"] = item.get("image_url") or item["photo_urls"][0]
+        item["description"] = item.get(
+            "description",
+            f"{item['name']} is a popular {item['category'].lower()} destination in Malaysia with excellent visitor facilities.",
+        )
+        item["hours"] = item.get("hours") or "09:00 - 18:00"
+        item["entry_fee"] = item.get("entry_fee") or "Free"
+        item["visitor_tips"] = item.get(
+            "visitor_tips",
+            [
+                "Arrive early to avoid the busiest periods.",
+                "Wear comfortable shoes and bring water.",
+                "Check opening hours before you travel.",
+            ],
+        )
+        item["interest_tags"] = [tag.title() for tag in item.get("tags", [])]
+        item["reason_tags"] = [tag for tag in item.get("reasons", [])]
+        item["rating"] = float(item.get("rating") or 0)
+        item["estimated_minutes"] = int(item.get("estimated_minutes", 90))
+        item["distance_km"] = None
+        item["distance_label"] = ""
+
+        if (
+            reference_lat is not None
+            and reference_lon is not None
+            and item.get("latitude") is not None
+            and item.get("longitude") is not None
+        ):
+            item["distance_km"] = compute_distance_km(
+                float(reference_lat),
+                float(reference_lon),
+                float(item["latitude"]),
+                float(item["longitude"]),
+            )
+            item["distance_label"] = f"{item['distance_km']:.1f} km"
 
         prepared.append(item)
 
@@ -1089,7 +1242,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     if not trip_date:
         raise ValueError("Travel date is required.")
 
-    raw_interests = form.getlist("interests") if hasattr(form, "getlist") else form.get("interests", [])
+    raw_interests = form.getlist("interests") if hasattr(form, "getlist") else form.get("interests", [])  # type: ignore
 
     if isinstance(raw_interests, str):
         interests = [raw_interests] if raw_interests else []
