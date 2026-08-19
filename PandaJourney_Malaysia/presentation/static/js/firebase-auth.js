@@ -9,6 +9,8 @@ import {
   signInWithEmailAndPassword,
   updateProfile,
   sendEmailVerification,
+  linkWithCredential,
+  EmailAuthProvider,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
@@ -253,7 +255,7 @@ if (registerForm) {
         "Account created successfully!\n\nPlease check your email and click the verification link before logging in."
       );
 
-      window.location.href = "/login";
+      window.location.href = "/";
 
     } catch (error) {
       console.error("Create Account failed:", error);
@@ -274,4 +276,67 @@ if (registerForm) {
       button.textContent = "Create Account";
     }
   });
+}
+
+async function linkEmailPassword(email, password) {
+
+    const user = auth.currentUser;
+
+    if (!user) {
+        alert("Please login first.");
+        return;
+    }
+
+    try {
+
+        const credential =
+            EmailAuthProvider.credential(
+                email,
+                password
+            );
+
+        await linkWithCredential(
+            user,
+            credential
+        );
+
+        console.log(
+            "Email/Password linked successfully!"
+        );
+
+        alert(
+            "Email and password have been linked to your Google account."
+        );
+
+    } catch (error) {
+
+        console.error(
+            "Failed to link Email/Password:",
+            error
+        );
+
+        if (
+            error.code ===
+            "auth/provider-already-linked"
+        ) {
+
+            alert(
+                "This account already has Email/Password login."
+            );
+
+        } else if (
+            error.code ===
+            "auth/email-already-in-use"
+        ) {
+
+            alert(
+                "This email is already connected to another Firebase account."
+            );
+
+        } else {
+
+            alert(error.message);
+
+        }
+    }
 }

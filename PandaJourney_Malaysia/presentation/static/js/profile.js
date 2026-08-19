@@ -1,298 +1,1079 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {
+  auth,
+  db
+} from "./firebase-config.js";
 
 import {
-    getAuth,
-    onAuthStateChanged,
-    signOut
+  onAuthStateChanged,
+  signOut,
+  updateProfile
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 import {
-    getFirestore,
-    doc,
-    getDoc,
-    setDoc,
-    updateDoc,
-    deleteDoc,
-    collection,
-    query,
-    where,
-    getDocs,
-    serverTimestamp
+  doc,
+  getDoc,
+  setDoc,
+  serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 
-const firebaseConfig = {
-    apiKey: "AIzaSyAX3NQdMKHFGwoySHcNAYW8dHFSnZBo_MI",
-    authDomain: "pandajourney-ef50a.firebaseapp.com",
-    projectId: "pandajourney-ef50a",
-    storageBucket: "pandajourney-ef50a.firebasestorage.app",
-    messagingSenderId: "725150303645",
-    appId: "1:725150303645:web:5a0254ed334923d607db74",
-    measurementId: "G-5XDDN834ZQ"
-};
+// ================================
+// Page Elements
+// ================================
+
+const identityName =
+  document.querySelector(".identity-name");
+
+const identityEmail =
+  document.querySelector(".identity-email");
+
+const editName =
+  document.getElementById("edit-name");
+
+const editEmail =
+  document.getElementById("edit-email");
+
+const avatarLetter =
+  document.getElementById("avatar-letter");
+
+const avatarEditBtn =
+  document.getElementById("avatar-edit-btn");
+
+const avatarPicker =
+  document.getElementById("avatar-picker");
+
+const closeAvatarPicker =
+  document.getElementById("close-avatar-picker");
+
+const avatarOptions =
+  document.querySelectorAll(".avatar-option");
+
+const interestHint =
+  document.getElementById("interest-hint");
 
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+// ================================
+// Current / Original Values
+// ================================
 
-const FAVOURITES_COLLECTION = "Favourites";
+let selectedAvatar = "";
 
-let currentUser = null;
-let editMode = false;
+let originalDisplayName = "";
+let originalAvatar = "";
+let originalInterests = [];
 
-// Check Login
+let isEditing = false;
+
+
+// ================================
+// Load Current User
+// ================================
 
 onAuthStateChanged(auth, async (user) => {
 
-    if (!user) {
-        window.location.href = "/";
-        return;
-    }
+  if (!user) {
 
-    currentUser = user;
+    console.log("No user logged in.");
 
-    console.log("Current user:", user.uid);
+    window.location.href = "/";
+    return;
+  }
 
-    await loadUserProfile(user);
-    await loadFavourites(user);
-});
 
-// Load User Profile
+  console.log("Logged in user:", user.uid);
 
-async function loadUserProfile(user) {
 
-    try {
+  // ================================
+  // Firebase Auth Basic Information
+  // ================================
 
-        const userRef = doc(db, "users", user.uid);
-        const userSnap = await getDoc(userRef);
+  const authName =
+    user.displayName ||
+    user.email?.split("@")[0] ||
+    "";
 
-        const data = userSnap.exists()
-            ? userSnap.data()
-            : {};
 
-        const name =
-            data.displayName ||
-            user.displayName ||
-            "User";
+  if (identityName) {
+    identityName.textContent =
+      authName;
+  }
 
-        const email =
-            data.email ||
-            user.email ||
-            "";
 
-        document.querySelector(".identity-name").textContent = name;
-        document.querySelector(".identity-email").textContent = email;
+  if (identityEmail) {
+    identityEmail.textContent =
+      user.email || "";
+  }
 
-        document.getElementById("edit-name").value = name;
-        document.getElementById("edit-email").value = email;
 
-        const photoURL =
-            data.profilePictureUrl ||
-            user.photoURL;
+  if (editName) {
+    editName.value =
+      authName;
+  }
 
-        if (photoURL) {
 
-            const avatar = document.getElementById("avatar");
+  if (editEmail) {
+    editEmail.value =
+      user.email || "";
+  }
 
-            avatar.style.backgroundImage =
-                `url("${photoURL}")`;
 
-            avatar.style.backgroundSize = "cover";
-            avatar.style.backgroundPosition = "center";
+  originalDisplayName =
+    authName;
 
-            avatar.childNodes[0].textContent = "";
 
-        } else {
-            setAvatarInitials(name);
-        }
+  // Default avatar = first letter
+  if (avatarLetter) {
 
-    } catch (error) {
-
-        console.error("Failed to retrieve profile:", error);
-    }
-}
-
-// Avatar
-
-function setAvatarInitials(name) {
-
-    const initials = name
-        .split(" ")
-        .map(word => word[0])
-        .join("")
-        .slice(0, 2)
+    avatarLetter.textContent =
+      authName
+        .charAt(0)
         .toUpperCase();
 
-    const avatar = document.getElementById("avatar");
-
-    avatar.style.backgroundImage = "none";
-    avatar.childNodes[0].textContent = initials;
-}
+  }
 
 
-// Edit Profile
+  // ================================
+  // Get Firestore User Profile
+  // ================================
 
-function toggleEdit() {
+  try {
 
-    editMode = !editMode;
-    applyEditMode();
-}
-
-function applyEditMode() {
-
-    document.getElementById("identity-view").style.display =
-        editMode ? "none" : "block";
-
-    document.getElementById("identity-edit").style.display =
-        editMode ? "flex" : "none";
-
-    document.getElementById("avatar-edit-btn")
-        .classList.toggle("hidden", !editMode);
-
-    document.getElementById("edit-actions")
-        .classList.toggle("hidden", !editMode);
-
-    const button =
-        document.getElementById("edit-toggle-btn");
-
-    button.textContent =
-        editMode ? "Cancel" : "✎ Edit Profile";
-
-    button.className =
-        editMode
-            ? "btn btn-ghost btn-sm"
-            : "btn btn-secondary btn-sm";
-
-    button.onclick =
-        editMode ? cancelEdit : toggleEdit;
-}
-
-async function cancelEdit() {
-
-    editMode = false;
-
-    if (currentUser) {
-        await loadUserProfile(currentUser);
-    }
-
-    applyEditMode();
-}
-
-// Save Profile
-
-async function saveProfile() {
-
-    if (!currentUser) {
-        console.error("No logged-in user.");
-        return;
-    }
-
-    const name =
-        document.getElementById("edit-name").value.trim()
-        || currentUser.displayName
-        || "User";
-
-    const email =
-        document.getElementById("edit-email").value.trim()
-        || currentUser.email
-        || "";
-
-    try {
-
-        const userRef =
-            doc(db, "users", currentUser.uid);
-
-        await setDoc(userRef, {
-
-            uid: currentUser.uid,
-            displayName: name,
-            email: email,
-            profilePictureUrl: currentUser.photoURL || "",
-            updatedAt: serverTimestamp()
-
-        }, { merge: true });
-
-        await loadUserProfile(currentUser);
-
-        editMode = false;
-        applyEditMode();
-
-        showToast();
-
-    } catch (error) {
-
-        console.error(
-            "Failed to update profile:",
-            error
-        );
-    }
-}
+    const userRef =
+      doc(
+        db,
+        "users",
+        user.uid
+      );
 
 
-// Toast
-
-function showToast() {
-
-    const toast =
-        document.getElementById("save-toast");
-
-    toast.classList.add("show");
-
-    setTimeout(() => {
-        toast.classList.remove("show");
-    }, 3000);
-}
-
-// Logout
-
-async function confirmLogout() {
-
-    try {
-
-        await signOut(auth);
-
-        window.location.href = "/";
-
-    } catch (error) {
-
-        console.error("Sign out failed:", error);
-    }
-}
-
-// Logout Modal
-
-function openLogoutModal() {
-
-    document
-        .getElementById("logout-modal")
-        .classList.add("show");
-}
-
-function closeLogoutModal() {
-
-    document
-        .getElementById("logout-modal")
-        .classList.remove("show");
-}
+    const userSnap =
+      await getDoc(userRef);
 
 
-// Close modal when clicking outside
-document
-    .getElementById("logout-modal")
-    .addEventListener("click", function (e) {
+    if (userSnap.exists()) {
 
-        if (e.target === this) {
-            closeLogoutModal();
+      const data =
+        userSnap.data();
+
+
+      console.log(
+        "Firestore profile:",
+        data
+      );
+
+
+      // ================================
+      // Display Name
+      // ================================
+
+      if (data.displayName) {
+
+        if (identityName) {
+          identityName.textContent =
+            data.displayName;
         }
+
+
+        if (editName) {
+          editName.value =
+            data.displayName;
+        }
+
+
+        originalDisplayName =
+          data.displayName;
+
+      }
+
+
+      // ================================
+      // Email
+      // ================================
+
+      if (data.email) {
+
+        if (identityEmail) {
+          identityEmail.textContent =
+            data.email;
+        }
+
+
+        if (editEmail) {
+          editEmail.value =
+            data.email;
+        }
+
+      }
+
+
+      // ================================
+      // Avatar
+      // ================================
+
+      if (data.avatar) {
+
+        selectedAvatar =
+          data.avatar;
+
+        originalAvatar =
+          data.avatar;
+
+
+        if (avatarLetter) {
+
+          avatarLetter.textContent =
+            data.avatar;
+
+        }
+
+      } else {
+
+        selectedAvatar = "";
+        originalAvatar = "";
+
+
+        if (avatarLetter) {
+
+          avatarLetter.textContent =
+            (
+              data.displayName ||
+              authName
+            )
+              .charAt(0)
+              .toUpperCase();
+
+        }
+
+      }
+
+
+      // ================================
+      // Interests
+      // ================================
+
+      const interests =
+        data.interests || [];
+
+
+      originalInterests =
+        [...interests];
+
+
+      document
+        .querySelectorAll(".interest-chip")
+        .forEach(chip => {
+
+            const isSelected =
+            originalInterests.includes(
+                chip.dataset.interest
+            );
+
+            chip.classList.toggle(
+            "active",
+            isSelected
+            );
+
+            chip.setAttribute(
+            "aria-pressed",
+            isSelected ? "true" : "false"
+            );
+
+        });
+
+    }
+
+  }
+  catch (error) {
+
+    console.error(
+      "Error loading Firestore profile:",
+      error
+    );
+
+  }
+
+});
+
+
+// ================================
+// Toggle Edit Mode
+// ================================
+
+window.toggleEdit =
+function () {
+
+  const identityView =
+    document.getElementById(
+      "identity-view"
+    );
+
+  const identityEdit =
+    document.getElementById(
+      "identity-edit"
+    );
+
+  const editActions =
+    document.getElementById(
+      "edit-actions"
+    );
+
+  const editButton =
+    document.getElementById(
+      "edit-toggle-btn"
+    );
+
+
+  if (identityView) {
+    identityView.style.display =
+      "none";
+  }
+
+
+  if (identityEdit) {
+    identityEdit.style.display =
+      "flex";
+  }
+
+
+  if (editActions) {
+    editActions
+      .classList
+      .remove("hidden");
+  }
+
+
+  if (editButton) {
+    editButton.style.display =
+      "none";
+  }
+
+
+  // ================================
+  // Avatar Editing
+  // ================================
+
+  if (avatarEditBtn) {
+
+    avatarEditBtn
+      .classList
+      .remove("hidden");
+
+  }
+
+
+  // ================================
+  // Interest Editing
+  // ================================
+
+  isEditing = true;
+
+
+  document
+    .querySelectorAll(
+      ".interest-chip"
+    )
+    .forEach(chip => {
+
+      chip
+        .classList
+        .add("editable");
+
     });
 
-// Make functions available to HTML
 
-window.toggleEdit = toggleEdit;
-window.cancelEdit = cancelEdit;
-window.saveProfile = saveProfile;
+  if (interestHint) {
 
-window.confirmLogout = confirmLogout;
-window.openLogoutModal = openLogoutModal;
-window.closeLogoutModal = closeLogoutModal;
+    interestHint.textContent =
+      "Select the interests that describe you.";
+
+  }
+
+};
+
+
+// ================================
+// Avatar Picker
+// ================================
+
+if (avatarEditBtn) {
+
+  avatarEditBtn.addEventListener(
+    "click",
+    () => {
+
+      if (avatarPicker) {
+
+        avatarPicker
+          .classList
+          .toggle("hidden");
+
+      }
+
+    }
+  );
+
+}
+
+
+// ================================
+// Close Avatar Picker
+// ================================
+
+if (closeAvatarPicker) {
+
+  closeAvatarPicker.addEventListener(
+    "click",
+    () => {
+
+      if (avatarPicker) {
+
+        avatarPicker
+          .classList
+          .add("hidden");
+
+      }
+
+    }
+  );
+
+}
+
+
+// ================================
+// Select Avatar
+// ================================
+
+avatarOptions.forEach(option => {
+
+  option.addEventListener(
+    "click",
+    () => {
+
+      selectedAvatar =
+        option.dataset.avatar || "";
+
+
+      // Remove previous selected style
+      avatarOptions.forEach(item => {
+
+        item
+          .classList
+          .remove("selected");
+
+      });
+
+
+      // Highlight selected avatar
+      option
+        .classList
+        .add("selected");
+
+
+      // Preview avatar
+      if (avatarLetter) {
+
+        avatarLetter.textContent =
+          selectedAvatar;
+
+      }
+
+
+      // Close picker
+      if (avatarPicker) {
+
+        avatarPicker
+          .classList
+          .add("hidden");
+
+      }
+
+    }
+  );
+
+});
+
+
+// ================================
+// Interest Chip Click
+// ================================
+
+document
+  .querySelectorAll(".interest-chip")
+  .forEach(chip => {
+
+    chip.addEventListener("click", () => {
+
+      // Normal Profile mode
+      if (!isEditing) {
+        return;
+      }
+
+      chip.classList.toggle("active");
+
+      chip.setAttribute(
+        "aria-pressed",
+        chip.classList.contains("active")
+          ? "true"
+          : "false"
+      );
+
+    });
+
+  });
+
+
+// ================================
+// Cancel Edit
+// ================================
+
+window.cancelEdit =
+function () {
+
+  // ================================
+  // Restore Name
+  // ================================
+
+  if (editName) {
+
+    editName.value =
+      originalDisplayName;
+
+  }
+
+
+  // ================================
+  // Restore Avatar
+  // ================================
+
+  selectedAvatar =
+    originalAvatar;
+
+
+  if (avatarLetter) {
+
+    if (originalAvatar) {
+
+      avatarLetter.textContent =
+        originalAvatar;
+
+    } else {
+
+      avatarLetter.textContent =
+        originalDisplayName
+          .charAt(0)
+          .toUpperCase();
+
+    }
+
+  }
+
+
+  // ================================
+  // Restore Interests
+  // ================================
+
+  document
+  .querySelectorAll(".interest-chip")
+  .forEach(chip => {
+
+    const isSelected =
+      interests.includes(
+        chip.dataset.interest
+      );
+
+    chip.classList.toggle(
+      "active",
+      isSelected
+    );
+
+    chip.setAttribute(
+      "aria-pressed",
+      isSelected ? "true" : "false"
+    );
+
+  });
+
+
+  // ================================
+  // Close Avatar Picker
+  // ================================
+
+  if (avatarPicker) {
+
+    avatarPicker
+      .classList
+      .add("hidden");
+
+  }
+
+
+  // ================================
+  // Hide Avatar Edit Button
+  // ================================
+
+  if (avatarEditBtn) {
+
+    avatarEditBtn
+      .classList
+      .add("hidden");
+
+  }
+
+
+  // ================================
+  // Lock Interests
+  // ================================
+
+  isEditing = false;
+
+
+  document
+    .querySelectorAll(
+      ".interest-chip"
+    )
+    .forEach(chip => {
+
+      chip
+        .classList
+        .remove("editable");
+
+    });
+
+
+  if (interestHint) {
+
+    interestHint.textContent =
+      "Click Edit Profile to update your interests.";
+
+  }
+
+
+  // ================================
+  // Back to View Mode
+  // ================================
+
+  const identityView =
+    document.getElementById(
+      "identity-view"
+    );
+
+  const identityEdit =
+    document.getElementById(
+      "identity-edit"
+    );
+
+  const editActions =
+    document.getElementById(
+      "edit-actions"
+    );
+
+  const editButton =
+    document.getElementById(
+      "edit-toggle-btn"
+    );
+
+
+  if (identityView) {
+    identityView.style.display =
+      "block";
+  }
+
+
+  if (identityEdit) {
+    identityEdit.style.display =
+      "none";
+  }
+
+
+  if (editActions) {
+
+    editActions
+      .classList
+      .add("hidden");
+
+  }
+
+
+  if (editButton) {
+
+    editButton.style.display =
+      "inline-flex";
+
+  }
+
+};
+
+
+// ================================
+// Save Profile
+// ================================
+
+window.saveProfile =
+async function () {
+
+  const user =
+    auth.currentUser;
+
+
+  if (!user) {
+
+    alert(
+      "You are not logged in."
+    );
+
+    return;
+
+  }
+
+
+  const newDisplayName =
+    editName
+      ?.value
+      .trim() || "";
+
+
+  if (!newDisplayName) {
+
+    alert(
+      "Display name cannot be empty."
+    );
+
+    return;
+
+  }
+
+
+  // ================================
+  // Selected Interests
+  // ================================
+
+    const selectedInterests =
+    Array
+        .from(
+        document.querySelectorAll(
+            ".interest-chip.active"
+        )
+        )
+        .map(
+        chip => chip.dataset.interest
+        );
+
+
+  // ================================
+  // User Data
+  // ================================
+
+  const userData = {
+
+    displayName:
+      newDisplayName,
+
+    email:
+      user.email || "",
+
+    photoURL:
+      user.photoURL || "",
+
+    avatar:
+      selectedAvatar,
+
+    interests:
+      selectedInterests,
+
+    updatedAt:
+      serverTimestamp()
+
+  };
+
+
+  try {
+
+    // ================================
+    // Update Firebase Auth
+    // ================================
+
+    await updateProfile(
+      user,
+      {
+        displayName:
+          newDisplayName
+      }
+    );
+
+
+    // ================================
+    // Update Firestore
+    // ================================
+
+    const userRef =
+      doc(
+        db,
+        "users",
+        user.uid
+      );
+
+
+    await setDoc(
+      userRef,
+      userData,
+      {
+        merge: true
+      }
+    );
+
+
+    console.log(
+      "Profile saved successfully"
+    );
+
+
+    // ================================
+    // Update Display Name
+    // ================================
+
+    if (identityName) {
+
+      identityName.textContent =
+        newDisplayName;
+
+    }
+
+
+    if (editName) {
+
+      editName.value =
+        newDisplayName;
+
+    }
+
+
+    // ================================
+    // Remember Saved Values
+    // ================================
+
+    originalDisplayName =
+      newDisplayName;
+
+    originalAvatar =
+      selectedAvatar;
+
+    originalInterests =
+      [...selectedInterests];
+
+
+    // ================================
+    // Update Avatar
+    // ================================
+
+    if (avatarLetter) {
+
+      if (selectedAvatar) {
+
+        avatarLetter.textContent =
+          selectedAvatar;
+
+      } else {
+
+        avatarLetter.textContent =
+          newDisplayName
+            .charAt(0)
+            .toUpperCase();
+
+      }
+
+    }
+
+
+    // ================================
+    // Lock Interests
+    // ================================
+
+    isEditing = false;
+
+
+    document
+      .querySelectorAll(
+        ".interest-chip"
+      )
+      .forEach(chip => {
+
+        chip
+          .classList
+          .remove("editable");
+
+      });
+
+
+    if (interestHint) {
+
+      interestHint.textContent =
+        "Click Edit Profile to update your interests.";
+
+    }
+
+
+    // ================================
+    // Show Toast
+    // ================================
+
+    const toast =
+      document.getElementById(
+        "save-toast"
+      );
+
+
+    if (toast) {
+
+      toast
+        .classList
+        .add("show");
+
+
+      setTimeout(
+        () => {
+
+          toast
+            .classList
+            .remove("show");
+
+        },
+        2500
+      );
+
+    }
+
+
+    // ================================
+    // Exit Edit Mode
+    // ================================
+
+    const identityView =
+      document.getElementById(
+        "identity-view"
+      );
+
+    const identityEdit =
+      document.getElementById(
+        "identity-edit"
+      );
+
+    const editActions =
+      document.getElementById(
+        "edit-actions"
+      );
+
+    const editButton =
+      document.getElementById(
+        "edit-toggle-btn"
+      );
+
+
+    if (identityView) {
+
+      identityView.style.display =
+        "block";
+
+    }
+
+
+    if (identityEdit) {
+
+      identityEdit.style.display =
+        "none";
+
+    }
+
+
+    if (editActions) {
+
+      editActions
+        .classList
+        .add("hidden");
+
+    }
+
+
+    if (editButton) {
+
+      editButton.style.display =
+        "inline-flex";
+
+    }
+
+
+    // ================================
+    // Hide Avatar Controls
+    // ================================
+
+    if (avatarEditBtn) {
+
+      avatarEditBtn
+        .classList
+        .add("hidden");
+
+    }
+
+
+    if (avatarPicker) {
+
+      avatarPicker
+        .classList
+        .add("hidden");
+
+    }
+
+  }
+  catch (error) {
+
+    console.error(
+      "Error saving profile:",
+      error
+    );
+
+
+    alert(
+      "Failed to save profile."
+    );
+
+  }
+
+};
+
+
+// ================================
+// Logout
+// ================================
+
+window.confirmLogout =
+async function () {
+
+  const confirmed =
+    confirm(
+      "Are you sure you want to sign out?"
+    );
+
+
+  if (!confirmed) {
+    return;
+  }
+
+
+  try {
+
+    await signOut(auth);
+
+
+    window.location.href =
+      "/";
+
+  }
+  catch (error) {
+
+    console.error(
+      "Logout failed:",
+      error
+    );
+
+  }
+
+};

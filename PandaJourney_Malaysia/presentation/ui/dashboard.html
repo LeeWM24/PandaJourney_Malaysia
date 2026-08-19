@@ -3,7 +3,7 @@
 {% block title %}Dashboard — PandaJourney Malaysia{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
 {% block page_subtitle %}
-Welcome back, <span id="dashboardName">{{ current_user.display_name }}</span>
+Welcome back, <span id="dashboardName"></span>
 {% endblock %}
 
 {% block topbar_actions %}
@@ -22,7 +22,7 @@ Welcome back, <span id="dashboardName">{{ current_user.display_name }}</span>
   <div class="hero-content">
     <div>
       <p class="hero-greeting">
-      Good morning, <span id="heroName">{{ current_user.display_name }}</span> 👋
+      Good morning, <span id="heroName"></span> 👋
       </p>
       <h2 class="hero-title">Where to next?</h2>
       <a href="{{ url_for('smart_itinerary') }}" class="btn btn-accent btn-lg">✈️ Plan a Trip</a>
@@ -32,10 +32,10 @@ Welcome back, <span id="dashboardName">{{ current_user.display_name }}</span>
   <div class="hero-user">
     <div>
       <div class="hero-user-name" id="heroUserName">
-          {{ current_user.display_name }}
+          <span id="heroName"></span>
       </div>
       <div class="hero-user-email" id="heroUserEmail">
-        {{ current_user.email }}
+        <span id="heroUserEmail"></span>
       </div>
     </div>
     <a href="{{ url_for('profile') }}"
@@ -44,7 +44,7 @@ Welcome back, <span id="dashboardName">{{ current_user.display_name }}</span>
         style="text-decoration:none; overflow:hidden;">
 
           <span id="avatarInitials">
-              {{ current_user.display_name[:2]|upper }}
+              <span id="heroName"></span> 
           </span>
 
           <img
