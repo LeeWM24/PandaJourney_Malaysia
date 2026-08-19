@@ -11,10 +11,12 @@ import {
   collection,
   query,
   where,
+  getDoc,
   getDocs,
   deleteDoc,
   doc,
   updateDoc,
+  increment,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
@@ -323,9 +325,31 @@ async function togglePublishStatus(documentId, currentStatus) {
 // ================================
 
 async function deleteItinerary(documentId, itineraryId) {
+
   const confirmed = confirm("Delete this itinerary?");
 
   if (!confirmed) return;
+
+  const savedRef = doc(db, ITINERARY_COLLECTION, documentId);
+  const savedSnap = await getDoc(savedRef);
+
+  if (savedSnap.exists()) {
+    const savedData = savedSnap.data();
+    const sourceItineraryId = savedData.source_itinerary_id;
+
+    if (sourceItineraryId) {
+      const originalRef = doc(db, ITINERARY_COLLECTION, sourceItineraryId);
+      const originalSnap = await getDoc(originalRef);
+
+      if (originalSnap.exists()) {
+        const currentSaves = originalSnap.data().saves ?? 0;
+
+        await updateDoc(originalRef, {
+          saves: Math.max(0, currentSaves - 1)
+        });
+      }
+    }
+  }
 
   const stopsQuery = query(
     collection(db, ITINERARY_STOP_COLLECTION),
