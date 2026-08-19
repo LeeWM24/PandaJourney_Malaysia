@@ -29,33 +29,27 @@ Welcome back, <span id="dashboardName"></span>
     </div>
   </div>
 
-  <div class="hero-user">
-    <div>
-      <div class="hero-user-name" id="heroUserName">
-          <span id="heroName"></span>
+    <div class="hero-user">
+      <div>
+        <div class="hero-user-name" id="heroUserName"></div>
+        <div class="hero-user-email" id="heroUserEmail"></div>
       </div>
-      <div class="hero-user-email" id="heroUserEmail">
-        <span id="heroUserEmail"></span>
-      </div>
-    </div>
-    <a href="{{ url_for('profile') }}"
+
+      <a href="{{ url_for('profile') }}"
         class="avatar avatar-lg"
         id="dashboardAvatar"
         style="text-decoration:none; overflow:hidden;">
 
-          <span id="avatarInitials">
-              <span id="heroName"></span> 
-          </span>
+        <span id="avatarInitials"></span>
 
-          <img
-              id="avatarImage"
-              src=""
-              alt="Profile"
-              style="width:100%; height:100%; object-fit:cover; display:none;"
-          >
-
+        <img
+          id="avatarImage"
+          src=""
+          alt="Profile"
+          style="width:100%; height:100%; object-fit:cover; display:none;"
+        >
       </a>
-  </div>
+    </div>
 </div>
 
 <div class="page-inner">
@@ -75,7 +69,7 @@ Welcome back, <span id="dashboardName"></span>
         <span class="summary-icon">⭐</span>
         <div class="summary-dot" style="background:#f59e0b;"></div>
       </div>
-      <div class="summary-value">{{ favourite_count }}</div>
+      <div class="summary-value" id="dashboard-favourite-count">0</div>
       <div class="summary-label">Favourite Attractions</div>
     </div>
 

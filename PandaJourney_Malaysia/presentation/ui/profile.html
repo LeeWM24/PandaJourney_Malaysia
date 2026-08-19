@@ -2,20 +2,16 @@
 
 {% block title %}My Profile — PandaJourney Malaysia{% endblock %}
 {% block page_title %}My Profile{% endblock %}
-{% block page_subtitle %}Manage your account and travel preferences{% endblock %}
+{% block page_subtitle %}Manage your account and profile{% endblock %}
 
 
 {% block topbar_actions %}
-
 <button
   type="button"
   class="btn btn-danger btn-sm"
   onclick="confirmLogout()">
-
   🚪 Sign out
-
 </button>
-
 {% endblock %}
 
 
@@ -23,162 +19,207 @@
 
 <style>
 
-  /* ================================
-     Profile Edit Fields
-  ================================ */
+/* =================================
+   Profile Edit
+================================= */
 
-  .profile-edit-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-top: 14px;
-  }
+.profile-edit-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-top: 14px;
+}
 
+#identity-edit {
+  display: none;
+  flex-direction: column;
+  gap: 14px;
+}
 
-  #identity-edit {
-    display: none;
-    flex-direction: column;
-    gap: 14px;
-  }
+.edit-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
 
+.edit-actions.hidden,
+.avatar-edit-btn.hidden {
+  display: none !important;
+}
 
-  .edit-actions {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    margin-top: 4px;
-  }
+#avatar-edit-btn:not(.hidden) {
+  display: flex;
+}
 
-
-  .edit-actions.hidden,
-  .avatar-edit-btn.hidden {
-    display: none !important;
-  }
-
-
-  #avatar-edit-btn:not(.hidden) {
-    display: flex;
-  }
-
-
-  .profile-card-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
+.profile-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 
 
-  .profile-avatar-letter {
-    pointer-events: none;
-  }
+/* =================================
+   Avatar
+================================= */
+
+.avatar-edit-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+#avatar {
+  position: relative;
+  overflow: visible;
+}
+
+#avatar-image {
+  width: 100%;
+  height: 100%;
+  display: none;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+#avatar-letter {
+  align-items: center;
+  justify-content: center;
+}
 
 
+/* =================================
+   Avatar Picker
+================================= */
 
-  /* ================================
-     Avatar
-  ================================ */
+.avatar-picker {
+  position: absolute;
 
-  .avatar-edit-wrap {
-    position: relative;
-    flex-shrink: 0;
-  }
+  top: 50%;
+  left: calc(100% + 14px);
 
+  transform: translateY(-50%);
 
-  .avatar-picker {
-    position: absolute;
+  width: 290px;
+  padding: 16px;
 
-    top: 50%;
-    left: calc(100% + 14px);
+  background: white;
 
-    transform: translateY(-50%);
+  border: 1px solid #d6e9e2;
+  border-radius: 16px;
 
-    width: 250px;
-    padding: 16px;
+  box-shadow:
+    0 10px 30px rgba(0,0,0,.12);
 
-    background: white;
+  z-index: 100;
+}
 
-    border: 1px solid #d6e9e2;
-    border-radius: 16px;
+.avatar-picker.hidden {
+  display: none;
+}
 
-    box-shadow:
-      0 10px 30px rgba(0, 0, 0, 0.12);
-
-    z-index: 100;
-  }
-
-
-  .avatar-picker.hidden {
-    display: none;
-  }
+.avatar-picker-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
 
 
-  .avatar-picker-title {
-    font-size: 14px;
-    font-weight: 700;
-    margin-bottom: 12px;
-  }
+/* Google + Upload */
+
+.avatar-source-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+
+  margin-bottom: 14px;
+}
+
+.avatar-source-actions .btn {
+  width: 100%;
+  white-space: nowrap;
+}
 
 
-  .avatar-options {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 10px;
-  }
+/* Divider */
+
+.avatar-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  margin: 12px 0;
+
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.avatar-divider::before,
+.avatar-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
 
 
-  .avatar-option {
-    width: 40px;
-    height: 40px;
+/* Emoji */
 
-    padding: 0;
+.avatar-options {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 9px;
+}
 
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.avatar-option {
+  width: 40px;
+  height: 40px;
 
-    border: 1px solid #cde4dc;
-    border-radius: 50%;
+  padding: 0;
 
-    background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-    font-size: 21px;
+  border: 1px solid #cde4dc;
+  border-radius: 50%;
 
-    cursor: pointer;
+  background: white;
 
-    transition:
-      transform 0.15s ease,
-      background 0.15s ease,
-      border-color 0.15s ease;
-  }
+  font-size: 21px;
+
+  cursor: pointer;
+
+  transition:
+    transform .15s ease,
+    background .15s ease,
+    border-color .15s ease;
+}
+
+.avatar-option:hover {
+  transform: scale(1.08);
+  background: #eefaf6;
+  border-color: #11966f;
+}
+
+.avatar-option.selected {
+  background: #e5f8f1;
+  border: 2px solid #11966f;
+}
+
+.avatar-picker-close {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
 
 
-  .avatar-option:hover {
-    transform: scale(1.1);
-
-    background: #eefaf6;
-
-    border-color: #11966f;
-  }
-
-
-  .avatar-option.selected {
-    background: #e5f8f1;
-
-    border: 2px solid #11966f;
-  }
-
-
-  .avatar-picker-close {
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 12px;
-  }
+/* =================================
+   Interests
+================================= */
 
 .interest-chip {
   cursor: default;
   user-select: none;
-  opacity: 0.85;
-  border: none;
+  opacity: .85;
 }
 
 .interest-chip.editable {
@@ -194,30 +235,33 @@
   opacity: 1;
 }
 
-
-  /* ================================
-     Responsive
-  ================================ */
-
-  @media (max-width: 860px) {
-
-    .profile-edit-fields {
-      grid-template-columns: 1fr;
-    }
+.interest-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--fg-2);
+}
 
 
-    .avatar-picker {
+/* =================================
+   Responsive
+================================= */
 
-      top: calc(100% + 12px);
-      left: 0;
+@media (max-width: 860px) {
 
-      transform: none;
-
-      width: 250px;
-
-    }
-
+  .profile-edit-fields {
+    grid-template-columns: 1fr;
   }
+
+  .avatar-picker {
+    top: calc(100% + 12px);
+    left: 0;
+
+    transform: none;
+
+    width: 280px;
+  }
+
+}
 
 </style>
 
@@ -227,19 +271,16 @@
 
 {% block content %}
 
-
 {% set display_name =
   current_user.get('display_name')
   or current_user.get('displayName')
   or ''
 %}
 
-
 {% set email =
   current_user.get('email')
   or ''
 %}
-
 
 {% set selected_interests =
   user_preferences.get('interests', [])
@@ -248,31 +289,33 @@
 %}
 
 
-
 <div class="page-inner">
 
   <div class="profile-wrap">
 
 
-    <!-- ================================
-         Profile Identity
-    ================================ -->
+    <!-- =================================
+         Identity
+    ================================= -->
 
     <div class="card profile-identity">
 
       <div class="profile-identity-inner">
 
 
-        <!-- ================================
-             Avatar
-        ================================ -->
+        <!-- Avatar -->
 
         <div class="avatar-edit-wrap">
-
 
           <div
             class="avatar avatar-xl"
             id="avatar">
+
+            <img
+              id="avatar-image"
+              src=""
+              alt="Profile picture"
+            >
 
             <span id="avatar-letter">
               {{ display_name[:1] | upper }}
@@ -282,7 +325,7 @@
             <button
               class="avatar-edit-btn hidden"
               id="avatar-edit-btn"
-              title="Change avatar"
+              title="Change profile picture"
               type="button">
 
               ✎
@@ -292,10 +335,7 @@
           </div>
 
 
-
-          <!-- ================================
-               Avatar Picker
-          ================================ -->
+          <!-- Avatar Picker -->
 
           <div
             class="avatar-picker hidden"
@@ -303,114 +343,60 @@
 
 
             <div class="avatar-picker-title">
+              Change Profile Picture
+            </div>
 
-              Choose Avatar
 
+            <div class="avatar-source-actions">
+
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                id="use-google-avatar">
+
+                Google Photo
+
+              </button>
+
+
+              <button
+                type="button"
+                class="btn btn-secondary btn-sm"
+                id="upload-avatar-btn">
+
+                Upload Photo
+
+              </button>
+
+            </div>
+
+
+            <input
+              type="file"
+              id="avatar-file-input"
+              accept="image/jpeg,image/png,image/webp"
+              hidden
+            >
+
+
+            <div class="avatar-divider">
+              or choose an avatar
             </div>
 
 
             <div class="avatar-options">
 
+              <button type="button" class="avatar-option" data-avatar="🐼">🐼</button>
+              <button type="button" class="avatar-option" data-avatar="🐯">🐯</button>
+              <button type="button" class="avatar-option" data-avatar="🐨">🐨</button>
+              <button type="button" class="avatar-option" data-avatar="🦊">🦊</button>
+              <button type="button" class="avatar-option" data-avatar="🐻">🐻</button>
 
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🐼">
-
-                🐼
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🐯">
-
-                🐯
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🐨">
-
-                🐨
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🦊">
-
-                🦊
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🐻">
-
-                🐻
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="✈️">
-
-                ✈️
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🌴">
-
-                🌴
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🏝️">
-
-                🏝️
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="🗺️">
-
-                🗺️
-
-              </button>
-
-
-              <button
-                type="button"
-                class="avatar-option"
-                data-avatar="😎">
-
-                😎
-
-              </button>
-
+              <button type="button" class="avatar-option" data-avatar="✈️">✈️</button>
+              <button type="button" class="avatar-option" data-avatar="🌴">🌴</button>
+              <button type="button" class="avatar-option" data-avatar="🏝️">🏝️</button>
+              <button type="button" class="avatar-option" data-avatar="🗺️">🗺️</button>
+              <button type="button" class="avatar-option" data-avatar="😎">😎</button>
 
             </div>
 
@@ -428,44 +414,31 @@
 
             </div>
 
-
           </div>
-
 
         </div>
 
 
 
-        <!-- ================================
-             Identity Information
-        ================================ -->
+        <!-- Identity information -->
 
         <div class="profile-identity-main">
 
 
-          <!-- View Mode -->
-
           <div id="identity-view">
 
-
             <div class="profile-name identity-name">
-
               {{ display_name }}
-
             </div>
-
 
             <div class="profile-email identity-email">
-
               {{ email }}
-
             </div>
-
 
             <div class="flex flex-wrap gap-2 mt-2">
 
               <span class="provider-badge">
-                Google Sign-In
+                Account
               </span>
 
               <span class="badge badge-success">
@@ -474,52 +447,36 @@
 
             </div>
 
-
           </div>
 
 
 
-          <!-- ================================
-               Edit Mode
-          ================================ -->
+          <!-- Edit -->
 
           <div id="identity-edit">
 
-
             <div class="profile-edit-fields">
-
-
-              <!-- Display Name -->
 
               <div class="field">
 
                 <label for="edit-name">
-
                   Display Name
-
                 </label>
-
 
                 <input
                   type="text"
                   id="edit-name"
                   value="{{ display_name }}"
-                />
+                >
 
               </div>
 
 
-
-              <!-- Email -->
-
               <div class="field">
 
                 <label for="edit-email">
-
                   Email Address
-
                 </label>
-
 
                 <input
                   type="email"
@@ -530,23 +487,16 @@
                     background:#f5f5f5;
                     cursor:not-allowed;
                   "
-                />
+                >
 
               </div>
-
 
             </div>
 
 
-
-            <!-- ================================
-                 Save / Cancel
-            ================================ -->
-
             <div
               class="edit-actions hidden"
               id="edit-actions">
-
 
               <button
                 class="btn btn-primary btn-sm"
@@ -567,23 +517,15 @@
 
               </button>
 
-
             </div>
 
-
           </div>
-
 
         </div>
 
 
 
-        <!-- ================================
-             Edit Profile Button
-        ================================ -->
-
         <div class="profile-card-actions">
-
 
           <button
             class="btn btn-secondary btn-sm"
@@ -595,9 +537,7 @@
 
           </button>
 
-
         </div>
-
 
       </div>
 
@@ -605,35 +545,27 @@
 
 
 
-    <!-- ================================
-         Profile Stats
-    ================================ -->
+    <!-- =================================
+         Stats
+    ================================= -->
 
     <div class="profile-stats">
 
 
-      <!-- Saved -->
-
       <div class="card profile-stat-card">
 
         <div class="profile-stat-icon">
-
           💾
-
         </div>
 
         <div>
 
           <div class="profile-stat-value">
-
             {{ saved_count | default(0) }}
-
           </div>
 
           <div class="profile-stat-label">
-
             Saved Itineraries
-
           </div>
 
         </div>
@@ -642,22 +574,24 @@
 
 
 
-      <!-- Favourite -->
-
       <div class="card profile-stat-card">
 
         <div class="profile-stat-icon">
-
           ⭐
-
         </div>
 
         <div>
-          <div class="profile-stat-value" id="fav-count-stat">0</div>
+
+          <div
+            class="profile-stat-value"
+            id="fav-count-stat">
+
+            0
+
+          </div>
+
           <div class="profile-stat-label">
-
             Favourite Attractions
-
           </div>
 
         </div>
@@ -666,28 +600,20 @@
 
 
 
-      <!-- Shared -->
-
       <div class="card profile-stat-card">
 
         <div class="profile-stat-icon">
-
           🔗
-
         </div>
 
         <div>
 
           <div class="profile-stat-value">
-
             {{ shared_count | default(0) }}
-
           </div>
 
           <div class="profile-stat-label">
-
             Shared Itineraries
-
           </div>
 
         </div>
@@ -696,111 +622,118 @@
 
     </div>
 
-      <!-- ================================
-           Interests
-      ================================ -->
-
-      <div class="card profile-prefs">
-
-  <div>
-    <div class="profile-prefs-title">
-      Travel Interests
-    </div>
-
-    <div class="profile-prefs-sub">
-      Interests that describe this traveller
-    </div>
-  </div>
-
-  <div class="chips" id="interest-chips">
-
-    {% set interests_list = [
-      ('culture', '🏛️ Culture'),
-      ('museum', '🖼️ Museum'),
-      ('nature', '🌿 Nature'),
-      ('food', '🍜 Food'),
-      ('shopping', '🛍️ Shopping'),
-      ('beach', '🏖️ Beach'),
-      ('adventure', '🥾 Adventure'),
-      ('photography', '📸 Photography'),
-      ('nightlife', '🌙 Nightlife'),
-      ('family', '👨‍👩‍👧 Family')
-    ] %}
-
-    {% for value, label in interests_list %}
-
-      <button
-        type="button"
-        class="chip interest-chip
-        {% if value in selected_interests %}active{% endif %}"
-        data-interest="{{ value }}"
-        aria-pressed="{% if value in selected_interests %}true{% else %}false{% endif %}">
-
-        {{ label }}
-
-      </button>
-
-    {% endfor %}
-
-  </div>
-
-  <div class="interest-hint" id="interest-hint">
-    Click Edit Profile to update your interests.
-  </div>
-
-</div>
 
 
-    <!-- ================================
-         Favourite Attractions
-    ================================ -->
+    <!-- =================================
+         Travel Interests
+    ================================= -->
 
-    <div class="card card-p">
+    <div class="card profile-prefs">
 
+      <div>
 
-      <div class="card-header">
-
-
-        <div>
-
-
-          <div class="card-title">
-
-            Favourite Attractions
-
-          </div>
-
-
-          <div class="card-subtitle">
-
-            Attractions saved by the current user
-
-          </div>
-
-
+        <div class="profile-prefs-title">
+          Travel Interests
         </div>
 
+        <div class="profile-prefs-sub">
+          Interests that describe this traveller
+        </div>
+
+      </div>
+
+
+      {% set interests_list = [
+        ('culture', '🏛️ Culture'),
+        ('museum', '🖼️ Museum'),
+        ('nature', '🌿 Nature'),
+        ('food', '🍜 Food'),
+        ('shopping', '🛍️ Shopping'),
+        ('beach', '🏖️ Beach'),
+        ('adventure', '🥾 Adventure'),
+        ('photography', '📸 Photography'),
+        ('nightlife', '🌙 Nightlife'),
+        ('family', '👨‍👩‍👧 Family')
+      ] %}
+
+
+      <div
+        class="chips"
+        id="interest-chips">
+
+
+        {% for value, label in interests_list %}
 
         <button
-          class="btn btn-ghost btn-sm"
-          type="button">
+          type="button"
 
-          View all
+          class="
+            chip
+            interest-chip
+            {% if value in selected_interests %}
+              active
+            {% endif %}
+          "
+
+          data-interest="{{ value }}"
+
+          aria-pressed="
+            {% if value in selected_interests %}
+              true
+            {% else %}
+              false
+            {% endif %}
+          ">
+
+          {{ label }}
 
         </button>
 
+        {% endfor %}
 
       </div>
 
 
+      <div
+        class="interest-hint"
+        id="interest-hint">
 
-      <!-- Loading -->
+        Click Edit Profile to update your interests.
+
+      </div>
+
+    </div>
+
+
+
+    <!-- =================================
+         Favourite Attractions
+    ================================= -->
+
+    <div class="card card-p">
+
+      <div class="card-header">
+
+        <div>
+
+          <div class="card-title">
+            Favourite Attractions
+          </div>
+
+          <div class="card-subtitle">
+            Attractions saved by the current user
+          </div>
+
+        </div>
+
+      </div>
+
 
       <div
         id="fav-loading"
         style="
-          padding: 12px 0;
-          color: var(--fg-2);
+          padding:12px 0;
+          color:var(--fg-2);
         ">
 
         Loading favourite attractions...
@@ -808,78 +741,53 @@
       </div>
 
 
-
-      <!-- List -->
-
       <div
         id="fav-list"
         style="display:none;">
       </div>
 
 
-
-      <!-- Empty State -->
-
       <div
         id="fav-empty"
         class="empty-state"
         style="
-          min-height: 150px;
+          min-height:150px;
           display:none;
         ">
 
-
         <div class="empty-icon">
-
           ⭐
-
         </div>
-
 
         <div class="empty-title">
-
           No favourite attractions yet
-
         </div>
-
 
         <div class="empty-sub">
-
           Star an attraction on the Smart Attraction page to save it here.
-
         </div>
 
-
       </div>
-
 
     </div>
 
 
 
-    <!-- ================================
-         Danger Zone
-    ================================ -->
+    <!-- =================================
+         Sign out
+    ================================= -->
 
     <div class="danger-zone">
 
-
       <div>
 
-
         <div class="danger-zone-title">
-
           Sign out of PandaJourney
-
         </div>
-
 
         <div class="danger-zone-sub">
-
           You'll be redirected to the login page.
-
         </div>
-
 
       </div>
 
@@ -893,41 +801,24 @@
 
       </button>
 
-
     </div>
-
 
   </div>
 
 </div>
 
 
-
-<!-- ================================
-     Save Toast
-================================ -->
-
 <div
   class="toast"
   id="save-toast">
 
+  <span>✅</span>
 
   <span>
-
-    ✅
-
-  </span>
-
-
-  <span>
-
     Profile saved successfully!
-
   </span>
-
 
 </div>
-
 
 {% endblock %}
 

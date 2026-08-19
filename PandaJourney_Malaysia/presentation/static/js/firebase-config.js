@@ -1,4 +1,6 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
+import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
 
 import {
   getAuth,
@@ -8,6 +10,11 @@ import {
 import {
   getFirestore
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+import {
+  getStorage
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
+
 
 const firebaseConfig = {
   apiKey: "AIzaSyAX3NQdMKHFGwoySHcNAYW8dHFSnZBo_MI",
@@ -19,19 +26,33 @@ const firebaseConfig = {
   measurementId: "G-5XDDN834ZQ"
 };
 
-const app = initializeApp(firebaseConfig);
 
-const auth = getAuth(app);
-const db = getFirestore(app);
-const provider = new GoogleAuthProvider();
+const app =
+  initializeApp(firebaseConfig);
+
+const auth =
+  getAuth(app);
+
+const db =
+  getFirestore(app);
+
+const storage =
+  getStorage(app);
+
+
+const provider =
+  new GoogleAuthProvider();
+
 
 provider.setCustomParameters({
   prompt: "select_account"
 });
 
+
 export {
   app,
   auth,
   db,
+  storage,
   provider
 };
