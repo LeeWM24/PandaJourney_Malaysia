@@ -302,6 +302,10 @@ def collaboration():
         notifications=[]
     )
 
+# ==================================
+# | ZhanFoong - Public Itineraries |
+# ==================================
+
 @app.route("/public-itineraries", methods=["GET", "POST"])
 def public_itinerary():
     if request.method == "POST":
@@ -318,33 +322,6 @@ def public_itinerary():
         current_user=get_current_user(),
         itineraries=[]
     )
-
-# @app.route("/public-itineraries/<itinerary_id>/view", methods=["POST"]) #Zham feng
-# def increment_itinerary_view(itinerary_id):
-#     increment_view(itinerary_id)
-#     return {"success": True}
-
-# @app.route("/public-itineraries/<itinerary_id>/like", methods=["POST"]) #Zham feng
-# def like_public_itinerary(itinerary_id):
-#     current_user = get_current_user()
-
-#     is_liked = toggle_like(itinerary_id)
-
-#     return {
-#         "success": True,
-#         "liked": is_liked
-#     }
-
-# @app.route("/public-itineraries/<itinerary_id>/save", methods=["POST"]) #Zham feng
-# def save_public_itinerary(itinerary_id):
-#     current_user = get_current_user()
-
-#     is_saved = toggle_save(itinerary_id)
-
-#     return {
-#         "success": True,
-#         "saved": is_saved
-#     }
 
 @app.route("/profile", methods=["GET", "POST"])  # Jiading
 def profile():

@@ -13,6 +13,7 @@ Explore community favorites, search destinations, and save routes in a tap.
 
   <div class="page-inner">
     <div class="page-shell">
+      <!-- Search and Filter -->
           <section class="card search-card">
             <div class="search-row">
               <div class="search-input-wrap">
@@ -63,8 +64,10 @@ Explore community favorites, search destinations, and save routes in a tap.
         </div>
       </div>
 
+   <!-- Open Itinerary Detail Drawer: Display Overlay -->
   <div id="detailOverlay" class="detail-overlay"></div>
 
+  <!-- Side Drawer: Display Itinerary Details -->
   <aside
     id="detailDrawer"
     class="detail-drawer"
@@ -81,6 +84,7 @@ Explore community favorites, search destinations, and save routes in a tap.
   <script type="module" src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
   <script type="module" src="{{ url_for('static', filename='js/public_itineraries.js') }}"></script>
   
+  <!-- Initial Itinerary Data (Supplied by Flask) - Firestore Data Replaces After Load -->
   <script id="itinerary-data" type="application/json">
     {{ itineraries | tojson }}
   </script>
@@ -90,6 +94,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       document.getElementById('itinerary-data').textContent
     );
 
+    // Stores Current UI Status
     const state = {
       search: '',
       filters: { interest: [], duration: [], stops: [] },
@@ -122,6 +127,7 @@ Explore community favorites, search destinations, and save routes in a tap.
     const detailDrawer = document.getElementById('detailDrawer');
     const copyToast = document.getElementById('copyToast');
 
+    // Receive Latest Published Itineraries (Loaded from Firestore)
     window.addEventListener("publicItinerariesLoaded", () => {
       itineraries = window.publicItineraries || [];
 
@@ -140,6 +146,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       render();
     });
 
+    // Initialisation for Search, Filter, Overlay and page-event Listeners
     function init() {
       searchInput.addEventListener('input', (event) => {
         state.search = event.target.value.trim().toLowerCase();
@@ -201,12 +208,14 @@ Explore community favorites, search destinations, and save routes in a tap.
       render();
     }
 
+    // Switch: Default Browse Mode <=> Filtered Result Mode
     function updateMode() {
       const hasQuery = state.search.length > 0;
       const hasFilters = Object.values(state.filters).some((items) => items.length > 0);
       state.mode = hasQuery || hasFilters ? 'results' : 'browse';
     }
 
+    // Filter Itineraries
     function getFilteredItineraries() {
       return itineraries.filter((item) => {
 
@@ -262,6 +271,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       });
     }
 
+    // Sort Itineraries
     function getSortedItineraries(list) {
       const clone = [...list];
       if (state.sort === 'popular') return clone.sort((a, b) => b.views - a.views);
@@ -269,6 +279,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       return clone.sort((a, b) => b.likes - a.likes);
     }
 
+    // Rendering Current View
     function render() {
       const visible = getFilteredItineraries();
       const sorted = getSortedItineraries(visible);
@@ -282,6 +293,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       bindCards();
     }
 
+    // Display Active Filtering
     function renderFilters() {
       syncFilterChips();
       const counts = [];
@@ -314,6 +326,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       });
     }
 
+    // Keep Filter Button Appearance (Synchronised with Selected State)
     function syncFilterChips() {
       document.querySelectorAll('[data-group]').forEach((group) => {
         const selectedValues = state.filters[group.dataset.group];
@@ -323,6 +336,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       });
     }
 
+    // Show Number of Itineraries Matching Current Criteria
     function renderSummary(count) {
       const total = itineraries.length;
       const hasAny = state.search || Object.values(state.filters).some((items) => items.length > 0); 
@@ -332,6 +346,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       `;
     }
 
+    // Render Popular Picks and Community List
     function renderBrowse(list) {
       const popular = list.slice(0, 3);
       const community = list.slice(3);
@@ -412,6 +427,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       `;
     }
 
+    // Rendering Search and Filter Results
     function renderResults(list) {
       if (!list.length) {
         return `<div class="empty-state">No itineraries match that search. Try a broader keyword or clear a filter.</div>`;
@@ -441,6 +457,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       `;
     }
 
+    // Attaching for Dynamic Rendering Itinerary Cards
     function bindCards() {
       document.querySelectorAll('[data-open]').forEach((button) => {
         button.addEventListener('click', () => openDetail(button.dataset.open));
@@ -456,6 +473,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       });
     }
 
+    // Open Itinerary Detail Drawer + Record 1 View
     async function openDetail(id) {
       const item = itineraries.find((entry) => entry.id === id);
       if (!item){
@@ -580,6 +598,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       detailDrawer.querySelector('[data-close]').addEventListener('click', closeDetail);
     }
 
+    // Display a Temporary Feedback Message
     function showToast(message) {
       copyToast.textContent = message;
       copyToast.classList.add('show');
@@ -587,6 +606,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       showToast.timeoutId = setTimeout(() => copyToast.classList.remove('show'), 3500);
     }
 
+    // Close + Clear Itinerary Detail Drawer
     function closeDetail() {
       detailOverlay.classList.remove('active');
       detailDrawer.classList.remove('active');
@@ -595,6 +615,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       render();
     }
 
+    // Escaping Dynamic Text before Insert into HTML
     function escapeHtml(text) {
       return String(text)
         .replace(/&/g, '&amp;')
@@ -604,6 +625,7 @@ Explore community favorites, search destinations, and save routes in a tap.
         .replace(/'/g, '&#39;');
     }
 
+    // Highlight Matching Search Terms in Result
     function highlightText(text, query) {
       if (!query) return escapeHtml(text);
       const safeText = escapeHtml(text);

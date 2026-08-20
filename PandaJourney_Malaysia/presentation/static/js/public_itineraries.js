@@ -11,6 +11,7 @@ onAuthStateChanged(auth, async (user) => {
   }
 });
 
+// Increment Selected Itinerary View Count in Firestore
 async function addView(itineraryId) {
   const itineraryRef = doc(db, "Itinerary", itineraryId);
 
@@ -19,6 +20,7 @@ async function addView(itineraryId) {
   });
 }
 
+// Retrieve Itinerary Owner Name from User Collection
 async function getAuthorName(userId) {
   const userRef = doc(db, "users", userId);
   const userSnap = await getDoc(userRef);
@@ -30,6 +32,7 @@ async function getAuthorName(userId) {
   return "Unknown User";
 }
 
+// Load All Stops and Prepare Information for Display at Selected Itinerary
 async function getItineraryStops(itineraryId) {
   const stopsQuery = query(
     collection(db, "itinerary_stops"),
@@ -50,6 +53,7 @@ async function getItineraryStops(itineraryId) {
     };
   });
 
+  // Arrange Itinerary Stops According to Arrival Time.
   stops.sort((a, b) => {
     return convertTimeToMinutes(a.time) - convertTimeToMinutes(b.time);
   });
@@ -57,6 +61,7 @@ async function getItineraryStops(itineraryId) {
   return stops;
 }
 
+// Convert 12-hour time into minutes (Stops can Sort Chronologically)
 function convertTimeToMinutes(time) {
   if (!time) return 9999;
 
@@ -74,6 +79,7 @@ function convertTimeToMinutes(time) {
   return hours * 60 + minutes;
 }
 
+// Toggle Current User Like Status (Prevent Same User Can Like > 1 time)
 async function likeItinerary(itineraryId) {
   if (!currentUser) {
     throw new Error("Please login before liking.");
@@ -85,6 +91,7 @@ async function likeItinerary(itineraryId) {
 
   const likeSnap = await getDoc(likeRef);
 
+  // Remove + Decrease the Count (if Like Already Existed)
   if (likeSnap.exists()) {
 
     await deleteDoc(likeRef);
@@ -97,6 +104,7 @@ async function likeItinerary(itineraryId) {
 
   } else {
 
+    // Create a New Like Record for Current User
     await setDoc(likeRef, {
       itinerary_id: itineraryId,
       user_id: currentUser.uid,
@@ -111,6 +119,7 @@ async function likeItinerary(itineraryId) {
   }
 }
 
+// Retrieve All Public Itinerary IDs Currently Liked by Logged-in User
 async function getLikedPublicItineraryIds(userId) {
   if (!userId) {
     return new Set();
@@ -128,6 +137,7 @@ async function getLikedPublicItineraryIds(userId) {
   );
 }
 
+// Retrieve All Public Itinerary IDs Currently Saved by Logged-in User
 async function getSavedPublicItineraryIds(userId) {
   if (!userId) {
     return new Set();
@@ -147,6 +157,7 @@ async function getSavedPublicItineraryIds(userId) {
   return new Set(savedSourceIds);
 }
 
+// Save Public Itinerary as Independent Draft Itinerary
 async function savePublicItineraryCopy(item) {
   if (!currentUser) {
     throw new Error("Please login before saving.");
@@ -155,6 +166,7 @@ async function savePublicItineraryCopy(item) {
   const savedRef = doc(collection(db, "Itinerary"));
   const newItineraryId = savedRef.id;
 
+  // Create New Saved Itinerary Owned by Current User
   await setDoc(savedRef, {
     ...item,
     itinerary_id: newItineraryId,
@@ -166,6 +178,7 @@ async function savePublicItineraryCopy(item) {
     published_at: null
   });
 
+  // Copy Each Itinerary Stop into New Stop Document Belonging to Newly Saved Itinerary
   for (const stop of item.stopList) {
     const stopRef = doc(collection(db, "itinerary_stops"));
 
@@ -178,6 +191,7 @@ async function savePublicItineraryCopy(item) {
     });
   }
 
+  // Increase Original Public Itinerary Save Count
   const originalRef = doc(db, "Itinerary", item.id);
 
   await updateDoc(originalRef, {
@@ -187,10 +201,12 @@ async function savePublicItineraryCopy(item) {
   return newItineraryId;
 }
 
+// Expose Firestore Functions for HTML
 window.addPublicItineraryView = addView;
 window.likePublicItinerary = likeItinerary;
 window.savePublicItineraryCopy = savePublicItineraryCopy;
 
+// Load All "Currently Published" Itineraries 
 async function testLoadItineraries() {
   const itineraryQuery = query(
     collection(db, "Itinerary"),
@@ -198,6 +214,8 @@ async function testLoadItineraries() {
   );
 
   const snapshot = await getDocs(itineraryQuery);
+
+  // Retrieve User-specific Save + Like Status
   const savedIds = await getSavedPublicItineraryIds(currentUser?.uid);
   const likedIds = await getLikedPublicItineraryIds(currentUser?.uid);
 
@@ -206,6 +224,7 @@ async function testLoadItineraries() {
     snapshot.docs.map(async (doc) => {
       const data = doc.data();
 
+      // Retrieve Supporting Information for Each Itinerary
       const authorName = await getAuthorName(data.user_id);
       const stopList = await getItineraryStops(doc.id);
 
@@ -227,6 +246,7 @@ async function testLoadItineraries() {
     })
   );
 
+  // Make Firestore Itinerary Data Available to the HTML page + Notify Loading is Complete
   window.publicItineraries = itineraries;
   window.dispatchEvent(new Event("publicItinerariesLoaded"));
 
