@@ -507,3 +507,53 @@ button, input, select, textarea { font: inherit; }
   background: var(--border);
   border-radius: 999px;
 }
+
+
+.custom-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 22, 16, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.custom-modal-backdrop.show {
+  display: flex;
+}
+
+.custom-modal-box {
+  width: min(420px, 92%);
+  background: #10261b;
+  color: #ffffff;
+  border-radius: 18px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  padding: 28px 24px 22px;
+  border: 1px solid rgba(180, 220, 190, 0.25);
+  text-align: center;
+}
+
+.custom-modal-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
+
+.custom-modal-title {
+  font-size: 24px;
+  font-weight: 800;
+  margin-bottom: 10px;
+  color: #ffffff;
+}
+
+.custom-modal-message {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #dcebdd;
+  margin-bottom: 22px;
+}
+
+.custom-modal-actions {
+  display: flex;
+  justify-content: center;
+}

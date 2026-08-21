@@ -91,6 +91,151 @@ function updateMaximumStopsOptions() {
 }
 
 // ================================
+// Loading UI
+// ================================
+
+function showPlannerLoading(message = "Generating itinerary...") {
+  const overlay = document.getElementById("planner-loading-overlay");
+  const textElement = document.getElementById("planner-loading-text");
+  const generateButton = document.getElementById("generate-itinerary-btn");
+
+  if (textElement) {
+    textElement.textContent = message;
+  }
+
+  if (overlay) {
+    overlay.style.display = "flex";
+    overlay.setAttribute("aria-hidden", "false");
+  }
+
+  if (generateButton) {
+    generateButton.disabled = true;
+    generateButton.textContent = message.includes("Updating")
+      ? "Updating route..."
+      : "Generating...";
+  }
+}
+
+function hidePlannerLoading() {
+  const overlay = document.getElementById("planner-loading-overlay");
+  const generateButton = document.getElementById("generate-itinerary-btn");
+
+  if (overlay) {
+    overlay.style.display = "none";
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  if (generateButton) {
+    generateButton.disabled = false;
+    generateButton.textContent = "⚡ Generate Itinerary";
+  }
+}
+
+// ================================
+// Browser GPS
+// ================================
+
+function setGpsStatus(message, isError = false) {
+  const statusElement = document.getElementById("gps-location-status");
+
+  if (!statusElement) return;
+
+  statusElement.textContent = message;
+  statusElement.style.color = isError ? "#dc2626" : "";
+}
+
+function useCurrentLocation() {
+  const startInput = document.getElementById("start");
+  const latitudeInput = document.getElementById("start_latitude");
+  const longitudeInput = document.getElementById("start_longitude");
+  const useCurrentLocationInput = document.getElementById("use_current_location");
+  const gpsButton = document.getElementById("use-current-location-btn");
+
+  if (!navigator.geolocation) {
+    setGpsStatus("GPS is not supported by this browser.", true);
+    return;
+  }
+
+  if (gpsButton) {
+    gpsButton.disabled = true;
+    gpsButton.textContent = "Detecting location...";
+  }
+
+  setGpsStatus("Detecting your current location...");
+
+  navigator.geolocation.getCurrentPosition(
+    function (position) {
+      const latitude = position.coords.latitude;
+      const longitude = position.coords.longitude;
+
+      if (startInput) {
+        startInput.value = "Current Location";
+      }
+
+      if (latitudeInput) {
+        latitudeInput.value = String(latitude);
+      }
+
+      if (longitudeInput) {
+        longitudeInput.value = String(longitude);
+      }
+
+      if (useCurrentLocationInput) {
+        useCurrentLocationInput.value = "1";
+      }
+
+      setGpsStatus(`Current location selected (${latitude.toFixed(5)}, ${longitude.toFixed(5)}).`);
+
+      if (gpsButton) {
+        gpsButton.disabled = false;
+        gpsButton.textContent = "📍 Use Current Location";
+      }
+    },
+    function (error) {
+      let message = "Unable to get current location.";
+
+      if (error.code === error.PERMISSION_DENIED) {
+        message = "Location permission was denied. Please allow location access or type a start location manually.";
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        message = "Current location is unavailable. Please type a start location manually.";
+      } else if (error.code === error.TIMEOUT) {
+        message = "Location request timed out. Please try again.";
+      }
+
+      setGpsStatus(message, true);
+
+      if (gpsButton) {
+        gpsButton.disabled = false;
+        gpsButton.textContent = "📍 Use Current Location";
+      }
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 12000,
+      maximumAge: 60000
+    }
+  );
+}
+
+function resetGpsWhenStartEdited() {
+  const startInput = document.getElementById("start");
+  const latitudeInput = document.getElementById("start_latitude");
+  const longitudeInput = document.getElementById("start_longitude");
+  const useCurrentLocationInput = document.getElementById("use_current_location");
+
+  if (!startInput) return;
+
+  startInput.addEventListener("input", function () {
+    if (startInput.value !== "Current Location") {
+      if (latitudeInput) latitudeInput.value = "";
+      if (longitudeInput) longitudeInput.value = "";
+      if (useCurrentLocationInput) useCurrentLocationInput.value = "0";
+      setGpsStatus("");
+    }
+  });
+}
+
+// ================================
 // Route Map
 // ================================
 
@@ -237,7 +382,6 @@ function normaliseFavouritePlace(docSnap) {
     longitude: Number(data.longitude || 0),
     rating: Number(data.rating || 0),
     image_url: data.image_url || "",
-    waze_url: data.waze_url || "",
     source: "Favourites"
   };
 }
@@ -482,13 +626,15 @@ function validateFavouriteSelection() {
   return true;
 }
 
-function submitPlannerForm() {
+function submitPlannerForm(loadingText = "Generating itinerary...") {
   const itineraryForm = document.getElementById("itinerary-form");
 
   if (!itineraryForm) return;
 
   if (!validateTripDateTime()) return;
   if (!validateFavouriteSelection()) return;
+
+  showPlannerLoading(loadingText);
 
   if (itineraryForm.requestSubmit) {
     itineraryForm.requestSubmit();
@@ -506,7 +652,7 @@ function removeStopAndRefresh(stopName) {
 
   setExcludedStopNames(names);
   setRegenerateToken();
-  submitPlannerForm();
+  submitPlannerForm("Updating route...");
 }
 
 // ================================
@@ -583,6 +729,111 @@ function validateTripDateTime() {
 }
 
 // ================================
+// Save Title Modal
+// ================================
+
+let saveTitleResolver = null;
+
+function openSaveTitleModal(defaultTitle) {
+  const modal = document.getElementById("save-title-modal");
+  const input = document.getElementById("save-itinerary-title-input");
+  const errorElement = document.getElementById("save-title-error");
+
+  if (!modal || !input) {
+    return Promise.resolve(window.prompt("Enter itinerary title:", defaultTitle));
+  }
+
+  if (errorElement) {
+    errorElement.style.display = "none";
+  }
+
+  input.value = defaultTitle || "";
+  modal.style.display = "flex";
+  modal.setAttribute("aria-hidden", "false");
+
+  setTimeout(function () {
+    input.focus();
+    input.select();
+  }, 50);
+
+  return new Promise(function (resolve) {
+    saveTitleResolver = resolve;
+  });
+}
+
+function closeSaveTitleModal(value) {
+  const modal = document.getElementById("save-title-modal");
+  const errorElement = document.getElementById("save-title-error");
+
+  if (modal) {
+    modal.style.display = "none";
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  if (errorElement) {
+    errorElement.style.display = "none";
+  }
+
+  if (saveTitleResolver) {
+    saveTitleResolver(value);
+    saveTitleResolver = null;
+  }
+}
+
+function confirmSaveTitle() {
+  const input = document.getElementById("save-itinerary-title-input");
+  const errorElement = document.getElementById("save-title-error");
+
+  const title = input ? input.value.trim() : "";
+
+  if (!title) {
+    if (errorElement) {
+      errorElement.style.display = "block";
+    }
+
+    if (input) {
+      input.focus();
+    }
+
+    return;
+  }
+
+  closeSaveTitleModal(title);
+}
+
+// ================================
+// Save Success Modal
+// ================================
+
+function openSaveSuccessModal() {
+  const modal = document.getElementById("save-success-modal");
+  const okButton = document.getElementById("save-success-ok");
+
+  if (!modal) {
+    window.location.href = "/saved-itineraries";
+    return;
+  }
+
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+
+  if (okButton) {
+    okButton.focus();
+  }
+}
+
+function closeSaveSuccessModal() {
+  const modal = document.getElementById("save-success-modal");
+
+  if (modal) {
+    modal.classList.remove("show");
+    modal.setAttribute("aria-hidden", "true");
+  }
+
+  window.location.href = "/saved-itineraries";
+}
+
+// ================================
 // Save Itinerary
 // ================================
 
@@ -632,13 +883,11 @@ async function saveItinerary() {
 
     const destination = endText;
 
-    const itineraryTitle = prompt(
-      "Enter itinerary title:",
+    const itineraryTitle = await openSaveTitleModal(
       destination + " Trip"
     );
 
     if (!itineraryTitle || !itineraryTitle.trim()) {
-      alert("Save cancelled. Itinerary title is required.");
       saveButton.disabled = false;
       saveButton.textContent = "💾 Save";
       return;
@@ -686,6 +935,7 @@ async function saveItinerary() {
       interest: getFormValue("interests", "culture"),
 
       total_distance_km: Number(plan.total_distance_km || 0),
+      google_maps_full_route_url: plan.google_maps_full_route_url || "",
       travel_duration_minutes: travelDurationMinutes,
       total_duration_minutes: totalDurationMinutes,
       stop_count: selectedStops.length,
@@ -724,15 +974,17 @@ async function saveItinerary() {
 
         travel_minutes_from_previous: extractNumberFromText(timetableItem.transport || ""),
 
-        waze_url: timetableItem.waze_url || "",
+        google_maps_url: timetableItem.google_maps_url || "",
+        google_maps_label: timetableItem.google_maps_label || "",
+        route_leg_from: timetableItem.route_leg_from || "",
+        route_leg_to: timetableItem.route_leg_to || "",
 
         created_at: serverTimestamp(),
         updated_at: serverTimestamp()
       });
     }
 
-    alert("Itinerary saved successfully.");
-    window.location.href = "/saved-itineraries";
+    openSaveSuccessModal();
 
   } catch (error) {
     console.error("Failed to save itinerary:", error);
@@ -766,7 +1018,11 @@ document.addEventListener("DOMContentLoaded", function () {
     itineraryForm.addEventListener("submit", function (event) {
       if (!validateTripDateTime() || !validateFavouriteSelection()) {
         event.preventDefault();
+        hidePlannerLoading();
+        return;
       }
+
+      showPlannerLoading("Generating itinerary...");
     });
   }
 
@@ -786,6 +1042,14 @@ document.addEventListener("DOMContentLoaded", function () {
   if (maxStopsSelect) {
     maxStopsSelect.addEventListener("change", enforceFavouriteLimit);
   }
+
+  const useCurrentLocationButton = document.getElementById("use-current-location-btn");
+
+  if (useCurrentLocationButton) {
+    useCurrentLocationButton.addEventListener("click", useCurrentLocation);
+  }
+
+  resetGpsWhenStartEdited();
 
   const favouritesSearchInput = document.getElementById("favourites-search");
 
@@ -808,9 +1072,70 @@ document.addEventListener("DOMContentLoaded", function () {
 
   initRouteMap();
 
+  const cancelSaveTitleButton = document.getElementById("cancel-save-title-btn");
+  const confirmSaveTitleButton = document.getElementById("confirm-save-title-btn");
+  const saveTitleInput = document.getElementById("save-itinerary-title-input");
+  const saveTitleModal = document.getElementById("save-title-modal");
+
+  if (cancelSaveTitleButton) {
+    cancelSaveTitleButton.addEventListener("click", function () {
+      closeSaveTitleModal(null);
+    });
+  }
+
+  if (confirmSaveTitleButton) {
+    confirmSaveTitleButton.addEventListener("click", confirmSaveTitle);
+  }
+
+  if (saveTitleInput) {
+    saveTitleInput.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        confirmSaveTitle();
+      }
+
+      if (event.key === "Escape") {
+        closeSaveTitleModal(null);
+      }
+    });
+  }
+
+  if (saveTitleModal) {
+    saveTitleModal.addEventListener("click", function (event) {
+      if (event.target === saveTitleModal) {
+        closeSaveTitleModal(null);
+      }
+    });
+  }
+
   const saveButton = document.getElementById("save-itinerary-btn");
 
   if (saveButton) {
     saveButton.addEventListener("click", saveItinerary);
   }
+
+  const saveSuccessOkButton = document.getElementById("save-success-ok");
+  const saveSuccessModal = document.getElementById("save-success-modal");
+
+  if (saveSuccessOkButton) {
+    saveSuccessOkButton.addEventListener("click", closeSaveSuccessModal);
+  }
+
+  if (saveSuccessModal) {
+    saveSuccessModal.addEventListener("click", function (event) {
+      if (event.target === saveSuccessModal) {
+        closeSaveSuccessModal();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      const modal = document.getElementById("save-success-modal");
+
+      if (modal && modal.classList.contains("show")) {
+        closeSaveSuccessModal();
+      }
+    }
+  });
 });

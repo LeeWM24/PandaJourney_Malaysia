@@ -16,7 +16,6 @@ import {
   deleteDoc,
   doc,
   updateDoc,
-  increment,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
@@ -34,7 +33,12 @@ const pastSection = document.getElementById("past-section");
 const pastListElement = document.getElementById("past-list");
 const togglePastButton = document.getElementById("toggle-past-btn");
 
+let currentUser = null;
 let pastVisible = false;
+let pastPlanCount = 0;
+
+let pendingDeleteDocumentId = null;
+let pendingDeleteItineraryId = null;
 
 // ================================
 // Helper
@@ -43,6 +47,45 @@ let pastVisible = false;
 function hideLoading() {
   if (loadingElement) {
     loadingElement.style.display = "none";
+  }
+}
+
+function showLoading() {
+  if (loadingElement) {
+    loadingElement.style.display = "block";
+  }
+}
+
+function resetView() {
+  if (upcomingSection) {
+    upcomingSection.style.display = "none";
+  }
+
+  if (emptyElement) {
+    emptyElement.style.display = "none";
+  }
+
+  if (pastControl) {
+    pastControl.style.display = "none";
+  }
+
+  if (pastSection) {
+    pastSection.style.display = "none";
+  }
+
+  if (listElement) {
+    listElement.innerHTML = "";
+  }
+
+  if (pastListElement) {
+    pastListElement.innerHTML = "";
+  }
+
+  pastVisible = false;
+  pastPlanCount = 0;
+
+  if (togglePastButton) {
+    togglePastButton.textContent = "View Past Plans";
   }
 }
 
@@ -133,10 +176,163 @@ async function getStopCount(itineraryId) {
 }
 
 // ================================
+// Modal UI
+// ================================
+
+function openStatusSuccessModal(title, message, icon = "✅") {
+  const modal = document.getElementById("status-success-modal");
+  const iconElement = document.getElementById("status-success-icon");
+  const titleElement = document.getElementById("status-success-title");
+  const messageElement = document.getElementById("status-success-message");
+  const okButton = document.getElementById("status-success-ok");
+
+  if (!modal) {
+    console.log(message || "Action completed successfully.");
+    return;
+  }
+
+  if (iconElement) {
+    iconElement.textContent = icon;
+  }
+
+  if (titleElement) {
+    titleElement.textContent = title || "Success";
+  }
+
+  if (messageElement) {
+    messageElement.textContent = message || "Action completed successfully.";
+  }
+
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+
+  if (okButton) {
+    okButton.focus();
+  }
+}
+
+function closeStatusSuccessModal() {
+  const modal = document.getElementById("status-success-modal");
+
+  if (!modal) return;
+
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function openDeleteConfirmModal(documentId, itineraryId, itineraryTitle = "this itinerary") {
+  const modal = document.getElementById("delete-confirm-modal");
+  const messageElement = document.getElementById("delete-confirm-message");
+  const confirmButton = document.getElementById("confirm-delete-btn");
+
+  pendingDeleteDocumentId = documentId;
+  pendingDeleteItineraryId = itineraryId;
+
+  if (!modal) {
+    const confirmed = window.confirm("Delete this itinerary? This action cannot be undone.");
+
+    if (confirmed) {
+      performDeleteItinerary(documentId, itineraryId).catch(function (error) {
+        console.error("Failed to delete itinerary:", error);
+      });
+    }
+
+    return;
+  }
+
+  if (messageElement) {
+    messageElement.textContent =
+      `Are you sure you want to delete "${itineraryTitle}"? This action cannot be undone.`;
+  }
+
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+
+  if (confirmButton) {
+    confirmButton.focus();
+  }
+}
+
+function closeDeleteConfirmModal() {
+  const modal = document.getElementById("delete-confirm-modal");
+
+  pendingDeleteDocumentId = null;
+  pendingDeleteItineraryId = null;
+
+  if (!modal) return;
+
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+function initModalEvents() {
+  const statusSuccessOkButton = document.getElementById("status-success-ok");
+  const statusSuccessModal = document.getElementById("status-success-modal");
+
+  if (statusSuccessOkButton) {
+    statusSuccessOkButton.addEventListener("click", closeStatusSuccessModal);
+  }
+
+  if (statusSuccessModal) {
+    statusSuccessModal.addEventListener("click", function (event) {
+      if (event.target === statusSuccessModal) {
+        closeStatusSuccessModal();
+      }
+    });
+  }
+
+  const cancelDeleteButton = document.getElementById("cancel-delete-btn");
+  const confirmDeleteButton = document.getElementById("confirm-delete-btn");
+  const deleteConfirmModal = document.getElementById("delete-confirm-modal");
+
+  if (cancelDeleteButton) {
+    cancelDeleteButton.addEventListener("click", closeDeleteConfirmModal);
+  }
+
+  if (confirmDeleteButton) {
+    confirmDeleteButton.addEventListener("click", function () {
+      if (!pendingDeleteDocumentId || !pendingDeleteItineraryId) return;
+
+      const targetDocumentId = pendingDeleteDocumentId;
+      const targetItineraryId = pendingDeleteItineraryId;
+
+      closeDeleteConfirmModal();
+
+      performDeleteItinerary(targetDocumentId, targetItineraryId).catch(function (error) {
+        console.error("Failed to delete itinerary:", error);
+
+        openStatusSuccessModal(
+          "Delete Failed",
+          "The itinerary could not be deleted. Please check the console and try again.",
+          "⚠️"
+        );
+      });
+    });
+  }
+
+  if (deleteConfirmModal) {
+    deleteConfirmModal.addEventListener("click", function (event) {
+      if (event.target === deleteConfirmModal) {
+        closeDeleteConfirmModal();
+      }
+    });
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      closeStatusSuccessModal();
+      closeDeleteConfirmModal();
+    }
+  });
+}
+
+// ================================
 // Load Saved Itineraries
 // ================================
 
 async function loadSavedItineraries(user) {
+  resetView();
+
   const savedQuery = query(
     collection(db, ITINERARY_COLLECTION),
     where("user_id", "==", user.uid)
@@ -203,12 +399,14 @@ async function loadSavedItineraries(user) {
   if (pastPlans.length) {
     renderItineraries(pastPlans, pastListElement);
 
+    pastPlanCount = pastPlans.length;
+
     if (pastControl) {
       pastControl.style.display = "block";
     }
 
     if (togglePastButton) {
-      togglePastButton.textContent = `View Past Plans (${pastPlans.length})`;
+      togglePastButton.textContent = `View Past Plans (${pastPlanCount})`;
     }
   }
 }
@@ -266,13 +464,29 @@ function renderItineraries(itineraries, targetElement) {
     const publishButton = row.querySelector(".js-toggle-publish");
     const deleteButton = row.querySelector(".js-delete-itinerary");
 
-    publishButton.addEventListener("click", function () {
-      togglePublishStatus(itinerary.id, status);
-    });
+    if (publishButton) {
+      publishButton.addEventListener("click", function () {
+        togglePublishStatus(itinerary.id, status).catch(function (error) {
+          console.error("Failed to update publish status:", error);
 
-    deleteButton.addEventListener("click", function () {
-      deleteItinerary(itinerary.id, itinerary.itinerary_id);
-    });
+          openStatusSuccessModal(
+            "Update Failed",
+            "The publish status could not be updated. Please check the console and try again.",
+            "⚠️"
+          );
+        });
+      });
+    }
+
+    if (deleteButton) {
+      deleteButton.addEventListener("click", function () {
+        openDeleteConfirmModal(
+          itinerary.id,
+          itinerary.itinerary_id,
+          itinerary.title || "this itinerary"
+        );
+      });
+    }
 
     targetElement.appendChild(row);
   });
@@ -292,7 +506,7 @@ if (togglePastButton) {
 
     togglePastButton.textContent = pastVisible
       ? "Hide Past Plans"
-      : togglePastButton.textContent.replace("Hide", "View");
+      : `View Past Plans (${pastPlanCount})`;
   });
 }
 
@@ -316,20 +530,25 @@ async function togglePublishStatus(documentId, currentStatus) {
 
   await updateDoc(doc(db, ITINERARY_COLLECTION, documentId), updateData);
 
-  alert("Publish status updated.");
-  window.location.reload();
+  if (currentUser) {
+    showLoading();
+    await loadSavedItineraries(currentUser);
+  }
+
+  openStatusSuccessModal(
+    "Status Updated",
+    nextStatus === "Published"
+      ? "This itinerary has been published successfully."
+      : "This itinerary has been changed back to draft.",
+    "✅"
+  );
 }
 
 // ================================
 // Delete
 // ================================
 
-async function deleteItinerary(documentId, itineraryId) {
-
-  const confirmed = confirm("Delete this itinerary?");
-
-  if (!confirmed) return;
-
+async function performDeleteItinerary(documentId, itineraryId) {
   const savedRef = doc(db, ITINERARY_COLLECTION, documentId);
   const savedSnap = await getDoc(savedRef);
 
@@ -364,15 +583,27 @@ async function deleteItinerary(documentId, itineraryId) {
 
   await deleteDoc(doc(db, ITINERARY_COLLECTION, documentId));
 
-  alert("Itinerary deleted.");
-  window.location.reload();
+  if (currentUser) {
+    showLoading();
+    await loadSavedItineraries(currentUser);
+  }
+
+  openStatusSuccessModal(
+    "Itinerary Deleted",
+    "The itinerary has been deleted successfully.",
+    "🗑️"
+  );
 }
 
 // ================================
 // Init
 // ================================
 
+initModalEvents();
+
 onAuthStateChanged(auth, function (user) {
+  currentUser = user;
+
   if (!user) {
     hideLoading();
     showEmpty();
@@ -383,6 +614,11 @@ onAuthStateChanged(auth, function (user) {
     console.error("Failed to load saved itineraries:", error);
     hideLoading();
     showEmpty();
-    alert("Failed to load saved itineraries. Please check console.");
+
+    openStatusSuccessModal(
+      "Load Failed",
+      "Failed to load saved itineraries. Please check the console.",
+      "⚠️"
+    );
   });
 });

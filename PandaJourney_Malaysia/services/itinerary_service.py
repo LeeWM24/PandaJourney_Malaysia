@@ -313,6 +313,19 @@ def parse_json_list(value: Any) -> list[Any]:
     return parsed if isinstance(parsed, list) else []
 
 
+def parse_bool(value: Any) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+
+    return number if math.isfinite(number) else None
+
+
 def parse_excluded_stop_names(form: dict[str, Any]) -> set[str]:
     raw_names = form.get("excluded_stop_names", "[]")
     names = parse_json_list(raw_names)
@@ -360,7 +373,6 @@ def parse_selected_favourites(form: dict[str, Any]) -> list[dict[str, Any]]:
                 "estimated_minutes": 90,
                 "rating": rating,
                 "source": "User Favourite",
-                "waze_url": favourite.get("waze_url", ""),
                 "is_favourite": True,
             }
         )
@@ -998,15 +1010,75 @@ def get_itinerary_duration_seconds(
     return travel_seconds + visit_seconds
 
 
-def build_waze_url(place: dict[str, Any]) -> str:
+
+
+
+def build_coordinate_text(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
     latitude = place.get("latitude")
     longitude = place.get("longitude")
-    name = quote_plus(str(place.get("name") or place.get("display_name") or "Destination"))
 
     if latitude is None or longitude is None:
         return ""
 
-    return f"https://waze.com/ul?q={name}&ll={latitude},{longitude}&navigate=yes"
+    try:
+        return f"{float(latitude):.7f},{float(longitude):.7f}"
+    except (TypeError, ValueError):
+        return ""
+
+
+def build_google_maps_route_url(
+    origin: dict[str, Any] | None,
+    destination: dict[str, Any] | None,
+    waypoints: list[dict[str, Any]] | None = None,
+) -> str:
+    """Build a Google Maps directions URL with a fixed origin and destination.
+
+    This is used because Google Maps URLs support origin, destination and
+    waypoints, while Waze deep links mainly navigate to one destination from
+    the driver's current location.
+    """
+    origin_text = build_coordinate_text(origin)
+    destination_text = build_coordinate_text(destination)
+
+    if not origin_text or not destination_text:
+        return ""
+
+    params = [
+        ("api", "1"),
+        ("origin", origin_text),
+        ("destination", destination_text),
+    ]
+
+    waypoint_texts = [
+        build_coordinate_text(point)
+        for point in (waypoints or [])
+    ]
+    waypoint_texts = [text for text in waypoint_texts if text]
+
+    if waypoint_texts:
+        params.append(("waypoints", "|".join(waypoint_texts)))
+
+    params.append(("travelmode", "driving"))
+
+    return "https://www.google.com/maps/dir/?" + "&".join(
+        f"{key}={quote_plus(value)}"
+        for key, value in params
+    )
+
+
+def build_google_maps_full_route_url(
+    start: dict[str, Any],
+    selected: list[dict[str, Any]],
+    end: dict[str, Any],
+) -> str:
+    return build_google_maps_route_url(
+        start,
+        end,
+        waypoints=selected,
+    )
 
 
 def compute_distance_km(
@@ -1105,7 +1177,7 @@ def prepare_selected_attractions(
             if "indoor" in [tag.lower() for tag in item.get("tags", [])]
             else "Sunny"
         )
-        item["waze_url"] = build_waze_url(item)
+        
         item["photo_urls"] = item.get("photo_urls") or get_attraction_images([tag.lower() for tag in item.get("tags", [])])
         item["image_url"] = item.get("image_url") or item["photo_urls"][0]
         item["description"] = item.get(
@@ -1154,7 +1226,9 @@ def build_timetable(
     selected: list[dict[str, Any]],
     end_name: str,
     route: dict[str, Any] | None,
-    transport_option: dict[str, Any]
+    transport_option: dict[str, Any],
+    start_place: dict[str, Any] | None = None,
+    end_place: dict[str, Any] | None = None,
 ) -> list[dict[str, str]]:
     timetable: list[dict[str, str]] = []
     current_time = start_datetime
@@ -1162,6 +1236,8 @@ def build_timetable(
 
     transport_label = transport_option["label"]
     transport_icon = transport_option["icon"]
+    previous_stop_name = start_name
+    previous_stop_place = start_place
 
     timetable.append(
         {
@@ -1173,7 +1249,10 @@ def build_timetable(
             "duration": "Start point",
             "transport": transport_label,
             "transport_icon": transport_icon,
-            "waze_url": "",
+            "google_maps_url": "",
+            "google_maps_label": "",
+            "route_leg_from": "",
+            "route_leg_to": "",
         }
     )
 
@@ -1187,6 +1266,11 @@ def build_timetable(
         current_time += timedelta(minutes=visit_minutes)
         departure_time = current_time
 
+        google_maps_url = build_google_maps_route_url(
+            previous_stop_place,
+            attraction,
+        )
+
         timetable.append(
             {
                 "time": arrival_time.strftime("%H:%M"),
@@ -1197,9 +1281,15 @@ def build_timetable(
                 "duration": f"{visit_minutes} mins",
                 "transport": f"{transport_label} · {human_duration(leg_seconds)}",
                 "transport_icon": transport_icon,
-                "waze_url": attraction.get("waze_url", ""),
+                "google_maps_url": google_maps_url,
+                "google_maps_label": f"Google Maps: {previous_stop_name} → {attraction['name']}",
+                "route_leg_from": previous_stop_name,
+                "route_leg_to": attraction["name"],
             }
         )
+
+        previous_stop_name = attraction["name"]
+        previous_stop_place = attraction
 
     final_leg_index = len(selected)
 
@@ -1209,6 +1299,14 @@ def build_timetable(
         final_leg_seconds = 0
 
     current_time += timedelta(seconds=float(final_leg_seconds or 0))
+
+    final_google_maps_url = ""
+
+    if end_place:
+        final_google_maps_url = build_google_maps_route_url(
+            previous_stop_place,
+            end_place,
+        )
 
     timetable.append(
         {
@@ -1220,7 +1318,10 @@ def build_timetable(
             "duration": "End point",
             "transport": f"{transport_label} · {human_duration(final_leg_seconds)}",
             "transport_icon": transport_icon,
-            "waze_url": "",
+            "google_maps_url": final_google_maps_url,
+            "google_maps_label": f"Google Maps: {previous_stop_name} → {end_name}",
+            "route_leg_from": previous_stop_name,
+            "route_leg_to": end_name,
         }
     )
 
@@ -1233,8 +1334,15 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     trip_date = str(form.get("trip_date", "")).strip()
     start_time = str(form.get("start_time", "09:00")).strip()
 
-    if not start_text:
+    use_current_location = parse_bool(form.get("use_current_location", "0"))
+    start_latitude = parse_float(form.get("start_latitude"))
+    start_longitude = parse_float(form.get("start_longitude"))
+
+    if not start_text and not use_current_location:
         raise ValueError("Start location is required.")
+
+    if use_current_location and (start_latitude is None or start_longitude is None):
+        raise ValueError("Could not use current location. Please allow GPS permission or type a start location manually.")
 
     if not end_text:
         raise ValueError("End location is required.")
@@ -1269,9 +1377,17 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     transport_mode = "driving"
     transport_option = get_transport_option(transport_mode)
 
-    start = geocode_place(start_text)
-
-    time.sleep(1.05)
+    if use_current_location:
+        start_text = "Current Location"
+        start = {
+            "display_name": "Current Location",
+            "latitude": float(start_latitude),
+            "longitude": float(start_longitude),
+            "source": "Browser GPS",
+        }
+    else:
+        start = geocode_place(start_text)
+        time.sleep(1.05)
 
     end = geocode_place(end_text)
 
@@ -1399,7 +1515,9 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         selected,
         end_text,
         route,
-        transport_option
+        transport_option,
+        start_place=start,
+        end_place=end,
     )
 
     travel_duration = (
@@ -1407,6 +1525,9 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         if route
         else "Not available"
     )
+
+    total_distance_km = round(float(route.get("distance_m", 0)) / 1000, 1) if route else 0
+    google_maps_full_route_url = build_google_maps_full_route_url(start, selected, end)
 
     itinerary_duration_seconds = get_itinerary_duration_seconds(route, selected)
     itinerary_duration = human_duration(itinerary_duration_seconds)
@@ -1429,6 +1550,9 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "end_text": end_text,
         "trip_date": trip_date,
         "start_time": start_time,
+        "use_current_location": use_current_location,
+        "start_latitude": start.get("latitude"),
+        "start_longitude": start.get("longitude"),
         "available_hours": available_hours,
         "max_stops": max_stops,
         "requested_max_stops": requested_max_stops,
@@ -1455,6 +1579,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "transit_comparison": transit_comparison,
         "attraction_source_note": source_note,
 
+        "total_distance_km": total_distance_km,
+        "google_maps_full_route_url": google_maps_full_route_url,
         "total_duration": total_duration,
         "travel_duration": travel_duration,
         "itinerary_duration": itinerary_duration,
@@ -1475,7 +1601,8 @@ def build_map_data(plan: dict[str, Any] | None) -> dict[str, Any] | None:
         "attractions": plan.get("selected", []),
         "routeGeometry": route.get("geometry"),
         "startText": plan.get("start_text", "Start"),
-        "endText": plan.get("end_text", "End")
+        "endText": plan.get("end_text", "End"),
+        "googleMapsFullRouteUrl": plan.get("google_maps_full_route_url", "")
     }
 
 

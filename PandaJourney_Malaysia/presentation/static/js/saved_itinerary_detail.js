@@ -24,9 +24,31 @@ const loadingElement = document.getElementById("detail-loading");
 const errorElement = document.getElementById("detail-error");
 const contentElement = document.getElementById("detail-content");
 
-const itineraryId = pageElement ? pageElement.dataset.itineraryId : "";
-
 let detailMap = null;
+
+// ================================
+// Itinerary ID
+// ================================
+
+function getItineraryIdFromPage() {
+  const fromDataset = pageElement ? pageElement.dataset.itineraryId : "";
+
+  if (fromDataset && fromDataset.trim()) {
+    return fromDataset.trim();
+  }
+
+  const pathParts = window.location.pathname
+    .split("/")
+    .filter(Boolean);
+
+  return pathParts.length
+    ? decodeURIComponent(pathParts[pathParts.length - 1])
+    : "";
+}
+
+const itineraryId = getItineraryIdFromPage();
+
+console.log("[Saved Detail] itineraryId:", itineraryId);
 
 // ================================
 // Helper
@@ -135,6 +157,84 @@ function normaliseNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function buildCoordinateText(point) {
+  if (!point) return "";
+
+  const latitude = normaliseNumber(point.latitude);
+  const longitude = normaliseNumber(point.longitude);
+
+  if (latitude === null || longitude === null) {
+    return "";
+  }
+
+  return `${latitude.toFixed(7)},${longitude.toFixed(7)}`;
+}
+
+function buildGoogleMapsRouteUrl(origin, destination, waypoints = []) {
+  const originText = buildCoordinateText(origin);
+  const destinationText = buildCoordinateText(destination);
+
+  if (!originText || !destinationText) {
+    return "";
+  }
+
+  const params = new URLSearchParams();
+
+  params.set("api", "1");
+  params.set("origin", originText);
+  params.set("destination", destinationText);
+  params.set("travelmode", "driving");
+
+  const waypointTexts = waypoints
+    .map(buildCoordinateText)
+    .filter(Boolean);
+
+  if (waypointTexts.length) {
+    params.set("waypoints", waypointTexts.join("|"));
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function buildFallbackFullRouteUrl(itinerary, stops) {
+  const startLat = normaliseNumber(itinerary.start_latitude);
+  const startLng = normaliseNumber(itinerary.start_longitude);
+  const endLat = normaliseNumber(itinerary.end_latitude);
+  const endLng = normaliseNumber(itinerary.end_longitude);
+
+  if (startLat === null || startLng === null || endLat === null || endLng === null) {
+    return "";
+  }
+
+  const startPoint = {
+    latitude: startLat,
+    longitude: startLng
+  };
+
+  const endPoint = {
+    latitude: endLat,
+    longitude: endLng
+  };
+
+  const waypointPoints = stops
+    .map(function (stop) {
+      const lat = normaliseNumber(stop.latitude);
+      const lng = normaliseNumber(stop.longitude);
+
+      if (lat === null || lng === null) {
+        return null;
+      }
+
+      return {
+        latitude: lat,
+        longitude: lng
+      };
+    })
+    .filter(Boolean);
+
+  return buildGoogleMapsRouteUrl(startPoint, endPoint, waypointPoints);
+}
+
 async function getRoadRouteGeometry(mapPoints) {
   if (!mapPoints || mapPoints.length < 2) {
     return null;
@@ -176,14 +276,29 @@ async function getRoadRouteGeometry(mapPoints) {
 // ================================
 
 async function getItinerary(user) {
-  // First try to find by Firebase document id.
+  if (!itineraryId) {
+    console.error("[Saved Detail] Missing itinerary id.");
+    return null;
+  }
+
+  console.log("[Saved Detail] current user uid:", user.uid);
+  console.log("[Saved Detail] searching itinerary:", itineraryId);
+
   const directDocRef = doc(db, ITINERARY_COLLECTION, itineraryId);
   const directDocSnap = await getDoc(directDocRef);
 
   if (directDocSnap.exists()) {
     const data = directDocSnap.data();
 
+    console.log("[Saved Detail] direct document found:", data);
+
     if (data.user_id !== user.uid && data.status !== "Published") {
+      console.warn("[Saved Detail] permission mismatch:", {
+        documentUserId: data.user_id,
+        currentUserId: user.uid,
+        status: data.status
+      });
+
       return null;
     }
 
@@ -194,7 +309,6 @@ async function getItinerary(user) {
     };
   }
 
-  // Fallback: find by itinerary_id field.
   const itineraryQuery = query(
     collection(db, ITINERARY_COLLECTION),
     where("itinerary_id", "==", itineraryId)
@@ -203,13 +317,22 @@ async function getItinerary(user) {
   const snapshot = await getDocs(itineraryQuery);
 
   if (snapshot.empty) {
+    console.warn("[Saved Detail] no document found by itinerary_id.");
     return null;
   }
 
   const docSnap = snapshot.docs[0];
   const data = docSnap.data();
 
+  console.log("[Saved Detail] fallback document found:", data);
+
   if (data.user_id !== user.uid && data.status !== "Published") {
+    console.warn("[Saved Detail] permission mismatch:", {
+      documentUserId: data.user_id,
+      currentUserId: user.uid,
+      status: data.status
+    });
+
     return null;
   }
 
@@ -291,6 +414,28 @@ function renderItinerary(itinerary, stops) {
   setText("detail-travel-duration", formatMinutes(itinerary.travel_duration_minutes));
 
   updateStatusBadge(itinerary.status || "Draft");
+
+  const fullRouteUrl =
+    itinerary.google_maps_full_route_url ||
+    buildFallbackFullRouteUrl(itinerary, stops);
+
+  renderFullGoogleRouteAction(fullRouteUrl);
+}
+
+function renderFullGoogleRouteAction(url) {
+  const action = document.getElementById("detail-full-route-action");
+  const link = document.getElementById("detail-google-full-route-link");
+
+  if (!action || !link) return;
+
+  if (!url) {
+    action.style.display = "none";
+    link.removeAttribute("href");
+    return;
+  }
+
+  link.href = url;
+  action.style.display = "flex";
 }
 
 function renderStops(stops) {
@@ -321,14 +466,16 @@ function renderStops(stops) {
       ? `${arrivalTime} – ${departureTime}`
       : arrivalTime || "Time not available";
 
-    const wazeButton = stop.waze_url
+    const googleMapsButton = stop.google_maps_url
       ? `
-        <div style="margin-top:10px;">
-          <a href="${escapeHtml(stop.waze_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-sm">
-            Waze
+          <a href="${escapeHtml(stop.google_maps_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+            ${escapeHtml(stop.google_maps_label || "Google Maps")}
           </a>
-        </div>
       `
+      : "";
+
+    const actionButtons = googleMapsButton
+      ? `<div class="detail-stop-actions">${googleMapsButton}</div>`
       : "";
 
     row.innerHTML = `
@@ -351,7 +498,7 @@ function renderStops(stops) {
           ⏱ Visit: ${escapeHtml(formatMinutes(stop.visit_duration_minutes))}
         </div>
 
-        ${wazeButton}
+        ${actionButtons}
       </div>
     `;
 
