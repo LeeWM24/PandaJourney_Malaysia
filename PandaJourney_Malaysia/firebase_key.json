@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "pandajourney-ef50a",
+  "private_key_id": "bcbb7a1ad26e9944a5ecd3c5f6040f06f6d572ca",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC24txbad7vFWB8\nDSDSFNkiIHBEWO+ZIt+GOyCGGi4ZkQ/0JGRVTIGsnloffXaz26zUM6uYOD98bq6i\n4nDdGY0XzT1XQnRMLPVqmIGzmqXcsUGkrO2Yo2d9wocBv5MB5C6w8m7F6ltYTwwT\ndhvoH1SrK3R3ZCtUlayT4h9+IZKmZ5Z6AGMDw3sRCVJ54Fy6CG4AyQFys9s2MFVY\nxLrT/c9OQ0NewI9JWfLC53+skdiR/tdvseYW6/p9y5GzfjxRx4Pw8yIbKJT2D/pa\nvu+6Is0F4CR7R9J1Vaaz9ujP+Rzy1BKGa00aMYuywl3ldl+nqLgtjhpx5QYO83NO\nwqW/Nx3VAgMBAAECggEACNvTTbBCprUT395o7RQqcl884Oqn7HSGfEOH70b8Xaur\nqKlMnN8gVuKyvdy/b7Xf2MWJ9c0fsiDQX751NhiDP5hm9L+Yz4nL93Zcrfz7NMX3\nRolD1wVvQWW3UWvcrJZHdrW/jOGtvAjULmslreg6mzH3KcNV3/qCCgXFfcAVkO7V\noFXAiWz1B4oXmpBaCyxYtUo2Mzr8bkDj/lpLsgcv/t7/mve2Y+hKs9GB+NK6uvaj\nO4aeuasSQjK9Wy/r+5MNtX9NO1LQoFyGdfO50fAFmkPb+zNnVBKJG5D8AfxnssDE\nz5OkdW+EG5kcV3QWln1ohynzuYhB2Qat/4jrg7YgkQKBgQDeWQpRpzQfYNCeQs+d\ns+90EkYF57Vm7wtrXkRF2Ypl0fm3d+LfO33EGmvj7bIwV5cejQ4xRGH9lyiLIsdR\ntdhkTMcc0BkaKn/dzkjtwZo5QgD118S0ETL31xTeE29vTWjrtJN6VD8P+NwyTqj5\noOtgYJ3E/pP9OhxIUh4cGuiE2QKBgQDSkNzWRsl2/HWT3WT3/u3h46GgqdMi2ZC2\nluzWNQwRDl8zcImhFdQ66CxvKfNpB3MeCc2pGyI/P4FQCV+wEBjLALVgfWsDWWas\n8O03Qy5VulGYHUq08+6nb3vcnH1I6Sk4nSWZrAXLMLVYlR1P4jV1bk5pknIwM9XV\n2e7D5UDTXQKBgQCGcxcPSuj0tGlR2ZqLhPudl1MqTPNfO9sO4KCuEB5k9XRn4aGZ\nVPL2uvdUiy39l2l0+tyDJBOQ8W99utkF6szf0aFxJdCYBuzs5ckpo7ErQGMuRXvX\nWrMUNMWUh/IRPqDcLoQjK4A6m0QjU3dQA2NxEtsz/LDmJdZmUOmOGyNQ+QKBgQCQ\ntrCfr3ysguuH2QOYkSMKOTiOw8hwzhfv9SAGQ+TsH/V7098yz17RsVlAeRNp3o3W\nWiR3EUfjMhD8YcTaquVvNyhwjSGr5phzSQ2vCkPg9TE4mwEKBg/CEROOVhqgrmX/\nG7mIuLouoGYx4CGKEkxtTYckdVp3GFjhJWs8ROXdnQKBgCDktbCfqZLyNafzSiwF\n8FcQZf02VopjtWgI0ryZy/Uy28k4CZOMIoNyfp7z+Foujm35kzXXd22rlJUN+BBT\nRFhvP9KW85EULL9zowHV3YdfaL5MF1TdboRaudXfQfjYTyLFGCavP8J2NTjCDCNl\ndoJU4E63DDZPK0wboBOk2TXk\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@pandajourney-ef50a.iam.gserviceaccount.com",
+  "client_id": "102434816272468307394",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40pandajourney-ef50a.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

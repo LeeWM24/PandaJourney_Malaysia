@@ -88,7 +88,11 @@ def delete_itinerary(itinerary_id):
     if not itinerary_id:
         return False
 
-    itinerary_id = int(itinerary_id)
+    try:
+        itinerary_id = int(itinerary_id)
+    except (TypeError, ValueError):
+        return False
+
     itineraries = read_saved_itineraries()
 
     updated_list = [
@@ -105,7 +109,11 @@ def toggle_publish_status(itinerary_id):
     if not itinerary_id:
         return False
 
-    itinerary_id = int(itinerary_id)
+    try:
+        itinerary_id = int(itinerary_id)
+    except (TypeError, ValueError):
+        return False
+
     itineraries = read_saved_itineraries()
 
     for item in itineraries:
@@ -125,6 +133,46 @@ def toggle_publish_status(itinerary_id):
     write_saved_itineraries(itineraries)
 
     return True
+
+
+def update_saved_itinerary_details(itinerary_id, *, title=None, date=None, stop_count=None, stops=None):
+    if not itinerary_id:
+        return False
+
+    try:
+        itinerary_id = int(itinerary_id)
+    except (TypeError, ValueError):
+        return False
+
+    itineraries = read_saved_itineraries()
+    updated = False
+
+    for item in itineraries:
+        if int(item.get("id", 0)) != itinerary_id:
+            continue
+
+        if title is not None:
+            item["title"] = title
+        if date is not None:
+            item["date"] = date
+        if stop_count is not None:
+            item["stop_count"] = stop_count
+        if stops is not None:
+            numbered_stops = []
+            for index, stop in enumerate(stops, start=1):
+                numbered_stops.append({
+                    **stop,
+                    "stopNumber": int(stop.get("stopNumber") or index)
+                })
+            item["timetable"] = numbered_stops
+            item["selected"] = numbered_stops
+        updated = True
+        break
+
+    if updated:
+        write_saved_itineraries(itineraries)
+
+    return updated
 
 
 def get_next_id(itineraries):

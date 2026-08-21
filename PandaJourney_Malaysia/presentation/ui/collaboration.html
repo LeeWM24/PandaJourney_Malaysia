@@ -1,1200 +1,341 @@
-<!DOCTYPE html>
-<!--
-  PandaJourney — Collaborative Planning
-  Static export at 1440px desktop.
-  Invite button is now wired up to add a live pending collaborator row.
--->
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Collaborative Planning – PandaJourney</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
-<style>
-/* ─────────────────────────────────────────────────────────────────
-   DESIGN TOKENS
-───────────────────────────────────────────────────────────────── */
-:root {
-  /* Brand greens */
-  --green-dark:   #0f2d1f;
-  --green-brand:  #0f7a5a;
-  --green-mid:    #0a6349;
-  --green-light:  #e8f5f0;
-  --green-border: #d1e8dd;
-  --green-bg:     #f0f7f4;
-  --green-faint:  #f7faf8;
+﻿{% extends "base.html" %}
 
-  /* Text */
-  --text-dark:  #1a2e22;
-  --text-mid:   #5a7a6a;
-  --text-muted: #9bbcac;
+{% block title %}Collaborative Planning - PandaJourney Malaysia{% endblock %}
+{% block page_title %}Collaborative Planning{% endblock %}
+{% block page_subtitle %}Plan trips together with friends and family in real-time{% endblock %}
 
-  /* Role pill colors */
-  --role-owner-bg:  #e8f5f0;
-  --role-owner-fg:  #0f7a5a;
-  --role-editor-bg: #e8eeff;
-  --role-editor-fg: #2e4fbf;
-  --role-viewer-bg: #ededed;
-  --role-viewer-fg: #5a5a5a;
+{% block topbar_actions %}
+  <button class="bell-button" type="button" id="bellButton" aria-label="Notifications">
+    <span aria-hidden="true">&#128276;</span>
+    <span class="bell-badge" id="bellBadge">4</span>
+  </button>
+{% endblock %}
 
-  /* Typography */
-  --font-display: 'Sora', sans-serif;
-  --font-body:    'Inter', sans-serif;
+{% block content %}
+<div
+  class="page-inner"
+  id="collabRoot"
+  data-itinerary-id="{{ itinerary_id }}"
+  data-user-uid="{{ current_user.uid if current_user else '' }}"
+  data-user-name="{{ current_user.display_name if current_user else '' }}"
+>
+  <div class="collab-layout">
 
-  /* Radii */
-  --radius-sm:  8px;
-  --radius-md:  12px;
-  --radius-lg:  16px;
-  --radius-xl:  18px;
-  --radius-2xl: 24px;
+    <!-- MAIN COLUMN -->
+    <div class="collab-main">
 
-  /* Shadows */
-  --shadow-card: 0 1px 3px rgba(15,45,31,.07), 0 4px 16px rgba(15,45,31,.06);
-  --shadow-dropdown: 0 8px 32px rgba(15,45,31,.16), 0 2px 8px rgba(15,45,31,.08);
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   RESET
-───────────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  height: 100%;
-  font-family: var(--font-body);
-  background: #f3f8f5;
-  color: var(--text-dark);
-  font-size: 14px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-}
-button { font-family: var(--font-body); cursor: pointer; }
-input, textarea, select { font-family: var(--font-body); }
-img { display: block; }
-
-/* ─────────────────────────────────────────────────────────────────
-   APP LAYOUT
-───────────────────────────────────────────────────────────────── */
-.app-layout {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-  min-width: 1440px;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   SIDEBAR
-───────────────────────────────────────────────────────────────── */
-.sidebar {
-  width: 240px;
-  flex-shrink: 0;
-  background: var(--green-dark);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-}
-
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 22px 20px 18px;
-  border-bottom: 1px solid rgba(255,255,255,.08);
-  flex-shrink: 0;
-}
-.sidebar-logo-panda { font-size: 22px; }
-.sidebar-logo-brand {
-  font-family: var(--font-display);
-  font-size: 15px;
-  font-weight: 700;
-  color: #fff;
-}
-.sidebar-logo-brand em { font-style: normal; color: #6ee7b7; }
-
-.sidebar-nav {
-  flex: 1;
-  padding: 12px 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  color: rgba(255,255,255,.55);
-  text-decoration: none;
-  border: none;
-  background: transparent;
-  transition: background .15s, color .15s;
-  width: 100%;
-  text-align: left;
-}
-.nav-item:hover { background: rgba(255,255,255,.07); color: rgba(255,255,255,.88); }
-.nav-item.is-active { background: var(--green-brand); color: #fff; }
-.nav-item-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; }
-
-.sidebar-footer {
-  padding: 12px 10px;
-  border-top: 1px solid rgba(255,255,255,.08);
-  flex-shrink: 0;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   MAIN AREA
-───────────────────────────────────────────────────────────────── */
-.main-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   PAGE HEADER
-───────────────────────────────────────────────────────────────── */
-.page-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: rgba(247,250,248,.92);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--green-border);
-  padding: 18px 32px 14px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-shrink: 0;
-}
-
-.page-header-text {}
-.page-header-title {
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-dark);
-  line-height: 1.2;
-}
-.page-header-subtitle {
-  font-size: 13px;
-  color: var(--text-mid);
-  margin-top: 2px;
-}
-
-.page-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-  padding-top: 2px;
-}
-
-/* Demo role switcher */
-.demo-switcher {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.demo-switcher-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.role-toggle-btn {
-  font-size: 10px;
-  padding: 4px 10px;
-  border-radius: 20px;
-  border: 1px solid var(--green-border);
-  background: #fff;
-  color: var(--text-mid);
-  font-weight: 500;
-  transition: all .15s;
-}
-.role-toggle-btn:hover { border-color: var(--green-brand); }
-.role-toggle-btn.is-active { background: var(--green-brand); color: #fff; border-color: var(--green-brand); }
-
-/* Bell button */
-.bell-button {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--green-bg);
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  transition: background .15s;
-}
-.bell-button:hover { background: var(--green-border); }
-.bell-badge {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #ef4444;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-body);
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   PAGE CONTENT
-───────────────────────────────────────────────────────────────── */
-.page-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 28px 32px 56px;
-}
-
-.columns-layout {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-}
-
-.column-left {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
-}
-
-.column-right {
-  width: 340px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   CARD
-───────────────────────────────────────────────────────────────── */
-.card {
-  background: #fff;
-  border: 1px solid var(--green-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-}
-.card-body { padding: 20px; }
-
-/* ─────────────────────────────────────────────────────────────────
-   CARD SECTION HEADER
-───────────────────────────────────────────────────────────────── */
-.card-heading {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dark);
-  margin-bottom: 12px;
-}
-
-/* ─────────────────────────────────────────────────────────────────
-   ITINERARY CARD
-───────────────────────────────────────────────────────────────── */
-.itinerary-card {}
-
-.itinerary-card-header { margin-bottom: 16px; }
-.itinerary-trip-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dark);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.itinerary-trip-title .edit-hint {
-  font-size: 10px;
-  color: var(--text-muted);
-}
-.itinerary-trip-meta {
-  font-size: 11px;
-  color: var(--text-mid);
-  margin-top: 3px;
-}
-
-/* Stop timeline */
-.stop-timeline { display: flex; flex-direction: column; }
-
-.stop-row {
-  display: flex;
-  gap: 8px;
-}
-
-.stop-drag-handle {
-  display: flex;
-  align-items: flex-start;
-  padding-top: 6px;
-  flex-shrink: 0;
-  opacity: 0;
-  cursor: grab;
-  transition: opacity .15s;
-  width: 14px;
-}
-.stop-row:hover .stop-drag-handle { opacity: 1; }
-.stop-drag-handle svg { color: var(--text-muted); }
-
-.stop-dot-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 32px;
-  flex-shrink: 0;
-}
-.stop-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 10px;
-  background: var(--green-light);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-.stop-connector {
-  width: 1px;
-  flex: 1;
-  background: var(--green-border);
-  margin: 6px 0;
-  min-height: 16px;
-}
-
-.stop-info {
-  flex: 1;
-  padding-bottom: 12px;
-  min-width: 0;
-}
-.stop-info-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-}
-.stop-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-dark);
-  line-height: 1.35;
-}
-.stop-time {
-  font-size: 11px;
-  color: var(--text-mid);
-  margin-top: 2px;
-}
-.stop-actions {
-  display: flex;
-  gap: 4px;
-  opacity: 0;
-  transition: opacity .15s;
-  flex-shrink: 0;
-}
-.stop-row:hover .stop-actions { opacity: 1; }
-
-.stop-action-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  border: none;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  transition: background .15s;
-}
-.stop-action-btn:hover { background: var(--green-light); }
-.stop-action-btn.is-delete { color: var(--text-muted); }
-.stop-action-btn.is-delete:hover { background: #fef2f2; color: #ef4444; }
-
-/* Add stop button */
-.add-stop-btn {
-  width: 100%;
-  margin-top: 8px;
-  height: 40px;
-  border-radius: var(--radius-md);
-  border: 2px dashed var(--green-border);
-  background: transparent;
-  font-size: 13px;
-  color: var(--text-mid);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  transition: border-color .15s, color .15s;
-}
-.add-stop-btn:hover { border-color: var(--green-brand); color: var(--green-brand); }
-
-/* Sync indicator */
-.sync-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--green-bg);
-}
-.sync-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--green-brand);
-  flex-shrink: 0;
-  animation: pulse-dot 2s cubic-bezier(.4,0,.6,1) infinite;
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: .4; }
-}
-.sync-text { font-size: 11px; color: var(--text-mid); }
-
-/* ─────────────────────────────────────────────────────────────────
-   COMMENTS CARD
-───────────────────────────────────────────────────────────────── */
-.comments-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
-
-.comment-item { display: flex; gap: 12px; }
-.comment-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 10px;
-  font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-}
-.comment-bubble {
-  flex: 1;
-  background: var(--green-bg);
-  border-radius: var(--radius-lg);
-  padding: 10px 14px;
-}
-.comment-meta {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.comment-author { font-size: 12px; font-weight: 600; color: var(--text-dark); }
-.comment-time { font-size: 10px; color: var(--text-muted); }
-.comment-text { font-size: 12px; color: var(--text-mid); line-height: 1.55; }
-
-.comment-input-row { display: flex; gap: 8px; }
-.comment-input {
-  flex: 1;
-  height: 40px;
-  border-radius: 20px;
-  border: 1px solid var(--green-border);
-  background: #fff;
-  font-size: 13px;
-  padding: 0 16px;
-  color: var(--text-dark);
-  outline: none;
-  transition: border-color .15s, box-shadow .15s;
-}
-.comment-input::placeholder { color: var(--text-muted); }
-.comment-input:focus {
-  border-color: var(--green-brand);
-  box-shadow: 0 0 0 3px rgba(15,122,90,.12);
-}
-.comment-input.is-error { border-color: #f87171; }
-.comment-error-msg { font-size: 10px; color: #ef4444; padding-left: 16px; margin-top: 3px; }
-
-.comment-send-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  border: none;
-  background: var(--green-brand);
-  color: #fff;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background .15s;
-  flex-shrink: 0;
-}
-.comment-send-btn:hover { background: var(--green-mid); }
-
-/* ─────────────────────────────────────────────────────────────────
-   COLLABORATORS CARD
-───────────────────────────────────────────────────────────────── */
-.invite-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-}
-.invite-input {
-  flex: 1;
-  height: 36px;
-  border-radius: 20px;
-  border: 1px solid var(--green-border);
-  background: #fff;
-  font-size: 13px;
-  padding: 0 16px;
-  outline: none;
-  color: var(--text-dark);
-  transition: border-color .15s, box-shadow .15s;
-}
-.invite-input::placeholder { color: var(--text-muted); }
-.invite-input:focus {
-  border-color: var(--green-brand);
-  box-shadow: 0 0 0 3px rgba(15,122,90,.12);
-}
-.invite-input.is-error { border-color: #f87171; }
-.invite-error-msg { font-size: 10px; color: #ef4444; padding-left: 16px; margin-top: 4px; }
-.invite-btn {
-  height: 36px;
-  padding: 0 16px;
-  border-radius: 20px;
-  border: none;
-  background: var(--green-brand);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  transition: background .15s;
-  white-space: nowrap;
-}
-.invite-btn:hover { background: var(--green-mid); }
-
-.collaborator-list { display: flex; flex-direction: column; gap: 12px; }
-
-.collaborator-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  animation: row-in .2s ease;
-}
-@keyframes row-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.collaborator-row.is-pending { opacity: .6; }
-
-.collaborator-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-}
-.collaborator-info { flex: 1; min-width: 0; }
-.collaborator-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dark);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.collaborator-email {
-  font-size: 10px;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.collaborator-role-wrap {
-  position: relative;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-.role-pill {
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-  border: none;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  transition: opacity .15s;
-}
-.role-pill.role-owner  { background: var(--role-owner-bg);  color: var(--role-owner-fg); cursor: default; }
-.role-pill.role-editor { background: var(--role-editor-bg); color: var(--role-editor-fg); cursor: pointer; }
-.role-pill.role-viewer { background: var(--role-viewer-bg); color: var(--role-viewer-fg); cursor: pointer; }
-.role-pill .chevron { font-size: 8px; }
-
-.pending-pill {
-  font-size: 10px;
-  padding: 3px 8px;
-  border-radius: 20px;
-  font-weight: 600;
-  background: #fef3c7;
-  color: #b45309;
-}
-.accept-sim-btn {
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: var(--green-bg);
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--green-brand);
-  transition: background .15s;
-}
-.accept-sim-btn:hover { background: var(--green-border); }
-
-/* Role dropdown */
-.role-dropdown {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  background: #fff;
-  border: 1px solid var(--green-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-dropdown);
-  z-index: 20;
-  padding: 4px 0;
-  min-width: 140px;
-}
-.role-dropdown-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 8px 14px;
-  font-size: 12px;
-  background: none;
-  border: none;
-  color: var(--text-dark);
-  transition: background .12s;
-}
-.role-dropdown-item:hover { background: var(--green-bg); }
-.role-dropdown-divider { height: 1px; background: var(--green-bg); margin: 3px 0; }
-.role-dropdown-item.is-danger { color: #ef4444; }
-.role-dropdown-item.is-danger:hover { background: #fef2f2; }
-
-/* ─────────────────────────────────────────────────────────────────
-   RECENT UPDATES CARD
-───────────────────────────────────────────────────────────────── */
-.update-list { display: flex; flex-direction: column; gap: 12px; }
-
-.update-row { display: flex; align-items: flex-start; gap: 12px; }
-.update-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  background: var(--green-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-.update-text { font-size: 12px; font-weight: 500; color: var(--text-dark); line-height: 1.35; }
-.update-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
-.view-all-link {
-  margin-top: 12px;
-  display: inline-block;
-  font-size: 12px;
-  color: var(--green-brand);
-  background: none;
-  border: none;
-  padding: 0;
-  text-decoration: none;
-}
-.view-all-link:hover { text-decoration: underline; }
-
-/* ─────────────────────────────────────────────────────────────────
-   TOAST (generic, reused for invite feedback)
-───────────────────────────────────────────────────────────────── */
-.app-toast {
-  position: fixed;
-  bottom: 32px;
-  left: 50%;
-  transform: translateX(-50%) translateY(20px);
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--green-dark);
-  color: #fff;
-  border-radius: var(--radius-lg);
-  padding: 12px 20px;
-  box-shadow: 0 8px 32px rgba(0,0,0,.2);
-  font-size: 13px;
-  font-weight: 500;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .2s, transform .2s;
-}
-.app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
-</style>
-</head>
-<body>
-
-<!-- ═══════════════════════════════════════════════════════════════
-     MAIN DEFAULT STATE (Owner view, default content)
-════════════════════════════════════════════════════════════════ -->
-<div class="app-layout">
-
-  <!-- SIDEBAR -->
-  <aside class="sidebar" aria-label="Main navigation">
-    <div class="sidebar-logo">
-      <span class="sidebar-logo-panda" aria-hidden="true">🐼</span>
-      <span class="sidebar-logo-brand">Panda<em>Journey</em></span>
-    </div>
-    <nav class="sidebar-nav">
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🏠</span>Dashboard</a>
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">⭐</span>Attractions</a>
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🗺️</span>My Itinerary</a>
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🔖</span>Saved</a>
-      <a class="nav-item is-active" href="#" aria-current="page"><span class="nav-item-icon" aria-hidden="true">👥</span>Collaboration</a>
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🌐</span>Public Itineraries</a>
-    </nav>
-    <div class="sidebar-footer">
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">👤</span>Profile</a>
-      <a class="nav-item" href="#"><span class="nav-item-icon" aria-hidden="true">🚪</span>Logout</a>
-    </div>
-  </aside>
-
-  <!-- MAIN -->
-  <main class="main-area">
-
-    <!-- PAGE HEADER -->
-    <header class="page-header">
-      <div class="page-header-text">
-        <h1 class="page-header-title">Collaborative Planning</h1>
-        <p class="page-header-subtitle">Plan trips together with friends and family in real-time</p>
-      </div>
-      <div class="page-header-actions">
-        <!-- Demo role switcher -->
-        <div class="demo-switcher" aria-label="Demo: view as role">
-          <span class="demo-switcher-label">Demo view as:</span>
-          <button class="role-toggle-btn is-active" type="button">Owner</button>
-          <button class="role-toggle-btn" type="button">Editor</button>
-          <button class="role-toggle-btn" type="button">Viewer</button>
+      <!-- ITINERARY CARD -->
+      <section class="card card-p resizable-section itinerary-resize-section">
+        <div class="collab-title-row" id="collabTitleRow">
+          <h2
+            class="card-title collab-editable"
+            id="collabTitleText"
+            contenteditable="true"
+            spellcheck="false"
+            aria-label="Trip title, click to rename"
+          >{{ itinerary_data.title if itinerary_data else 'Cameron Highlands Trip' }}</h2>
+          <span class="collab-title-edit-hint" aria-hidden="true">&#9998; click to rename</span>
         </div>
-        <!-- Bell -->
-        <div style="position:relative">
-          <button class="bell-button" type="button" aria-label="Notifications">
-            🔔
-            <span class="bell-badge" id="bellBadge" aria-label="4 notifications">4</span>
-          </button>
+        <p class="card-subtitle" id="collabTripMeta" style="margin-top:-8px; margin-bottom:16px;">
+          <span
+            class="collab-date-editable"
+            id="collabDateText"
+            contenteditable="true"
+            spellcheck="false"
+            aria-label="Trip date, click to edit"
+          >{{ itinerary_data.date if itinerary_data else 'Aug 10, 2026' }}</span> &middot;
+          <span id="collabStopCount">{{ itinerary_data.stops|length if itinerary_data and itinerary_data.stops else 4 }}</span> stops &middot;
+          <span id="collabTotalHours">0 hrs</span>
+        </p>
+
+        <!-- Timeline -->
+        <div class="timetable" id="stopTimeline" role="list" aria-label="Itinerary stops">
+          {% set stops = itinerary_data.stops if itinerary_data and itinerary_data.stops else [
+            {'name': 'KLIA2 Departure', 'time': '07:00', 'duration': '2 hrs', 'icon': '&#128652;'},
+            {'name': 'Tanah Rata Town Centre', 'time': '09:30', 'duration': '1.5 hrs', 'icon': '&#127794;'},
+            {'name': 'Mossy Forest Walk', 'time': '11:00', 'duration': '2 hrs', 'icon': '&#127807;'},
+            {'name': 'Cameron Bharat Tea Plantation', 'time': '13:30', 'duration': '1.5 hrs', 'icon': '&#127861;'}
+          ] %}
+          {% for stop in stops %}
+          {% set stop_number = stop.stopNumber if stop.stopNumber else loop.index %}
+          <div class="timetable-row" role="listitem" draggable="true" data-stop-index="{{ loop.index0 }}" data-stop-number="{{ stop_number }}">
+            <div class="timeline-col">
+              <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}">{{ stop_number }}</div>
+              {% if not loop.last %}<div class="timeline-line"></div>{% endif %}
+            </div>
+            <div class="timetable-content">
+              <div class="stop-edit-row">
+                <div class="stop-edit-fields">
+                  {% set stop_icon = '&#128205;' if not stop.icon or stop.icon == 'pin' else stop.icon %}
+                  <p class="timetable-name stop-name">{{ stop.name }}</p>
+                  <p class="timetable-time"><span class="stop-icon">{{ stop_icon|safe }}</span> <span class="stop-time">{{ stop.time }} &middot; {{ stop.duration }}</span></p>
+                </div>
+                <div class="stop-actions-group">
+                  <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit {{ stop.name }}">&#9998;</button>
+                  <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete {{ stop.name }}">&#128465;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div><!-- /stopTimeline -->
+
+        <button class="add-stop-btn" type="button" id="addStopBtn">+ Add a stop</button>
+
+        <div class="sync-indicator" aria-live="polite">
+          <span class="sync-dot" aria-hidden="true"></span>
+          <p class="sync-text">Synced live - everyone sees changes instantly</p>
         </div>
-      </div>
-    </header>
 
-    <!-- PAGE CONTENT -->
-    <div class="page-content">
-      <div class="columns-layout">
+        <div class="view-only-banner" id="viewOnlyBanner" style="display:none;">
+          &#128274; You have view-only access. Ask the owner to make you an Editor to make changes.
+          <button type="button" id="viewOnlyDismiss" style="margin-left:auto;background:none;border:0;cursor:pointer;color:inherit;font-weight:800;">&times;</button>
+        </div>
+      </section>
 
-        <!-- ════ LEFT COLUMN ════ -->
-        <div class="column-left">
+      <!-- COMMENTS CARD -->
+      <section class="card card-p resizable-section comments-resize-section">
+        <h2 class="card-title" style="margin-bottom:16px;">Comments</h2>
 
-          <!-- ── ITINERARY CARD ── -->
-          <section class="card itinerary-card" aria-labelledby="itinerary-heading">
-            <div class="card-body">
-
-              <!-- Card header -->
-              <div class="itinerary-card-header">
-                <div class="itinerary-trip-title">
-                  Cameron Highlands Trip
-                  <span class="edit-hint" aria-hidden="true">✎</span>
+        <div class="comments-list" id="commentsList" role="log" aria-label="Comments thread" aria-live="polite">
+          {% for c in comments %}
+          <article class="comment-item" data-comment-id="{{ c.id }}" data-author-uid="{{ c.authorUid }}">
+            <div class="avatar avatar-sm" style="--avatar-bg: #0f8a67; background-color: var(--avatar-bg);">{{ (c.authorName or c.name or '??')[:2]|upper }}</div>
+            <div class="comment-bubble">
+              <div class="comment-meta-row">
+                <div>
+                  <span class="comment-author">{{ c.authorName or c.name }}</span>
+                  <span class="comment-time" data-created-at="{{ c.updatedAt or c.createdAt or '' }}">{{ c.timeAgo or 'just now' }}</span>
                 </div>
-                <p class="itinerary-trip-meta">Aug 10, 2026 · 4 stops · 6 hrs</p>
+                {% if c.authorUid == current_user.uid %}
+                <button class="comment-edit-btn" type="button" aria-label="Edit comment">Edit</button>
+                {% endif %}
               </div>
-
-              <!-- Timeline -->
-              <div class="stop-timeline" role="list" aria-label="Itinerary stops">
-
-                <!-- Stop 1 -->
-                <div class="stop-row" role="listitem" draggable="true">
-                  <div class="stop-drag-handle" aria-label="Drag to reorder" title="Drag to reorder">
-                    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" aria-hidden="true">
-                      <circle cx="3" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="13" r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="13" r="1.5" fill="currentColor"/>
-                    </svg>
-                  </div>
-                  <div class="stop-dot-col">
-                    <div class="stop-icon" aria-hidden="true">🚌</div>
-                    <div class="stop-connector"></div>
-                  </div>
-                  <div class="stop-info">
-                    <div class="stop-info-top">
-                      <div>
-                        <p class="stop-name">KLIA2 Departure</p>
-                        <p class="stop-time">07:00 · 2 hrs</p>
-                      </div>
-                      <div class="stop-actions">
-                        <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit KLIA2 Departure">✎</button>
-                        <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete KLIA2 Departure">🗑</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Stop 2 -->
-                <div class="stop-row" role="listitem" draggable="true">
-                  <div class="stop-drag-handle" aria-label="Drag to reorder" title="Drag to reorder">
-                    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" aria-hidden="true">
-                      <circle cx="3" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="13" r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="13" r="1.5" fill="currentColor"/>
-                    </svg>
-                  </div>
-                  <div class="stop-dot-col">
-                    <div class="stop-icon" aria-hidden="true">🌲</div>
-                    <div class="stop-connector"></div>
-                  </div>
-                  <div class="stop-info">
-                    <div class="stop-info-top">
-                      <div>
-                        <p class="stop-name">Tanah Rata Town Centre</p>
-                        <p class="stop-time">09:30 · 1.5 hrs</p>
-                      </div>
-                      <div class="stop-actions">
-                        <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit Tanah Rata Town Centre">✎</button>
-                        <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete Tanah Rata Town Centre">🗑</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Stop 3 -->
-                <div class="stop-row" role="listitem" draggable="true">
-                  <div class="stop-drag-handle" aria-label="Drag to reorder" title="Drag to reorder">
-                    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" aria-hidden="true">
-                      <circle cx="3" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="13" r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="13" r="1.5" fill="currentColor"/>
-                    </svg>
-                  </div>
-                  <div class="stop-dot-col">
-                    <div class="stop-icon" aria-hidden="true">🍃</div>
-                    <div class="stop-connector"></div>
-                  </div>
-                  <div class="stop-info">
-                    <div class="stop-info-top">
-                      <div>
-                        <p class="stop-name">Mossy Forest Walk</p>
-                        <p class="stop-time">11:00 · 2 hrs</p>
-                      </div>
-                      <div class="stop-actions">
-                        <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit Mossy Forest Walk">✎</button>
-                        <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete Mossy Forest Walk">🗑</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Stop 4 (last — no connector) -->
-                <div class="stop-row" role="listitem" draggable="true">
-                  <div class="stop-drag-handle" aria-label="Drag to reorder" title="Drag to reorder">
-                    <svg width="10" height="16" viewBox="0 0 10 16" fill="none" aria-hidden="true">
-                      <circle cx="3" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="3"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="8"  r="1.5" fill="currentColor"/>
-                      <circle cx="3" cy="13" r="1.5" fill="currentColor"/>
-                      <circle cx="7" cy="13" r="1.5" fill="currentColor"/>
-                    </svg>
-                  </div>
-                  <div class="stop-dot-col">
-                    <div class="stop-icon" aria-hidden="true">🍵</div>
-                    <!-- no connector on last stop -->
-                  </div>
-                  <div class="stop-info">
-                    <div class="stop-info-top">
-                      <div>
-                        <p class="stop-name">Cameron Bharat Tea Plantation</p>
-                        <p class="stop-time">13:30 · 1.5 hrs</p>
-                      </div>
-                      <div class="stop-actions">
-                        <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit Cameron Bharat Tea Plantation">✎</button>
-                        <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete Cameron Bharat Tea Plantation">🗑</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-              </div><!-- /stop-timeline -->
-
-              <!-- Add stop -->
-              <button class="add-stop-btn" type="button">+ Add a stop</button>
-
-              <!-- Sync indicator -->
-              <div class="sync-indicator" aria-live="polite">
-                <span class="sync-dot" aria-hidden="true"></span>
-                <p class="sync-text">Synced live — everyone sees changes instantly</p>
-              </div>
-
-            </div><!-- /card-body -->
-          </section>
-
-          <!-- ── COMMENTS CARD ── -->
-          <section class="card" aria-labelledby="comments-heading">
-            <div class="card-body">
-              <h2 class="card-heading" id="comments-heading">Comments</h2>
-
-              <div class="comments-list" role="log" aria-label="Comments thread" aria-live="polite">
-
-                <!-- Comment 1 -->
-                <article class="comment-item">
-                  <div class="comment-avatar" style="background:#3b82f6" aria-label="Siti Nurhaliza">SN</div>
-                  <div class="comment-bubble">
-                    <div class="comment-meta">
-                      <span class="comment-author">Siti Nurhaliza</span>
-                      <time class="comment-time" datetime="2026-08-06T06:00">2h ago</time>
-                    </div>
-                    <p class="comment-text">Can we add Batu Caves to stop 2? The morning light is perfect there.</p>
-                  </div>
-                </article>
-
-                <!-- Comment 2 -->
-                <article class="comment-item">
-                  <div class="comment-avatar" style="background:#8b5cf6" aria-label="Raj Kumar">RK</div>
-                  <div class="comment-bubble">
-                    <div class="comment-meta">
-                      <span class="comment-author">Raj Kumar</span>
-                      <time class="comment-time" datetime="2026-08-06T07:00">1h ago</time>
-                    </div>
-                    <p class="comment-text">Agreed! Also check the MRT schedule for that route.</p>
-                  </div>
-                </article>
-
-                <!-- Comment 3 -->
-                <article class="comment-item">
-                  <div class="comment-avatar" style="background:#0f7a5a" aria-label="Ahmad Faris">AF</div>
-                  <div class="comment-bubble">
-                    <div class="comment-meta">
-                      <span class="comment-author">Ahmad Faris</span>
-                      <time class="comment-time" datetime="2026-08-06T07:15">45m ago</time>
-                    </div>
-                    <p class="comment-text">Updated the route. Batu Caves is now stop 2. Regenerated timetable.</p>
-                  </div>
-                </article>
-
-              </div><!-- /comments-list -->
-
-              <!-- Comment input -->
-              <form class="comment-input-row" onsubmit="return false" aria-label="Add a comment">
-                <div style="flex:1;display:flex;flex-direction:column;gap:4px">
-                  <input
-                    class="comment-input"
-                    type="text"
-                    placeholder="Write a comment for the group…"
-                    aria-label="Comment text"
-                    maxlength="500"
-                  />
-                </div>
-                <button class="comment-send-btn" type="submit" aria-label="Send comment">➤</button>
-              </form>
-
+              <p class="comment-text">{{ c.text|e }}</p>
             </div>
-          </section>
+          </article>
+          {% endfor %}
+        </div>
 
-        </div><!-- /column-left -->
+        <form class="comment-input-row" id="commentForm" aria-label="Add a comment" style="margin-top:16px;">
+          <div style="flex:1;display:flex;flex-direction:column;">
+            <input
+              class="comment-input"
+              id="commentInput"
+              type="text"
+              placeholder="Write a comment for the group..."
+              aria-label="Comment text"
+              maxlength="500"
+            />
+            <p class="comment-error-msg" id="commentErrorMsg" style="display:none;">Comment can't be empty.</p>
+          </div>
+          <button class="comment-send-btn" type="submit" aria-label="Send comment">&#10148;</button>
+        </form>
+      </section>
 
-        <!-- ════ RIGHT COLUMN ════ -->
-        <div class="column-right">
+    </div><!-- /collab-main -->
 
-          <!-- ── COLLABORATORS CARD ── -->
-          <section class="card" aria-labelledby="collaborators-heading">
-            <div class="card-body">
-              <h2 class="card-heading" id="collaborators-heading">Collaborators</h2>
+    <!-- SIDE COLUMN -->
+    <div class="collab-side">
 
-              <!-- Invite row -->
-              <form class="invite-row" id="inviteForm" aria-label="Invite collaborator">
-                <div style="flex:1;display:flex;flex-direction:column;gap:4px">
-                  <input
-                    class="invite-input"
-                    id="inviteEmailInput"
-                    type="email"
-                    placeholder="Search by email…"
-                    aria-label="Collaborator email address"
-                  />
-                  <p class="invite-error-msg" id="inviteErrorMsg" style="display:none">Enter a valid email address.</p>
-                </div>
-                <button class="invite-btn" type="submit">Invite</button>
-              </form>
+      <!-- COLLABORATORS CARD -->
+      <section class="card card-p resizable-section collaborators-resize-section">
+        <h2 class="card-title" style="margin-bottom:16px;">Collaborators</h2>
 
-              <!-- Collaborator list -->
-              <ul class="collaborator-list" id="collaboratorList" aria-label="Current collaborators">
+        <form class="invite-row" id="inviteForm" aria-label="Invite collaborator" style="margin-bottom:16px;">
+          <div style="flex:1;display:flex;flex-direction:column;">
+            <input class="invite-input" id="inviteEmailInput" type="email" placeholder="Search by email..." aria-label="Collaborator email address" />
+            <p class="invite-error-msg" id="inviteErrorMsg" style="display:none;">Enter a valid email address.</p>
+          </div>
+          <button class="invite-btn" type="submit">Invite</button>
+        </form>
 
-                <!-- Owner -->
-                <li class="collaborator-row">
-                  <div class="collaborator-avatar" style="background:#0f7a5a" aria-label="Ahmad Faris">AF</div>
-                  <div class="collaborator-info">
-                    <p class="collaborator-name">Ahmad Faris</p>
-                    <p class="collaborator-email">ahmad@email.com</p>
-                  </div>
-                  <div class="collaborator-role-wrap">
-                    <button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>
-                  </div>
-                </li>
-
-                <!-- Editor -->
-                <li class="collaborator-row">
-                  <div class="collaborator-avatar" style="background:#3b82f6" aria-label="Siti Nurhaliza">SN</div>
-                  <div class="collaborator-info">
-                    <p class="collaborator-name">Siti Nurhaliza</p>
-                    <p class="collaborator-email">siti@email.com</p>
-                  </div>
-                  <div class="collaborator-role-wrap">
-                    <button class="role-pill role-editor" type="button" aria-haspopup="true" aria-label="Role: Editor. Click to change">
-                      Editor <span class="chevron" aria-hidden="true">▾</span>
-                    </button>
-                  </div>
-                </li>
-
-                <!-- Viewer -->
-                <li class="collaborator-row">
-                  <div class="collaborator-avatar" style="background:#8b5cf6" aria-label="Raj Kumar">RK</div>
-                  <div class="collaborator-info">
-                    <p class="collaborator-name">Raj Kumar</p>
-                    <p class="collaborator-email">raj@email.com</p>
-                  </div>
-                  <div class="collaborator-role-wrap">
-                    <button class="role-pill role-viewer" type="button" aria-haspopup="true" aria-label="Role: Viewer. Click to change">
-                      Viewer <span class="chevron" aria-hidden="true">▾</span>
-                    </button>
-                  </div>
-                </li>
-
-                <!-- Pending invite (pre-existing example) -->
-                <li class="collaborator-row is-pending">
-                  <div class="collaborator-avatar" style="background:#f59e0b" aria-label="nu">NU</div>
-                  <div class="collaborator-info">
-                    <p class="collaborator-name">newuser@example.com</p>
-                    <p class="collaborator-email">newuser@example.com</p>
-                  </div>
-                  <div class="collaborator-role-wrap">
-                    <span class="pending-pill" aria-label="Invitation pending">Pending</span>
-                    <button class="accept-sim-btn" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance">✓</button>
-                  </div>
-                </li>
-
-              </ul>
+        <ul style="list-style:none; padding:0; margin:0;" id="collaboratorList" aria-label="Current collaborators">
+          {% set demo_collabs = itinerary_data.collaborators if itinerary_data and itinerary_data.collaborators else {
+            'user_123': {'name': 'Ahmad Faris', 'email': 'ahmad@email.com', 'role': 'Owner', 'color': '#0f8a67'},
+            'user_456': {'name': 'Siti Nurhaliza', 'email': 'siti@email.com', 'role': 'Editor', 'color': '#3b82f6'},
+            'user_789': {'name': 'Raj Kumar', 'email': 'raj@email.com', 'role': 'Viewer', 'color': '#8b5cf6'}
+          } %}
+          {% for uid, c in demo_collabs.items() %}
+          <li class="collaborator-row {% if c.status == 'pending' %}is-pending{% endif %}">
+            <div class="avatar avatar-sm" style="--avatar-bg: {{ c.color if c.color else '#0f8a67' }}; background-color: var(--avatar-bg);">
+              {{ c.name[:2]|upper if c.name else '??' }}
             </div>
-          </section>
-
-          <!-- ── RECENT UPDATES CARD ── -->
-          <section class="card" aria-labelledby="updates-heading">
-            <div class="card-body">
-              <h2 class="card-heading" id="updates-heading">Recent Updates</h2>
-              <ul class="update-list" id="updateList" aria-live="polite">
-
-                <li class="update-row">
-                  <div class="update-icon" aria-hidden="true">💬</div>
-                  <div>
-                    <p class="update-text">Siti added a comment</p>
-                    <p class="update-time">2h ago</p>
-                  </div>
-                </li>
-                <li class="update-row">
-                  <div class="update-icon" aria-hidden="true">✏️</div>
-                  <div>
-                    <p class="update-text">Ahmad updated stop 2</p>
-                    <p class="update-time">45m ago</p>
-                  </div>
-                </li>
-                <li class="update-row">
-                  <div class="update-icon" aria-hidden="true">📍</div>
-                  <div>
-                    <p class="update-text">Raj added a new stop</p>
-                    <p class="update-time">1h ago</p>
-                  </div>
-                </li>
-                <li class="update-row">
-                  <div class="update-icon" aria-hidden="true">🔑</div>
-                  <div>
-                    <p class="update-text">Raj assigned as Viewer</p>
-                    <p class="update-time">Yesterday</p>
-                  </div>
-                </li>
-
-              </ul>
-              <a class="view-all-link" href="#">View all activity →</a>
+            <div class="collab-info">
+              <p class="collab-name">{{ c.name }}</p>
+              <p class="collab-email">{{ c.email }}</p>
             </div>
-          </section>
+            <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">
+              {% if c.status == 'pending' %}
+                <span class="pending-pill">Pending</span>
+                <button class="accept-sim-btn" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance for {{ c.name }}">&#10003;</button>
+              {% elif c.role == 'Owner' %}
+                <button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>
+              {% else %}
+                <button class="role-pill role-{{ c.role|lower }}" type="button" aria-haspopup="true" aria-label="Role: {{ c.role }}. Click to change">
+                  {{ c.role }} <span class="chevron" aria-hidden="true">&#9662;</span>
+                </button>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
 
-        </div><!-- /column-right -->
-      </div><!-- /columns-layout -->
-    </div><!-- /page-content -->
-  </main>
-</div><!-- /app-layout -->
+      <!-- RECENT UPDATES CARD -->
+      <section class="card card-p">
+        <h2 class="card-title" style="margin-bottom:16px;">Recent Updates</h2>
+        <ul style="list-style:none; padding:0; margin:0;" id="updateList" aria-live="polite">
+          {% for activity in activities %}
+          <li
+            class="notif-row"
+            data-activity-id="{{ activity.id }}"
+            data-source-type="{{ activity.sourceType }}"
+            data-source-id="{{ activity.sourceId }}"
+          >
+            <div class="notif-icon" aria-hidden="true">{{ activity.iconLabel or 'N' }}</div>
+            <div><p class="notif-text">{{ activity.message }}</p><p class="notif-time">{{ activity.timeAgo }}</p></div>
+          </li>
+          {% else %}
+          <li class="notif-row" data-empty-activity="true">
+            <div class="notif-icon" aria-hidden="true">N</div>
+            <div><p class="notif-text">No activity yet</p><p class="notif-time">Start collaborating to see updates here</p></div>
+          </li>
+          {% endfor %}
+        </ul>
+        <a class="view-all-link" href="#" id="viewAllActivity">View all activity -&gt;</a>
+      </section>
 
+    </div><!-- /collab-side -->
+  </div><!-- /collab-layout -->
+</div>
+
+<!-- Toast -->
 <div class="app-toast" id="appToast"></div>
 
+<!-- Edit Stop Modal -->
+<div class="modal-backdrop" id="edit-stop-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-icon">&#9998;</div>
+    <div class="modal-title">Edit Stop</div>
+    <div class="modal-desc">Update the name, time and duration for this stop.</div>
+    <form id="editStopForm" class="modal-fields">
+      <input type="hidden" id="editStopIndex" />
+      <div class="form-group">
+        <label class="form-label" for="editStopName">Stop Name</label>
+        <input type="text" id="editStopName" class="form-input" placeholder="Enter stop name" />
+      </div>
+      <div class="modal-fields-row">
+        <div class="form-group">
+          <label class="form-label" for="editStopTime">Time</label>
+          <input type="text" id="editStopTime" class="form-input" placeholder="e.g. 09:30" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="editStopDuration">Duration</label>
+          <input type="text" id="editStopDuration" class="form-input" placeholder="e.g. 1.5 hrs" />
+        </div>
+      </div>
+    </form>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-md" id="edit-stop-cancel" type="button">Cancel</button>
+      <button class="btn btn-primary btn-md btn-full" id="edit-stop-save" type="button">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
-/* ─────────────────────────────────────────────────────────────────
-   INVITE → PENDING ROW
-   Wires the "Invite" button to actually append a pending
-   collaborator row to the list, matching the existing markup
-   for the sample "newuser@example.com" pending row.
-───────────────────────────────────────────────────────────────── */
 (function () {
-  const form        = document.getElementById('inviteForm');
-  const input       = document.getElementById('inviteEmailInput');
-  const errorMsg     = document.getElementById('inviteErrorMsg');
-  const list        = document.getElementById('collaboratorList');
-  const updateList   = document.getElementById('updateList');
-  const bellBadge    = document.getElementById('bellBadge');
-  const toast        = document.getElementById('appToast');
+  const root          = document.getElementById('collabRoot');
+  const itineraryId   = root.dataset.itineraryId || 'itin_test';
+  const currentUid    = root.dataset.userUid || 'user_123';
+  const currentName   = root.dataset.userName || 'You';
 
-  const AVATAR_COLORS = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#10b981'];
+  function setupImageLikeSectionScaling() {
+    const sections = document.querySelectorAll('#collabRoot .resizable-section');
+    if (!sections.length || !window.ResizeObserver) return;
 
-  function emailIsValid(value) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-  }
+    function scaleSection(section) {
+      const wrapper = section.querySelector(':scope > .resize-scale-content');
+      if (!wrapper) return;
 
-  function initialsFromEmail(value) {
-    const local = value.split('@')[0];
-    const parts = local.split(/[._-]/).filter(Boolean);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[1][0]).toUpperCase();
+      const styles = window.getComputedStyle(section);
+      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const availableWidth = Math.max(1, section.clientWidth - horizontalPadding);
+      const availableHeight = Math.max(1, section.clientHeight - verticalPadding);
+      const baseWidth = parseFloat(wrapper.dataset.baseWidth) || availableWidth;
+
+      wrapper.style.transform = 'scale(1)';
+      wrapper.style.height = 'auto';
+      const baseHeight = Math.max(parseFloat(wrapper.dataset.baseHeight) || 1, wrapper.scrollHeight);
+      wrapper.dataset.baseHeight = String(baseHeight);
+
+      const scale = Math.min(availableWidth / baseWidth, availableHeight / baseHeight, 1);
+      wrapper.style.transform = `scale(${scale})`;
+      wrapper.style.width = `${baseWidth}px`;
+      wrapper.style.height = `${baseHeight}px`;
     }
-    return local.slice(0, 2).toUpperCase();
+
+    sections.forEach(section => {
+      if (section.querySelector(':scope > .resize-scale-content')) return;
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'resize-scale-content';
+      while (section.firstChild) wrapper.appendChild(section.firstChild);
+      section.appendChild(wrapper);
+
+      const styles = window.getComputedStyle(section);
+      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
+      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
+      const baseWidth = Math.max(1, section.clientWidth - horizontalPadding);
+      const baseHeight = Math.max(1, wrapper.scrollHeight);
+
+      wrapper.dataset.baseWidth = String(baseWidth);
+      wrapper.dataset.baseHeight = String(baseHeight);
+      wrapper.style.width = `${baseWidth}px`;
+    });
+
+    const observer = new ResizeObserver(entries => {
+      entries.forEach(entry => scaleSection(entry.target));
+    });
+
+    const mutationObserver = new MutationObserver(mutations => {
+      const changedSections = new Set(
+        mutations
+          .map(mutation => {
+            const target = mutation.target.nodeType === Node.ELEMENT_NODE
+              ? mutation.target
+              : mutation.target.parentElement;
+            return target ? target.closest('.resizable-section') : null;
+          })
+          .filter(Boolean)
+      );
+      changedSections.forEach(scaleSection);
+    });
+
+    sections.forEach(section => {
+      observer.observe(section);
+      mutationObserver.observe(section, { childList: true, subtree: true, characterData: true });
+      scaleSection(section);
+    });
   }
 
-  function colorForEmail(value) {
-    let hash = 0;
-    for (let i = 0; i < value.length; i++) hash = value.charCodeAt(i) + ((hash << 5) - hash);
-    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-  }
+  setupImageLikeSectionScaling();
 
-  function alreadyInList(email) {
-    return Array.from(list.querySelectorAll('.collaborator-email'))
-      .some(el => el.textContent.trim().toLowerCase() === email.toLowerCase());
-  }
+  const toast         = document.getElementById('appToast');
+  const bellButton    = document.getElementById('bellButton');
+  const bellBadge     = document.getElementById('bellBadge');
+  const updateList    = document.getElementById('updateList');
+  const viewAllActivity = document.getElementById('viewAllActivity');
+  const RECENT_UPDATE_LIMIT = 4;
+  let showingAllActivity = false;
+  const seenNotificationIds = new Set(
+    Array.from(updateList.querySelectorAll('[data-source-type="notification"][data-source-id]'))
+      .map(row => row.dataset.sourceId)
+      .filter(Boolean)
+  );
 
   function showToast(message) {
     toast.textContent = message;
@@ -1203,102 +344,956 @@ img { display: block; }
     showToast._t = setTimeout(() => toast.classList.remove('is-visible'), 2600);
   }
 
+  function setBellBadgeCount(count) {
+    bellBadge.textContent = String(count);
+    bellBadge.style.display = count > 0 ? 'flex' : 'none';
+  }
+
   function bumpBellBadge() {
     const current = parseInt(bellBadge.textContent, 10) || 0;
-    bellBadge.textContent = current + 1;
+    setBellBadgeCount(current + 1);
+  }
+
+  function markNotificationsSeen() {
+    setBellBadgeCount(0);
+  }
+
+  function formatCommentTime(value) {
+    if (!value) return 'just now';
+    const createdAt = new Date(value);
+    if (Number.isNaN(createdAt.getTime())) return value;
+
+    const seconds = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / 1000));
+    if (seconds < 60) return 'just now';
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+
+    return createdAt.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function cleanSeparatorText(value) {
+    return String(value || '')
+      .replace(/\u00c3\u201a/g, '')
+      .replace(/\u00c2/g, '')
+      .replace(/\s*\u00b7\s*/g, ' \u00b7 ')
+      .trim();
+  }
+
+  function parseTimeDuration(value) {
+    const parts = cleanSeparatorText(value).split(/\s*\u00b7\s*/).filter(Boolean);
+    return {
+      time: parts[0] ? parts[0].trim() : '',
+      duration: parts[1] ? parts[1].trim() : ''
+    };
+  }
+
+  function formatTimeDuration(time, duration) {
+    return `${time || '--:--'} \u00b7 ${duration || '-- hrs'}`;
+  }
+
+  function parseDurationHours(value) {
+    const text = String(value || '').toLowerCase();
+    let total = 0;
+    const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/);
+    const minuteMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)\b/);
+
+    if (hourMatch) total += parseFloat(hourMatch[1]) || 0;
+    if (minuteMatch) total += (parseFloat(minuteMatch[1]) || 0) / 60;
+    if (!hourMatch && !minuteMatch) {
+      const fallback = text.match(/\d+(?:\.\d+)?/);
+      if (fallback) total += parseFloat(fallback[0]) || 0;
+    }
+
+    return total;
+  }
+
+  function formatTotalHours(hours) {
+    if (!hours) return '0 hrs';
+    const rounded = Math.round(hours * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} hrs`;
+  }
+
+  function updateTripDuration() {
+    const totalHoursEl = document.getElementById('collabTotalHours');
+    if (!totalHoursEl) return;
+
+    const total = Array.from(document.querySelectorAll('#stopTimeline .stop-time'))
+      .map(el => parseTimeDuration(el.textContent).duration)
+      .reduce((sum, duration) => sum + parseDurationHours(duration), 0);
+
+    totalHoursEl.textContent = formatTotalHours(total);
   }
 
   function prependUpdate(icon, text) {
+    const emptyRow = updateList.querySelector('[data-empty-activity="true"]');
+    if (emptyRow) emptyRow.remove();
+
     const li = document.createElement('li');
-    li.className = 'update-row';
+    li.className = 'notif-row';
     li.innerHTML = `
-      <div class="update-icon" aria-hidden="true">${icon}</div>
-      <div>
-        <p class="update-text">${text}</p>
-        <p class="update-time">just now</p>
-      </div>`;
+      <div class="notif-icon" aria-hidden="true">${escapeHtml(icon)}</div>
+      <div><p class="notif-text">${escapeHtml(text)}</p><p class="notif-time">just now</p></div>`;
     updateList.insertBefore(li, updateList.firstChild);
+    syncActivityListVisibility();
   }
 
-  function addPendingRow(email) {
-    const initials = initialsFromEmail(email);
-    const color    = colorForEmail(email);
+  function syncActivityListVisibility() {
+    const updates = Array.from(updateList.querySelectorAll('.notif-row'));
+    updates.forEach((row, index) => {
+      row.classList.toggle('is-hidden', !showingAllActivity && index >= RECENT_UPDATE_LIMIT);
+    });
 
-    const li = document.createElement('li');
-    li.className = 'collaborator-row is-pending';
-    li.innerHTML = `
-      <div class="collaborator-avatar" style="background:${color}" aria-label="${email}">${initials}</div>
-      <div class="collaborator-info">
-        <p class="collaborator-name">${email}</p>
-        <p class="collaborator-email">${email}</p>
-      </div>
-      <div class="collaborator-role-wrap">
-        <span class="pending-pill" aria-label="Invitation pending">Pending</span>
-        <button class="accept-sim-btn" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance for ${email}">✓</button>
-      </div>`;
-    list.appendChild(li);
+    if (!viewAllActivity) return;
+
+    viewAllActivity.style.display = updates.length > RECENT_UPDATE_LIMIT ? '' : 'none';
+    viewAllActivity.textContent = showingAllActivity ? 'Show recent activity' : 'View all activity ->';
+    viewAllActivity.setAttribute('aria-expanded', showingAllActivity ? 'true' : 'false');
   }
 
-  form.addEventListener('submit', function (e) {
-    e.preventDefault();
-    const email = input.value.trim();
+  function normalizeStopTimeDisplay() {
+    document.querySelectorAll('.stop-time').forEach(el => {
+      const parts = parseTimeDuration(el.textContent);
+      el.textContent = formatTimeDuration(parts.time, parts.duration);
+    });
+    updateTripDuration();
+  }
 
-    if (!emailIsValid(email)) {
-      errorMsg.style.display = 'block';
-      input.classList.add('is-error');
-      input.focus();
-      return;
-    }
+  if (viewAllActivity) {
+    viewAllActivity.addEventListener('click', function (e) {
+      e.preventDefault();
+      showingAllActivity = !showingAllActivity;
+      syncActivityListVisibility();
+      markNotificationsSeen();
+    });
+  }
+  if (bellButton) {
+    bellButton.addEventListener('click', markNotificationsSeen);
+  }
+  setBellBadgeCount(parseInt(bellBadge.textContent, 10) || 0);
+  syncActivityListVisibility();
+  normalizeStopTimeDisplay();
 
-    if (alreadyInList(email)) {
-      errorMsg.textContent = 'This person is already invited or on the plan.';
-      errorMsg.style.display = 'block';
-      input.classList.add('is-error');
-      return;
-    }
+  const viewOnlyBanner = document.getElementById('viewOnlyBanner');
+  const viewOnlyDismiss = document.getElementById('viewOnlyDismiss');
+  const titleText = document.getElementById('collabTitleText');
+  const dateText = document.getElementById('collabDateText');
 
-    errorMsg.style.display = 'none';
-    input.classList.remove('is-error');
+  if (viewOnlyDismiss) {
+    viewOnlyDismiss.addEventListener('click', () => { viewOnlyBanner.style.display = 'none'; });
+  }
 
-    addPendingRow(email);
-    prependUpdate('✉️', `Invitation sent to ${email}`);
-    bumpBellBadge();
-    showToast(`Invitation sent to ${email}`);
+  /* Editable trip title (plan name) */
+  let titleBeforeEdit = titleText.textContent.trim();
 
-    input.value = '';
+  titleText.addEventListener('focus', function () {
+    titleBeforeEdit = this.textContent.trim();
   });
 
-  input.addEventListener('input', function () {
-    if (errorMsg.style.display !== 'none') {
-      errorMsg.style.display = 'none';
-      input.classList.remove('is-error');
+  titleText.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.blur();
+    } else if (e.key === 'Escape') {
+      this.textContent = titleBeforeEdit;
+      this.blur();
     }
   });
 
-  /* Clicking the ✓ on any pending row (including the pre-existing
-     sample row) simulates the invitee accepting: it swaps the
-     Pending badge for an active Viewer role pill. */
-  list.addEventListener('click', function (e) {
+  titleText.addEventListener('blur', async function () {
+    const newTitle = this.textContent.replace(/\s+/g, ' ').trim();
+
+    if (!newTitle) {
+      this.textContent = titleBeforeEdit;
+      return;
+    }
+    if (newTitle === titleBeforeEdit) return;
+
+    try {
+      const response = await fetch('/api/collaboration/update-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itineraryId, title: newTitle, editorUid: currentUid })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        this.textContent = result.title || newTitle;
+        titleBeforeEdit = this.textContent;
+        prependUpdate('E', `${currentName} renamed the trip to "${this.textContent}"`);
+        bumpBellBadge();
+        showToast('Trip name updated');
+      } else {
+        this.textContent = titleBeforeEdit;
+        showToast(`Failed to rename: ${result.message}`);
+      }
+    } catch (err) {
+      this.textContent = titleBeforeEdit;
+      showToast('Failed to save. Please try again.');
+    }
+  });
+
+  /* Editable trip date */
+  let dateBeforeEdit = dateText.textContent.trim();
+
+  dateText.addEventListener('focus', function () {
+    dateBeforeEdit = this.textContent.trim();
+  });
+
+  dateText.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.blur();
+    } else if (e.key === 'Escape') {
+      this.textContent = dateBeforeEdit;
+      this.blur();
+    }
+  });
+
+  dateText.addEventListener('blur', async function () {
+    const newDate = this.textContent.replace(/\s+/g, ' ').trim();
+
+    if (!newDate) {
+      this.textContent = dateBeforeEdit;
+      return;
+    }
+    if (newDate === dateBeforeEdit) return;
+
+    try {
+      const response = await fetch('/api/collaboration/update-date', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itineraryId, date: newDate, editorUid: currentUid })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        this.textContent = result.date || newDate;
+        dateBeforeEdit = this.textContent;
+        prependUpdate('E', `${currentName} changed the trip date to "${this.textContent}"`);
+        bumpBellBadge();
+        showToast('Trip date updated');
+      } else {
+        this.textContent = dateBeforeEdit;
+        showToast(`Failed to update date: ${result.message}`);
+      }
+    } catch (err) {
+      this.textContent = dateBeforeEdit;
+      showToast('Failed to save date. Please try again.');
+    }
+  });
+
+  /* Invite (client-side demo) */
+  const inviteForm  = document.getElementById('inviteForm');
+  const inviteInput = document.getElementById('inviteEmailInput');
+  const inviteError = document.getElementById('inviteErrorMsg');
+  const collabList  = document.getElementById('collaboratorList');
+  const AVATAR_COLORS = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#10b981'];
+
+  function emailIsValid(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+  function initialsFromEmail(v) {
+    const local = v.split('@')[0];
+    const parts = local.split(/[._-]/).filter(Boolean);
+    return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : local.slice(0, 2).toUpperCase();
+  }
+  function colorForEmail(v) {
+    let hash = 0;
+    for (let i = 0; i < v.length; i++) hash = v.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  }
+  function alreadyInvited(email) {
+    return Array.from(collabList.querySelectorAll('.collab-email'))
+      .some(el => el.textContent.trim().toLowerCase() === email.toLowerCase());
+  }
+
+  if (inviteForm) {
+    inviteForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const email = inviteInput.value.trim();
+
+      if (!emailIsValid(email)) {
+        inviteError.textContent = 'Enter a valid email address.';
+        inviteError.style.display = 'block';
+        inviteInput.classList.add('is-error');
+        return;
+      }
+      if (alreadyInvited(email)) {
+        inviteError.textContent = 'This person is already invited or on the plan.';
+        inviteError.style.display = 'block';
+        inviteInput.classList.add('is-error');
+        return;
+      }
+      inviteError.style.display = 'none';
+      inviteInput.classList.remove('is-error');
+
+      const inviteBtn = inviteForm.querySelector('.invite-btn');
+      inviteBtn.disabled = true;
+      inviteBtn.textContent = 'Sending...';
+
+      try {
+        const response = await fetch('/api/collaboration/invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itineraryId, email, ownerId: currentUid })
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+          inviteError.textContent = result.message || 'Could not send invitation.';
+          inviteError.style.display = 'block';
+          inviteInput.classList.add('is-error');
+          return;
+        }
+      } catch (err) {
+        showToast('Failed to send invitation. Please try again.');
+        return;
+      } finally {
+        inviteBtn.disabled = false;
+        inviteBtn.textContent = 'Invite';
+      }
+
+      const li = document.createElement('li');
+      li.className = 'collaborator-row is-pending';
+      const color = colorForEmail(email);
+      li.innerHTML = `
+        <div class="avatar avatar-sm" style="--avatar-bg: ${color}; background-color: var(--avatar-bg);">${initialsFromEmail(email)}</div>
+        <div class="collab-info"><p class="collab-name">${email}</p><p class="collab-email">${email}</p></div>
+        <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">
+          <span class="pending-pill">Pending</span>
+          <button class="accept-sim-btn" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance for ${email}">&#10003;</button>
+        </div>`;
+      collabList.appendChild(li);
+
+      prependUpdate('I', `Invitation sent to ${email}`);
+      bumpBellBadge();
+      showToast(`Invitation sent to ${email}`);
+      inviteInput.value = '';
+    });
+
+    inviteInput.addEventListener('input', function () {
+      if (inviteError.style.display !== 'none') {
+        inviteError.style.display = 'none';
+        inviteInput.classList.remove('is-error');
+      }
+    });
+  }
+
+  collabList.addEventListener('click', function (e) {
     const acceptBtn = e.target.closest('.accept-sim-btn');
     if (!acceptBtn) return;
 
     const row = acceptBtn.closest('.collaborator-row');
-    const nameEl = row.querySelector('.collaborator-name');
-    const name = nameEl ? nameEl.textContent.trim() : 'Collaborator';
+    const name = row.querySelector('.collab-name').textContent.trim();
 
     row.classList.remove('is-pending');
-    const roleWrap = row.querySelector('.collaborator-role-wrap');
-    roleWrap.innerHTML = `
+    const wrap = row.querySelector('.collaborator-role-wrap');
+    wrap.innerHTML = `
       <button class="role-pill role-viewer" type="button" aria-haspopup="true" aria-label="Role: Viewer. Click to change">
-        Viewer <span class="chevron" aria-hidden="true">▾</span>
+        Viewer <span class="chevron" aria-hidden="true">&#9662;</span>
       </button>`;
 
-    prependUpdate('✅', `${name} accepted the invitation`);
+    prependUpdate('A', `${name} accepted the invitation`);
     bumpBellBadge();
     showToast(`${name} joined the itinerary`);
   });
+
+  /* Comments */
+  const commentForm  = document.getElementById('commentForm');
+  const commentInput = document.getElementById('commentInput');
+  const commentError = document.getElementById('commentErrorMsg');
+  const commentsList = document.getElementById('commentsList');
+
+  function buildCommentArticle({ id, authorUid, authorName, text, createdAt }) {
+    const article = document.createElement('article');
+    article.className = 'comment-item';
+    article.dataset.commentId = id || '';
+    article.dataset.authorUid = authorUid || '';
+    const initials = authorName.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
+    const editAction = authorUid === currentUid
+      ? '<button class="comment-edit-btn" type="button" aria-label="Edit comment">Edit</button>'
+      : '';
+
+    article.innerHTML = `
+      <div class="avatar avatar-sm" style="--avatar-bg: #0f8a67; background-color: var(--avatar-bg);">${escapeHtml(initials)}</div>
+      <div class="comment-bubble">
+        <div class="comment-meta-row">
+          <div>
+            <span class="comment-author">${escapeHtml(authorName)}</span>
+            <span class="comment-time" data-created-at="${escapeHtml(createdAt || '')}">${escapeHtml(formatCommentTime(createdAt))}</span>
+          </div>
+          ${editAction}
+        </div>
+        <p class="comment-text">${escapeHtml(text)}</p>
+      </div>`;
+    return article;
+  }
+
+  function startCommentEdit(article) {
+    if (article.classList.contains('is-editing')) return;
+
+    const textEl = article.querySelector('.comment-text');
+    const editBtn = article.querySelector('.comment-edit-btn');
+    const originalText = textEl.textContent.trim();
+
+    article.classList.add('is-editing');
+    if (editBtn) editBtn.style.display = 'none';
+    textEl.style.display = 'none';
+
+    const editor = document.createElement('div');
+    editor.className = 'comment-editor';
+    editor.innerHTML = `
+      <input class="comment-edit-input" type="text" maxlength="500" value="${escapeHtml(originalText)}" aria-label="Edit comment text" />
+      <div class="comment-edit-actions">
+        <button class="comment-save-btn" type="button">Save</button>
+        <button class="comment-cancel-btn" type="button">Cancel</button>
+      </div>`;
+    textEl.insertAdjacentElement('afterend', editor);
+    editor.querySelector('.comment-edit-input').focus();
+  }
+
+  function finishCommentEdit(article) {
+    article.classList.remove('is-editing');
+    const editor = article.querySelector('.comment-editor');
+    const editBtn = article.querySelector('.comment-edit-btn');
+    const textEl = article.querySelector('.comment-text');
+    if (editor) editor.remove();
+    if (editBtn) editBtn.style.display = '';
+    if (textEl) textEl.style.display = '';
+  }
+
+  if (commentsList) {
+    commentsList.addEventListener('click', async function (e) {
+      const editBtn = e.target.closest('.comment-edit-btn');
+      if (editBtn) {
+        startCommentEdit(editBtn.closest('.comment-item'));
+        return;
+      }
+
+      const cancelBtn = e.target.closest('.comment-cancel-btn');
+      if (cancelBtn) {
+        finishCommentEdit(cancelBtn.closest('.comment-item'));
+        return;
+      }
+
+      const saveBtn = e.target.closest('.comment-save-btn');
+      if (!saveBtn) return;
+
+      const article = saveBtn.closest('.comment-item');
+      const input = article.querySelector('.comment-edit-input');
+      const textEl = article.querySelector('.comment-text');
+      const newText = input.value.trim();
+      const oldText = textEl.textContent.trim();
+
+      if (!newText) {
+        input.classList.add('is-error');
+        showToast("Comment can't be empty");
+        return;
+      }
+      if (newText === oldText) {
+        finishCommentEdit(article);
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/collaboration/comment/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itineraryId,
+            commentId: article.dataset.commentId,
+            authorUid: currentUid,
+            text: newText
+          })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          textEl.textContent = result.comment && result.comment.text ? result.comment.text : newText;
+          finishCommentEdit(article);
+          prependUpdate('E', `${currentName} edited a comment`);
+          bumpBellBadge();
+          showToast('Comment updated');
+        } else {
+          showToast(`Failed to update comment: ${result.message}`);
+        }
+      } catch (err) {
+        showToast('Failed to update comment. Please try again.');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+  }
+
+  if (commentForm) {
+    commentForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const text = commentInput.value.trim();
+
+      if (!text) {
+        commentError.style.display = 'block';
+        commentInput.classList.add('is-error');
+        return;
+      }
+      commentError.style.display = 'none';
+      commentInput.classList.remove('is-error');
+
+      const sendBtn = commentForm.querySelector('.comment-send-btn');
+      sendBtn.disabled = true;
+      sendBtn.textContent = '...';
+
+      try {
+        const response = await fetch('/api/collaboration/comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itineraryId, authorUid: currentUid, authorName: currentName, text })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          const article = buildCommentArticle({
+            id: result.comment && result.comment.id,
+            authorUid: currentUid,
+            authorName: currentName,
+            text,
+            createdAt: result.comment && result.comment.createdAt ? result.comment.createdAt : ''
+          });
+          commentsList.appendChild(article);
+          commentInput.value = '';
+
+          prependUpdate('C', `${currentName} added a comment`);
+          bumpBellBadge();
+          showToast('Comment added');
+        } else {
+          showToast(`Failed to add comment: ${result.message}`);
+        }
+      } catch (err) {
+        showToast('Failed to add comment. Please try again.');
+      } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '&#10148;';
+      }
+    });
+
+    commentInput.addEventListener('input', function () {
+      if (commentError.style.display !== 'none') {
+        commentError.style.display = 'none';
+        commentInput.classList.remove('is-error');
+      }
+    });
+  }
+
+  /* Edit / delete / add stop */
+  const editModal = document.getElementById('edit-stop-modal');
+  const editForm = document.getElementById('editStopForm');
+  const editStopIndex = document.getElementById('editStopIndex');
+  const editStopName = document.getElementById('editStopName');
+  const editStopTime = document.getElementById('editStopTime');
+  const editStopDuration = document.getElementById('editStopDuration');
+  const cancelBtn = document.getElementById('edit-stop-cancel');
+  const saveBtn = document.getElementById('edit-stop-save');
+  const stopTimeline = document.getElementById('stopTimeline');
+  const stopCountEl = document.getElementById('collabStopCount');
+
+  let currentStopRow = null;
+  let draggedStopRow = null;
+  let dragStartOrder = [];
+
+  function updateStopIndexes() {
+    const rows = Array.from(stopTimeline.querySelectorAll('.timetable-row'));
+    rows.forEach((row, index) => {
+      const stopNumber = index + 1;
+      row.setAttribute('data-stop-index', index);
+      row.setAttribute('data-stop-number', stopNumber);
+
+      const dot = row.querySelector('.timeline-dot');
+      if (dot) {
+        dot.textContent = stopNumber;
+        dot.classList.toggle('start', index === 0);
+        dot.classList.toggle('end', index === rows.length - 1);
+      }
+
+      const line = row.querySelector('.timeline-line');
+      if (line) line.remove();
+      if (index < rows.length - 1) {
+        const timelineCol = row.querySelector('.timeline-col');
+        if (timelineCol) {
+          const newLine = document.createElement('div');
+          newLine.className = 'timeline-line';
+          timelineCol.appendChild(newLine);
+        }
+      }
+    });
+    stopCountEl.textContent = rows.length;
+    updateTripDuration();
+  }
+
+  function snapshotStopOrder() {
+    return Array.from(stopTimeline.querySelectorAll('.timetable-row'));
+  }
+
+  function restoreStopOrder(rows) {
+    rows.forEach(row => stopTimeline.appendChild(row));
+    updateStopIndexes();
+  }
+
+  function getDragAfterElement(container, y) {
+    const rows = Array.from(container.querySelectorAll('.timetable-row:not(.is-dragging)'));
+
+    return rows.reduce((closest, row) => {
+      const box = row.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: row };
+      }
+      return closest;
+    }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+  }
+
+  function enableStopDragging(row) {
+    row.setAttribute('draggable', 'true');
+  }
+
+  function splitTimeDuration(value) {
+    return parseTimeDuration(value);
+  }
+
+  function collectStops() {
+    return Array.from(stopTimeline.querySelectorAll('.timetable-row')).map((row, index) => {
+      const timeDuration = splitTimeDuration(row.querySelector('.stop-time').textContent.trim());
+      return {
+        name: row.querySelector('.stop-name').textContent.trim(),
+        time: timeDuration.time,
+        duration: timeDuration.duration,
+        icon: 'pin',
+        stopNumber: parseInt(row.getAttribute('data-stop-number'), 10) || index + 1
+      };
+    });
+  }
+
+  async function persistStops() {
+    const response = await fetch('/api/collaboration/update-itinerary', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        itineraryId,
+        editorUid: currentUid,
+        stops: collectStops()
+      })
+    });
+    return response.json();
+  }
+
+  function openEditModal(stopRow) {
+    currentStopRow = stopRow;
+    const stopName = stopRow.querySelector('.stop-name').textContent.trim();
+    const stopTimeText = stopRow.querySelector('.stop-time').textContent.trim();
+    const timeParts = parseTimeDuration(stopTimeText);
+
+    editStopIndex.value = stopRow.getAttribute('data-stop-index');
+    editStopName.value = stopName;
+    editStopTime.value = timeParts.time;
+    editStopDuration.value = timeParts.duration;
+
+    editModal.classList.add('active');
+    editStopName.focus();
+  }
+
+  function closeEditModal() {
+    editModal.classList.remove('active');
+    currentStopRow = null;
+    editForm.reset();
+  }
+
+  async function saveStopChanges() {
+    if (!currentStopRow) return;
+    const newName = editStopName.value.trim();
+    const newTime = editStopTime.value.trim();
+    const newDuration = editStopDuration.value.trim();
+
+    if (!newName) {
+      showToast('Please enter a stop name');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+      const response = await fetch('/api/collaboration/update-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itineraryId,
+          stopIndex: parseInt(editStopIndex.value, 10),
+          stopData: {
+            name: newName,
+            time: newTime,
+            duration: newDuration,
+            stopNumber: parseInt(currentStopRow.getAttribute('data-stop-number'), 10) || parseInt(editStopIndex.value, 10) + 1
+          },
+          editorUid: currentUid
+        })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        currentStopRow.querySelector('.stop-name').textContent = newName;
+        currentStopRow.querySelector('.stop-time').textContent = formatTimeDuration(newTime, newDuration);
+        updateTripDuration();
+
+        prependUpdate('E', `${currentName} updated "${newName}"`);
+        bumpBellBadge();
+        showToast(`"${newName}" updated`);
+        closeEditModal();
+      } else {
+        showToast(`Failed to save: ${result.message}`);
+      }
+    } catch (err) {
+      showToast('Failed to save changes. Please try again.');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    const editBtn = e.target.closest('.stop-action-btn:not(.is-delete)');
+    if (editBtn) {
+      e.preventDefault();
+      const row = editBtn.closest('.timetable-row');
+      if (row) openEditModal(row);
+      return;
+    }
+
+    const deleteBtn = e.target.closest('.stop-action-btn.is-delete');
+    if (deleteBtn) {
+      e.preventDefault();
+      const row = deleteBtn.closest('.timetable-row');
+      const name = row.querySelector('.stop-name').textContent.trim();
+      if (confirm(`Are you sure you want to delete "${name}"?`)) {
+        row.remove();
+        updateStopIndexes();
+        prependUpdate('D', `Deleted stop "${name}"`);
+        bumpBellBadge();
+        showToast(`"${name}" deleted`);
+        persistStops().then(result => {
+          if (!result.success) showToast(`Delete was not saved: ${result.message}`);
+        }).catch(() => showToast('Delete was not saved. Please refresh and try again.'));
+      }
+    }
+  });
+
+  const addStopBtn = document.getElementById('addStopBtn');
+  if (addStopBtn) {
+    addStopBtn.addEventListener('click', async function () {
+      const count = stopTimeline.querySelectorAll('.timetable-row').length;
+      const row = document.createElement('div');
+      row.className = 'timetable-row';
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('draggable', 'true');
+      row.setAttribute('data-stop-index', count);
+      row.setAttribute('data-stop-number', count + 1);
+      row.innerHTML = `
+        <div class="timeline-col"><div class="timeline-dot end">${count + 1}</div></div>
+        <div class="timetable-content">
+          <div class="stop-edit-row">
+            <div class="stop-edit-fields">
+              <p class="timetable-name stop-name">New Stop</p>
+              <p class="timetable-time"><span class="stop-icon">&#128205;</span> <span class="stop-time">--:-- &middot; -- hrs</span></p>
+            </div>
+            <div class="stop-actions-group">
+              <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit New Stop">&#9998;</button>
+              <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete New Stop">&#128465;</button>
+            </div>
+          </div>
+        </div>`;
+      stopTimeline.appendChild(row);
+      updateStopIndexes();
+      addStopBtn.disabled = true;
+      try {
+        const result = await persistStops();
+        if (!result.success) {
+          row.remove();
+          updateStopIndexes();
+          showToast(`Could not add stop: ${result.message}`);
+          return;
+        }
+      } catch (err) {
+        row.remove();
+        updateStopIndexes();
+        showToast('Could not add stop. Please try again.');
+        return;
+      } finally {
+        addStopBtn.disabled = false;
+      }
+      updateStopIndexes();
+
+      prependUpdate('+', `${currentName} added a new stop`);
+      bumpBellBadge();
+      showToast('New stop added - click edit to customize');
+      setTimeout(() => openEditModal(row), 250);
+    });
+  }
+
+  stopTimeline.querySelectorAll('.timetable-row').forEach(enableStopDragging);
+
+  stopTimeline.addEventListener('dragstart', function (e) {
+    const row = e.target.closest('.timetable-row');
+    if (!row) return;
+
+    draggedStopRow = row;
+    dragStartOrder = snapshotStopOrder();
+    row.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.getAttribute('data-stop-index') || '');
+  });
+
+  stopTimeline.addEventListener('dragover', function (e) {
+    if (!draggedStopRow) return;
+    e.preventDefault();
+
+    const afterElement = getDragAfterElement(stopTimeline, e.clientY);
+    if (afterElement) {
+      stopTimeline.insertBefore(draggedStopRow, afterElement);
+    } else {
+      stopTimeline.appendChild(draggedStopRow);
+    }
+    updateStopIndexes();
+  });
+
+  stopTimeline.addEventListener('drop', async function (e) {
+    if (!draggedStopRow) return;
+    e.preventDefault();
+
+    const movedName = draggedStopRow.querySelector('.stop-name').textContent.trim();
+    const newStopNumber = parseInt(draggedStopRow.getAttribute('data-stop-number'), 10) || 1;
+    draggedStopRow.classList.remove('is-dragging');
+    draggedStopRow = null;
+    updateStopIndexes();
+
+    try {
+      const result = await persistStops();
+      if (result.success) {
+        prependUpdate('E', `${currentName} moved "${movedName}" to stop ${newStopNumber}`);
+        bumpBellBadge();
+        showToast(`"${movedName}" moved to stop ${newStopNumber}`);
+      } else {
+        restoreStopOrder(dragStartOrder);
+        showToast(`Move was not saved: ${result.message}`);
+      }
+    } catch (err) {
+      restoreStopOrder(dragStartOrder);
+      showToast('Move was not saved. Please try again.');
+    } finally {
+      dragStartOrder = [];
+    }
+  });
+
+  stopTimeline.addEventListener('dragend', function () {
+    if (draggedStopRow) {
+      draggedStopRow.classList.remove('is-dragging');
+      draggedStopRow = null;
+    }
+    dragStartOrder = [];
+    updateStopIndexes();
+  });
+
+  cancelBtn.addEventListener('click', closeEditModal);
+  saveBtn.addEventListener('click', saveStopChanges);
+  editModal.addEventListener('click', function (e) { if (e.target === editModal) closeEditModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && editModal.classList.contains('active')) closeEditModal();
+  });
+  editForm.addEventListener('submit', function (e) { e.preventDefault(); saveStopChanges(); });
+
+  /* Role dropdown (client-side demo) */
+  document.addEventListener('click', function (e) {
+    document.querySelectorAll('.role-dropdown').forEach(d => d.remove());
+
+    const pill = e.target.closest('.role-pill:not(.role-owner)');
+    if (!pill) return;
+    if (pill.closest('.is-pending')) return;
+
+    const wrap = pill.closest('.collaborator-role-wrap');
+    const dropdown = document.createElement('div');
+    dropdown.className = 'role-dropdown';
+    dropdown.innerHTML = `
+      <button type="button" class="role-dropdown-item" data-set-role="Editor">Make Editor</button>
+      <button type="button" class="role-dropdown-item" data-set-role="Viewer">Make Viewer</button>
+      <div class="role-dropdown-divider"></div>
+      <button type="button" class="role-dropdown-item is-danger" data-remove-collab>Remove</button>`;
+    wrap.appendChild(dropdown);
+  });
+
+  document.addEventListener('click', function (e) {
+    const setRoleBtn = e.target.closest('[data-set-role]');
+    if (setRoleBtn) {
+      const row = setRoleBtn.closest('.collaborator-row');
+      const name = row.querySelector('.collab-name').textContent.trim();
+      const role = setRoleBtn.dataset.setRole;
+      const pill = row.querySelector('.role-pill');
+      pill.className = `role-pill role-${role.toLowerCase()}`;
+      pill.innerHTML = `${role} <span class="chevron" aria-hidden="true">&#9662;</span>`;
+      prependUpdate('R', `${name} assigned as ${role}`);
+      bumpBellBadge();
+      showToast(`${name} is now ${role}`);
+      setRoleBtn.closest('.role-dropdown').remove();
+    }
+
+    const removeBtn = e.target.closest('[data-remove-collab]');
+    if (removeBtn) {
+      const row = removeBtn.closest('.collaborator-row');
+      const name = row.querySelector('.collab-name').textContent.trim();
+      if (confirm(`Remove ${name}? They will lose access immediately.`)) {
+        row.remove();
+        prependUpdate('D', `${name} was removed from the plan`);
+        bumpBellBadge();
+        showToast(`${name} removed`);
+      }
+    }
+  });
+
+  /* Poll for notifications */
+  async function checkForUpdates() {
+    try {
+      const response = await fetch(`/api/collaboration/notifications?itineraryId=${itineraryId}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const newNotifications = data.notifications || [];
+      newNotifications.forEach(n => {
+        if (n.id && seenNotificationIds.has(n.id)) return;
+        if (n.id) seenNotificationIds.add(n.id);
+        prependUpdate(n.iconLabel || 'N', n.message);
+        bumpBellBadge();
+      });
+    } catch (err) { /* expected during local dev without a live socket */ }
+  }
+  setInterval(checkForUpdates, 5000);
+  setTimeout(checkForUpdates, 1000);
 })();
 </script>
-
-</body>
-</html>
+{% endblock %}
