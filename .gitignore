@@ -157,6 +157,12 @@ ENV/
 env.bak/
 venv.bak/
 
+# Firebase credentials
+firebase_key.json
+*firebase*key*.json
+*serviceAccount*.json
+*service-account*.json
+
 # Spyder project settings
 .spyderproject
 .spyproject

@@ -1,14 +1,60 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-# Using local service instead of Firebase for now
-# import firebase_admin
-# from firebase_admin import credentials, firestore
 from services.collaboration_service_local import LocalCollaborationService
+from services.firebase_migration import migrate_local_json_to_firestore
+from services.itinerary_service import build_map_data, get_default_itinerary_form, make_plan
 from services.saved_itinerary_service import (
+    configure_saved_itinerary_backend,
     delete_itinerary,
     get_saved_itineraries,
+    save_itinerary,
     toggle_publish_status,
     update_saved_itinerary_details,
 )
+
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+
+def configure_certificate_paths():
+    try:
+        import certifi
+    except Exception:
+        return
+
+    ca_bundle = certifi.where()
+    os.environ["GRPC_DEFAULT_SSL_ROOTS_FILE_PATH"] = ca_bundle
+    os.environ["SSL_CERT_FILE"] = ca_bundle
+    os.environ["REQUESTS_CA_BUNDLE"] = ca_bundle
+
+
+configure_certificate_paths()
+
+
+def allow_insecure_google_ssl_for_local_dev():
+    if os.getenv("FIREBASE_ALLOW_INSECURE_SSL", "false").lower() not in ("1", "true", "yes", "on"):
+        return
+
+    import urllib3
+    import requests
+
+    original_request = requests.sessions.Session.request
+
+    def request_without_google_ssl_verification(self, method, url, **kwargs):
+        if "googleapis.com" in url or "google.com" in url:
+            kwargs.setdefault("verify", False)
+            if kwargs.get("timeout") in (None, 5, 5.0):
+                kwargs["timeout"] = 20
+        return original_request(self, method, url, **kwargs)
+
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    requests.sessions.Session.request = request_without_google_ssl_verification
+
+
+allow_insecure_google_ssl_for_local_dev()
 
 # ==========================================
 # 1. Flask App Configuration
@@ -22,10 +68,83 @@ app = Flask(
 app.secret_key = "panda-demo-secret"
 
 # ==========================================
-# 2. Service Initialization (Local JSON Storage)
+# 2. Service Initialization
 # ==========================================
-# Using local JSON storage instead of Firebase for development
-collab_service = LocalCollaborationService()
+firebase_init_error = None
+
+
+def create_firebase_db():
+    global firebase_init_error
+
+    if os.getenv("USE_FIREBASE", "true").lower() not in ("1", "true", "yes", "on"):
+        return None
+
+    try:
+        import firebase_admin
+        from firebase_admin import credentials, firestore
+        from google.cloud.firestore_v1 import Client as FirestoreClient
+        from google.cloud.firestore_v1.services.firestore import client as firestore_client
+        from google.cloud.firestore_v1.services.firestore.transports import rest as firestore_rest_transport
+
+        class RestFirestoreClient(FirestoreClient):
+            @property
+            def _firestore_api(self):
+                if self._firestore_api_internal is None:
+                    self._transport = firestore_rest_transport.FirestoreRestTransport(
+                        credentials=self._credentials,
+                        host=self._target,
+                        client_info=self._client_info,
+                    )
+                    self._firestore_api_internal = firestore_client.FirestoreClient(
+                        transport=self._transport,
+                        client_options=self._client_options,
+                    )
+                    firestore_client._client_info = self._client_info
+
+                return self._firestore_api_internal
+
+        if not firebase_admin._apps:
+            credential_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            project_id = os.getenv("FIREBASE_PROJECT_ID")
+            options = {"projectId": project_id} if project_id else None
+
+            if credential_path:
+                cred = credentials.Certificate(credential_path)
+                firebase_admin.initialize_app(cred, options=options)
+            else:
+                cred = credentials.ApplicationDefault()
+                firebase_admin.initialize_app(cred, options=options)
+
+        if os.getenv("FIREBASE_USE_REST", "false").lower() in ("1", "true", "yes", "on"):
+            app_instance = firebase_admin.get_app()
+            db = RestFirestoreClient(
+                project=app_instance.project_id,
+                credentials=app_instance.credential.get_credential(),
+            )
+        else:
+            db = firestore.client()
+        next(db.collection("_panda_firebase_healthcheck").limit(1).stream(retry=None, timeout=5), None)
+        firebase_init_error = None
+        return db
+    except Exception as error:
+        firebase_init_error = str(error)
+        app.logger.warning("Firebase unavailable; using local storage: %s", error)
+        return None
+
+
+firebase_db = create_firebase_db()
+configure_saved_itinerary_backend(firebase_db)
+
+
+def create_collaboration_service():
+    if firebase_db is None:
+        return LocalCollaborationService()
+
+    from services.collaboration_service import CollaborationService
+    return CollaborationService(firebase_db)
+
+
+collab_service = create_collaboration_service()
 
 # ==========================================
 # Helper Functions
@@ -36,6 +155,21 @@ def get_current_user():
         "email": "ahmad@email.com",
         "uid": "user_123"
     })
+
+
+def read_collaboration_data_safely():
+    try:
+        return collab_service._read_data()
+    except Exception as error:
+        app.logger.warning("Could not load collaboration data: %s", error)
+        return {
+            "itineraries": {},
+            "invitations": [],
+            "comments": {},
+            "activities": {},
+            "notifications": [],
+            "users": {},
+        }
 
 # ==========================================
 # User & Authentication Routes
@@ -133,48 +267,67 @@ def smart_attraction():
 
 @app.route("/smart-itinerary", methods=["GET", "POST"]) # Lee
 def smart_itinerary():
+    form = get_default_itinerary_form()
+    plan = None
+    error = None
+
+    if request.method == "POST":
+        form.update({
+            "start": request.form.get("start", ""),
+            "end": request.form.get("end", ""),
+            "trip_date": request.form.get("trip_date", ""),
+            "start_time": request.form.get("start_time", "09:00"),
+            "available_hours": int(request.form.get("available_hours", 6) or 6),
+            "interests": request.form.get("interests", "culture"),
+            "minimum_rating": request.form.get("minimum_rating", "4.0"),
+        })
+        try:
+            plan = make_plan(request.form)
+            session["last_generated_plan"] = plan
+        except Exception as exc:
+            error = str(exc)
+
     return render_template(
         "smart_itinerary.html",
         active_page="itinerary",
         current_user=get_current_user(),
-        plan=None,
-        error=None,
-        map_data=None,
-        form={
-            "start": "",
-            "end": "",
-            "trip_date": "",
-            "start_time": "09:00",
-            "available_hours": 6,
-            "selected_attractions": []
-        }
+        plan=plan,
+        error=error,
+        map_data=build_map_data(plan),
+        form=form
     )
 
 @app.route("/saved-itineraries", methods=["GET", "POST"]) # Lee & Manas
 def saved_itineraries():
+    current_user = get_current_user()
+    current_uid = current_user.get("uid")
+
     if request.method == "POST":
         action = request.form.get("_action")
         itinerary_id = request.form.get("itinerary_id")
 
         if action == "toggle_publish":
-            if toggle_publish_status(itinerary_id):
+            if toggle_publish_status(itinerary_id, current_uid):
                 flash("Publish status updated.", "success")
             else:
                 flash("Could not update publish status.", "danger")
         elif action == "delete":
-            if delete_itinerary(itinerary_id):
+            if delete_itinerary(itinerary_id, current_uid):
                 flash("Itinerary deleted.", "info")
             else:
                 flash("Could not delete itinerary.", "danger")
         elif action == "save":
-            flash("Itinerary saved.", "success")
+            plan = session.get("last_generated_plan")
+            if plan:
+                saved_item = save_itinerary(plan, current_uid)
+                collab_service.create_itinerary_from_saved(saved_item, current_user)
+                flash("Itinerary saved to Firebase.", "success")
+            else:
+                flash("Generate an itinerary before saving.", "warning")
 
         return redirect(url_for("saved_itineraries"))
 
-    current_user = get_current_user()
-    current_uid = current_user.get("uid")
-
-    saved_items = get_saved_itineraries()
+    saved_items = get_saved_itineraries(current_uid)
 
     my_itineraries = [{
         "id": item.get("id"),
@@ -184,8 +337,8 @@ def saved_itineraries():
         "status": "Published" if item.get("is_public") else item.get("status", "Draft"),
     } for item in saved_items]
 
-    # Fetch collaboration data from local JSON storage
-    all_data = collab_service._read_data()
+    # Fetch collaboration data from the configured collaboration service
+    all_data = read_collaboration_data_safely()
     itineraries = all_data.get("itineraries", {})
     invitations = all_data.get("invitations", [])
 
@@ -271,7 +424,7 @@ def collaboration():
     itin_data = collab_service.get_itinerary(itin_id)
     if not itin_data:
         saved_item = next(
-            (item for item in get_saved_itineraries() if str(item.get("id")) == str(itin_id)),
+            (item for item in get_saved_itineraries(get_current_user().get("uid")) if str(item.get("id")) == str(itin_id)),
             None
         )
         if saved_item:
@@ -331,6 +484,7 @@ def update_itinerary():
         stops = collab_service.get_itinerary(data.get('itineraryId')).get('stops', [])
         update_saved_itinerary_details(
             data.get('itineraryId'),
+            user_uid=get_current_user().get('uid'),
             stop_count=len(stops),
             stops=stops
         )
@@ -375,6 +529,7 @@ def update_stop():
         stops = itinerary.get('stops', [])
         update_saved_itinerary_details(
             data.get('itineraryId'),
+            user_uid=get_current_user().get('uid'),
             stop_count=len(stops),
             stops=stops
         )
@@ -390,7 +545,11 @@ def update_title():
         editor_uid=data.get('editorUid', get_current_user().get('uid'))
     )
     if result.get('success'):
-        update_saved_itinerary_details(data.get('itineraryId'), title=result.get('title'))
+        update_saved_itinerary_details(
+            data.get('itineraryId'),
+            user_uid=get_current_user().get('uid'),
+            title=result.get('title')
+        )
     return jsonify(result)
 
 # Update itinerary date
@@ -403,7 +562,11 @@ def update_date():
         editor_uid=data.get('editorUid', get_current_user().get('uid'))
     )
     if result.get('success'):
-        update_saved_itinerary_details(data.get('itineraryId'), date=result.get('date'))
+        update_saved_itinerary_details(
+            data.get('itineraryId'),
+            user_uid=get_current_user().get('uid'),
+            date=result.get('date')
+        )
     return jsonify(result)
 
 # Get notifications for real-time updates
@@ -427,8 +590,63 @@ def get_notifications():
             'error': str(e)
         })
 
+
+@app.route("/health/firebase", methods=["GET"])
+def firebase_health():
+    return jsonify({
+        "firebase_connected": firebase_db is not None,
+        "collaboration_backend": type(collab_service).__name__,
+        "firebase_error": firebase_init_error,
+        "saved_itineraries_backend": "Firestore" if firebase_db is not None else "Local JSON",
+        "project_id": os.getenv("FIREBASE_PROJECT_ID"),
+    })
+
+
+@app.route("/admin/firebase/migrate-local", methods=["POST"])
+def migrate_local_to_firebase():
+    if firebase_db is None:
+        return jsonify({
+            "success": False,
+            "message": "Firebase is not connected.",
+            "firebase_error": firebase_init_error,
+        }), 503
+
+    result = migrate_local_json_to_firestore(firebase_db, collab_service, get_current_user())
+    return jsonify({"success": True, **result})
+
+
+@app.route("/admin/firebase/test-notification", methods=["POST"])
+def create_test_notification():
+    if firebase_db is None:
+        return jsonify({
+            "success": False,
+            "message": "Firebase is not connected.",
+            "firebase_error": firebase_init_error,
+        }), 503
+
+    current_user = get_current_user()
+    user_uid = current_user.get("uid", "user_123")
+    payload = request.get_json(silent=True) or {}
+    itinerary_id = request.form.get("itinerary_id") or payload.get("itinerary_id") or "itin_test"
+    message = "Test notification from PandaJourney Firebase setup"
+
+    notification = collab_service._notify(
+        recipient_uid=user_uid,
+        message=message,
+        itin_id=itinerary_id,
+        icon="test",
+    )
+
+    return jsonify({
+        "success": True,
+        "message": "Test notification created.",
+        "collaboration_collection": "collaboration_notifications",
+        "erd_collection": "notifications",
+        "notification": notification,
+    })
+
 # ==========================================
 # 3. Application Entry Point
 # ==========================================
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True, port=int(os.getenv("FLASK_RUN_PORT", "5001")))

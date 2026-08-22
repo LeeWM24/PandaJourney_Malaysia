@@ -1,5 +1,6 @@
 Flask>=3.0,<4.0
 requests>=2.31,<3.0
 python-dotenv>=1.0,<2.0
-# Firebase admin SDK (commented out for local development)
-# firebase-admin>=6.0,<7.0
+certifi>=2024.0.0
+python-certifi-win32>=1.6,<2.0
+firebase-admin>=6.0,<7.0
