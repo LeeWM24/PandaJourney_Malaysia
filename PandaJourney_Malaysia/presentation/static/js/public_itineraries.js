@@ -201,10 +201,71 @@ async function savePublicItineraryCopy(item) {
   return newItineraryId;
 }
 
+async function unsavePublicItinerary(sourceItineraryId) {
+  if (!currentUser) {
+    throw new Error("Please login before unsaving.");
+  }
+
+  const savedQuery = query(
+    collection(db, "Itinerary"),
+    where("user_id", "==", currentUser.uid),
+    where("source_itinerary_id", "==", sourceItineraryId)
+  );
+
+  const savedSnapshot = await getDocs(savedQuery);
+
+  if (savedSnapshot.empty) {
+    return false;
+  }
+
+  const savedDoc = savedSnapshot.docs[0];
+  const savedData = savedDoc.data();
+
+  const savedItineraryId =
+    savedData.itinerary_id || savedDoc.id;
+
+  const stopsQuery = query(
+    collection(db, "itinerary_stops"),
+    where("itinerary_id", "==", savedItineraryId)
+  );
+
+  const stopsSnapshot = await getDocs(stopsQuery);
+
+  for (const stopDoc of stopsSnapshot.docs) {
+    await deleteDoc(
+      doc(db, "itinerary_stops", stopDoc.id)
+    );
+  }
+
+  await deleteDoc(
+    doc(db, "Itinerary", savedDoc.id)
+  );
+
+  const originalRef = doc(
+  db,
+  "Itinerary",
+  sourceItineraryId
+);
+
+const originalSnap = await getDoc(originalRef);
+
+if (originalSnap.exists()) {
+  const currentSaves =
+    originalSnap.data().saves ?? 0;
+
+  await updateDoc(originalRef, {
+    saves: Math.max(0, currentSaves - 1)
+  });
+}
+
+  return true;
+}
+
 // Expose Firestore Functions for HTML
 window.addPublicItineraryView = addView;
 window.likePublicItinerary = likeItinerary;
 window.savePublicItineraryCopy = savePublicItineraryCopy;
+window.unsavePublicItinerary = unsavePublicItinerary;
 
 // Load All "Currently Published" Itineraries 
 async function testLoadItineraries() {
@@ -240,8 +301,7 @@ async function testLoadItineraries() {
         author: authorName,
         duration: `${Math.floor((data.total_duration_minutes ?? 0) / 60)} hr ${(data.total_duration_minutes ?? 0) % 60} min`,
         stops: data.stop_count ?? 0,
-        stopList: stopList,
-        image: "/static/images/logo.png"
+        stopList: stopList
       };
     })
   );

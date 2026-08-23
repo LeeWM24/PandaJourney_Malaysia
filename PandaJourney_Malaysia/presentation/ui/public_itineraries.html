@@ -377,7 +377,6 @@ Explore community favorites, search destinations, and save routes in a tap.
             ${popular.map((item, index) => `
               <article class="popular-card card">
                 <div class="medal">${index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
-                <div class="image"><img src="${item.image}" alt="${escapeHtml(item.title)}" /></div>
                 <div class="card-content">
                   <div class="card-title">${escapeHtml(item.title)}</div>
                   <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
@@ -416,9 +415,6 @@ Explore community favorites, search destinations, and save routes in a tap.
                     <button class="small-btn" type="button" data-open="${item.id}">Open</button>
                     <span class="meta-line">${escapeHtml(item.author)}</span>
                   </div>
-                </div>
-                <div class="list-card-image">
-                  <img src="${item.image}" alt="${escapeHtml(item.title)}" />
                 </div>
               </article>
             `).join('')}
@@ -489,9 +485,6 @@ Explore community favorites, search destinations, and save routes in a tap.
 
       state.selectedId = id;
       detailDrawer.innerHTML = `
-        <div class="detail-header">
-          <img src="${item.image}" alt="${escapeHtml(item.title)}" />
-        </div>
         <div class="detail-body">
           <h3 class="detail-title">${escapeHtml(item.title)}</h3>
           <div class="meta-strip">
@@ -519,11 +512,26 @@ Explore community favorites, search destinations, and save routes in a tap.
           </div>
         </div>
         <div class="detail-footer">
-          <button class="btn btn-ghost ${state.likedIds.has(item.id) ? 'active' : ''}" type="button" data-like="${item.id}" aria-pressed="${state.likedIds.has(item.id)}">${state.likedIds.has(item.id) ? 'Unlike' : 'Like'}</button>
-          ${item.isYours
-            ? `<button class="btn btn-primary" type="button" data-unpublish="${item.id}">Unpublish</button>`
-            : `<button class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}" type="button" data-save="${item.id}" aria-pressed="${state.savedIds.has(item.id)}">${state.savedIds.has(item.id) ? 'Saved' : 'Save'}</button>`}
-          <button class="btn btn-ghost" type="button" data-close="close">Close</button>
+          <button
+            class="btn btn-ghost ${state.likedIds.has(item.id) ? 'active' : ''}"
+            type="button"
+            data-like="${item.id}"
+            aria-pressed="${state.likedIds.has(item.id)}">
+            ${state.likedIds.has(item.id) ? 'Unlike' : 'Like'}
+          </button>
+          <button
+            class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}"
+            type="button"
+            data-save="${item.id}"
+            aria-pressed="${state.savedIds.has(item.id)}">
+            ${state.savedIds.has(item.id) ? 'Unsave' : 'Save'}
+          </button>
+          <button
+            class="btn btn-ghost"
+            type="button"
+            data-close="close">
+            Close
+          </button>
         </div>
       `;
       detailOverlay.classList.add('active');
@@ -560,25 +568,44 @@ Explore community favorites, search destinations, and save routes in a tap.
         saveButton.addEventListener('click', async (event) => {
           const button = event.currentTarget;
 
-          if (state.savedIds.has(item.id)) {
-            return;
-          }
-
           try {
+
+            // Unsave
+            if (state.savedIds.has(item.id)) {
+              const removed = await window.unsavePublicItinerary(item.id);
+
+              if (removed) {
+                state.savedIds.delete(item.id);
+                item.saves = Math.max(0, item.saves - 1);
+
+                button.textContent = 'Save';
+                button.classList.remove('active');
+                button.setAttribute('aria-pressed', 'false');
+
+                detailDrawer
+                  .querySelector('[data-save-count]')
+                  .textContent = item.saves;
+              }
+
+              return;
+            }
+
+            // Save
             await window.savePublicItineraryCopy(item);
 
             state.savedIds.add(item.id);
             item.saves += 1;
 
-            button.textContent = 'Saved';
+            button.textContent = 'Unsave';
             button.classList.add('active');
-            button.disabled = true;
             button.setAttribute('aria-pressed', 'true');
 
-            detailDrawer.querySelector('[data-save-count]').textContent = item.saves;
+            detailDrawer
+              .querySelector('[data-save-count]')
+              .textContent = item.saves;
 
           } catch (error) {
-            console.error('Save update failed:', error);
+            console.error('Save / Unsave update failed:', error);
           }
         });
       }
