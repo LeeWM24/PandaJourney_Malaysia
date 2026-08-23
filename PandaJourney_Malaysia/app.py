@@ -6,6 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from services.collaboration_service_local import LocalCollaborationService
 from services.firebase_migration import migrate_local_json_to_firestore
 from services.itinerary_service import build_map_data, get_default_itinerary_form, make_plan
+from services.smart_attraction import build_attraction_results
 from services.saved_itinerary_service import (
     configure_saved_itinerary_backend,
     delete_itinerary,
@@ -188,17 +189,23 @@ def login():
 
 @app.route("/dashboard") # Jiading
 def dashboard():
+    saved_list = get_saved_itineraries(get_current_user().get("uid"))
+
     return render_template(
         "dashboard.html",
         active_page="dashboard",
         current_user=get_current_user(),
-        saved_count=7,
-        favourite_count=24,
-        shared_count=3,
-        upcoming_date="Aug 10",
-        recent_itineraries=[],
-        upcoming_trip=None
+        saved_count=len(saved_list),
+        favourite_count=0,
+        shared_count=0,
+        upcoming_date=saved_list[0].get("date", "No Trip") if saved_list else "No Trip",
+        recent_itineraries=saved_list[:3],
+        upcoming_trip=saved_list[0] if saved_list else None
     )
+
+@app.route("/create-account")
+def create_account():
+    return render_template("create_account.html")
 
 @app.route("/profile", methods=["GET", "POST"]) # Jiading
 def profile():
@@ -248,21 +255,75 @@ def logout():
 # ==========================================
 # Core Feature Routes
 # ==========================================
-@app.route("/smart-attraction") # Kaixi
+@app.route("/smart-attraction", methods=["GET", "POST"]) # Kaixi
 def smart_attraction():
+    filters = {
+        "destination": "",
+        "interests": [],
+        "min_rating": "4.0",
+        "weather_aware": True,
+        "sort": "score",
+    }
+    attractions = []
+    weather_status = ""
+    source_note = ""
+    searched = False
+    results_label = "Recommended attractions"
+
+    if request.method == "POST":
+        searched = True
+        filters["destination"] = request.form.get("destination", "").strip()
+        filters["interests"] = request.form.getlist("interests")
+        filters["min_rating"] = request.form.get("min_rating", "4.0")
+        filters["weather_aware"] = bool(request.form.get("weather_aware"))
+        filters["sort"] = request.form.get("sort", "score")
+
+        if not filters["destination"]:
+            flash("Please enter a destination to receive recommendations.", "error")
+        else:
+            try:
+                attractions, weather_status, source_note = build_attraction_results(
+                    destination_text=filters["destination"],
+                    interest_list=filters["interests"],
+                    minimum_rating=float(filters["min_rating"] or 4.0),
+                    use_weather=filters["weather_aware"],
+                    sort_mode=filters["sort"],
+                )
+                results_label = f"Showing {len(attractions)} attractions"
+            except ValueError:
+                flash("Invalid rating or filter input. Please revise your selection.", "error")
+            except Exception as error:
+                print(f"[SMART ATTRACTION ERROR] {error}")
+                flash("Unable to load attraction recommendations at this time. Please try again.", "error")
+    else:
+        filters["destination"] = "Kuala Lumpur"
+        filters["interests"] = ["culture"]
+        try:
+            attractions, weather_status, source_note = build_attraction_results(
+                destination_text=filters["destination"],
+                interest_list=filters["interests"],
+                minimum_rating=float(filters["min_rating"]),
+                use_weather=filters["weather_aware"],
+                sort_mode=filters["sort"],
+            )
+            results_label = f"Showing {len(attractions)} attractions near {filters['destination']}"
+        except Exception as error:
+            print(f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}")
+            source_note = "Could not load live attractions right now. Please try searching directly."
+            results_label = "Set filters and click Search"
+
     return render_template(
         "smart_attraction.html",
         active_page="attractions",
         current_user=get_current_user(),
-        filters={
-            "destination": "",
-            "interests": [],
-            "min_rating": "",
-            "weather_aware": True,
-            "sort": "rating"
-        },
-        weather_status="Sunny today in KL",
-        attractions=[]
+        filters=filters,
+        weather_status=weather_status,
+        attractions=attractions,
+        source_note=source_note,
+        searched=searched,
+        results_label=results_label,
+        nominatim_email=os.environ.get("NOMINATIM_EMAIL", ""),
+        nominatim_user_agent=os.environ.get("NOMINATIM_USER_AGENT", ""),
     )
 
 @app.route("/smart-itinerary", methods=["GET", "POST"]) # Lee
@@ -397,6 +458,7 @@ def saved_itineraries():
     )
 
 @app.route("/public-itinerary", methods=["GET", "POST"]) # Zham feng
+@app.route("/public-itineraries", methods=["GET", "POST"])
 def public_itinerary():
     if request.method == "POST":
         action = request.form.get("_action")
@@ -407,9 +469,10 @@ def public_itinerary():
         return redirect(url_for("public_itinerary"))
 
     return render_template(
-        "public_itinerary.html",
+        "public_itineraries.html",
         active_page="public",
-        current_user=get_current_user()
+        current_user=get_current_user(),
+        itineraries=[]
     )
 
 # ==========================================

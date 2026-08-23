@@ -3,8 +3,10 @@
 {% block title %}Itinerary Planner — PandaJourney Malaysia{% endblock %}
 {% block page_title %}Smart Itinerary Planner{% endblock %}
 {% block page_subtitle %}Generate an optimised route and timetable for your Malaysia trip{% endblock %}
+
 {% block extra_head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
 <style>
   #routeMap {
     width: 100%;
@@ -13,14 +15,326 @@
     border: 1px solid var(--border);
     overflow: hidden;
   }
+
+  .favourite-picker {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: var(--surface);
+  }
+
+  .favourite-picker-title {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .favourite-picker-sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .favourite-place-option {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .favourite-place-option:first-of-type {
+    border-top: none;
+  }
+
+  .favourite-place-name {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .favourite-place-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .favourites-search {
+    margin-bottom: 10px;
+  }
+
+  .favourites-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+
+  .favourites-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .favourites-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+
+  .gps-location-row {
+    margin-top: 8px;
+  }
+
+  .gps-location-status {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .planner-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(2px);
+  }
+
+  .planner-loading-card {
+    min-width: 230px;
+    border-radius: 18px;
+    padding: 22px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    text-align: center;
+  }
+
+  .planner-spinner {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 12px;
+    border-radius: 999px;
+    border: 4px solid var(--border);
+    border-top-color: var(--primary, #059669);
+    animation: planner-spin 0.9s linear infinite;
+  }
+
+  .planner-loading-title {
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .planner-loading-sub {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  @keyframes planner-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .route-action-bar {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .timetable-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+
+  .save-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.42);
+    backdrop-filter: blur(3px);
+    padding: 18px;
+  }
+
+  .save-modal-card {
+    width: min(460px, 100%);
+    border-radius: 22px;
+    padding: 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 22px 55px rgba(15, 23, 42, 0.22);
+  }
+
+  .save-modal-title {
+    font-size: 20px;
+    font-weight: 900;
+    margin-bottom: 6px;
+  }
+
+  .save-modal-sub {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .save-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .save-modal-error {
+    display: none;
+    margin-top: 8px;
+    color: #dc2626;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+.custom-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);   
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+  padding: 18px;
+  }
+
+  .custom-modal-backdrop.show {
+    display: flex;
+  }
+
+  .custom-modal-box {
+    width: min(420px, 92%);
+    background: #ffffff;               
+    color: #16352b;
+    border-radius: 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    padding: 28px 24px 22px;
+    border: 2px solid #d7e9df;
+    text-align: center;
+    opacity: 1;                        
+  }
+
+  .custom-modal-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+  }
+
+  .custom-modal-title {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: #16352b;
+  }
+
+  .custom-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #4b6358;
+    margin-bottom: 22px;
+  }
+
+  .custom-modal-actions {
+    display: flex;
+    justify-content: center;
+  }
+
+  .custom-modal-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+  }
+
+  .custom-modal-title {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: var(--text);
+  }
+
+  .custom-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: var(--text-muted);
+    margin-bottom: 22px;
+  }
+
+  .custom-modal-actions {
+    display: flex;
+    justify-content: center;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-inner">
 
+  <div id="planner-loading-overlay" class="planner-loading-overlay" aria-live="polite" aria-hidden="true">
+    <div class="planner-loading-card">
+      <div class="planner-spinner"></div>
+      <div id="planner-loading-text" class="planner-loading-title">Generating itinerary...</div>
+      <div class="planner-loading-sub">Please wait while we calculate your route.</div>
+    </div>
+  </div>
+
+  <div id="save-success-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="save-success-title">
+      <div class="custom-modal-icon">✅</div>
+
+      <div class="custom-modal-title" id="save-success-title">
+        Itinerary Saved
+      </div>
+
+      <div class="custom-modal-message">
+        Your itinerary has been saved successfully.
+      </div>
+
+      <div class="custom-modal-actions">
+        <button type="button" id="save-success-ok" class="btn btn-primary btn-md">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="save-title-modal" class="save-modal-overlay" aria-hidden="true">
+    <div class="save-modal-card" role="dialog" aria-modal="true" aria-labelledby="save-title-modal-title">
+      <div id="save-title-modal-title" class="save-modal-title">Save Itinerary</div>
+      <div class="save-modal-sub">Enter a clear title so you can find this trip easily later.</div>
+
+      <label class="form-label" for="save-itinerary-title-input">Itinerary Title</label>
+      <input
+        type="text"
+        id="save-itinerary-title-input"
+        class="form-input"
+        placeholder="e.g. Kuala Lumpur Culture Trip"
+        maxlength="80"
+      />
+      <div id="save-title-error" class="save-modal-error">Please enter an itinerary title.</div>
+
+      <div class="save-modal-actions">
+        <button type="button" class="btn btn-secondary btn-md" id="cancel-save-title-btn">Cancel</button>
+        <button type="button" class="btn btn-primary btn-md" id="confirm-save-title-btn">Save Itinerary</button>
+      </div>
+    </div>
+  </div>
+
   {% if error %}
-    <div class="alert alert-error mb-4" role="alert">⛔ {{ error }}</div>
+    <div class="alert alert-error mb-4" role="alert">
+      ⛔ {{ error }}
+    </div>
   {% endif %}
 
   <div class="itinerary-layout">
@@ -32,41 +346,118 @@
         <form action="{{ url_for('smart_itinerary') }}" method="post" id="itinerary-form">
           <input type="hidden" name="_action" value="generate" />
 
+          <input
+            type="hidden"
+            name="selected_favourites_json"
+            id="selected_favourites_json"
+            value="{{ form.selected_favourites_json | default('[]') | e }}"
+          />
+
+          <input
+            type="hidden"
+            name="excluded_stop_names"
+            id="excluded_stop_names"
+            value="{{ form.excluded_stop_names | default('[]') | e }}"
+          />
+
+          <input
+            type="hidden"
+            name="regenerate_token"
+            id="regenerate_token"
+            value=""
+          />
+
+          <input
+            type="hidden"
+            name="use_current_location"
+            id="use_current_location"
+            value="{{ form.use_current_location | default('0') }}"
+          />
+
+          <input
+            type="hidden"
+            name="start_latitude"
+            id="start_latitude"
+            value="{{ form.start_latitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="start_longitude"
+            id="start_longitude"
+            value="{{ form.start_longitude | default('') }}"
+          />
+
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
+
             <div class="form-input-icon">
               <span class="icon">🟢</span>
-              <input class="form-input" id="start" name="start" type="text"
-                     placeholder="e.g. KL Sentral"
-                     value="{{ form.start | default('') }}" required />
+              <input
+                class="form-input"
+                id="start"
+                name="start"
+                type="text"
+                placeholder="e.g. KL Sentral"
+                value="{{ form.start | default('') }}"
+                required
+              />
+            </div>
+
+            <div class="gps-location-row">
+              <button type="button" class="btn btn-secondary btn-sm" id="use-current-location-btn">
+                📍 Use Current Location
+              </button>
+              <div id="gps-location-status" class="gps-location-status"></div>
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="end">End Location</label>
+
             <div class="form-input-icon">
               <span class="icon">🔴</span>
-              <input class="form-input" id="end" name="end" type="text"
-                     placeholder="e.g. Petronas Twin Towers"
-                     value="{{ form.end | default('') }}" required />
+              <input
+                class="form-input"
+                id="end"
+                name="end"
+                type="text"
+                placeholder="e.g. Petronas Twin Towers"
+                value="{{ form.end | default('') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-row-2 mb-3">
             <div class="form-group">
               <label class="form-label" for="trip_date">Travel Date</label>
-              <input class="form-input" id="trip_date" name="trip_date" type="date"
-                     value="{{ form.trip_date | default('') }}" required />
+              <input
+                class="form-input"
+                id="trip_date"
+                name="trip_date"
+                type="date"
+                value="{{ form.trip_date | default('') }}"
+                required
+              />
             </div>
+
             <div class="form-group">
               <label class="form-label" for="start_time">Start Time</label>
-              <input class="form-input" id="start_time" name="start_time" type="time"
-                     value="{{ form.start_time | default('09:00') }}" required />
+              <input
+                class="form-input"
+                id="start_time"
+                name="start_time"
+                type="time"
+                value="{{ form.start_time | default('09:00') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="available_hours">Available Hours</label>
+
             <select class="form-select" id="available_hours" name="available_hours">
               {% for h in [4, 5, 6, 7, 8, 9, 10] %}
                 <option value="{{ h }}" {% if form.available_hours | default(6) | int == h %}selected{% endif %}>
@@ -77,27 +468,69 @@
           </div>
 
           <div class="form-group mb-3">
+            <label class="form-label" for="max_stops">Maximum Stops</label>
+
+            {% set max_stops = form.get("max_stops", 3) | int %}
+
+            <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops }}">
+              {% for n in [1, 2, 3, 4, 5, 6] %}
+                <option value="{{ n }}" {% if max_stops == n %}selected{% endif %}>
+                  {{ n }} stop{% if n > 1 %}s{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="form-group mb-3">
             <label class="form-label" for="minimum_rating">Minimum Rating</label>
+
+            {% set minimum_rating = form.get("minimum_rating", "4.0") %}
+
             <select class="form-select" id="minimum_rating" name="minimum_rating">
-              <option value="3.0">⭐ 3.0+</option>
-              <option value="3.5">⭐ 3.5+</option>
-              <option value="4.0" selected>⭐ 4.0+</option>
-              <option value="4.5">⭐ 4.5+</option>
+              <option value="3.0" {% if minimum_rating == "3.0" %}selected{% endif %}>⭐ 3.0+</option>
+              <option value="3.5" {% if minimum_rating == "3.5" %}selected{% endif %}>⭐ 3.5+</option>
+              <option value="4.0" {% if minimum_rating == "4.0" %}selected{% endif %}>⭐ 4.0+</option>
+              <option value="4.5" {% if minimum_rating == "4.5" %}selected{% endif %}>⭐ 4.5+</option>
             </select>
           </div>
 
           <div class="form-group mb-4">
             <label class="form-label" for="interests">Travel Interest</label>
+
+            {% set selected_interest = form.get("interests", "culture") %}
+
             <select class="form-select" id="interests" name="interests">
-              <option value="culture">Culture</option>
-              <option value="museum">Museum</option>
-              <option value="nature">Nature</option>
-              <option value="shopping">Shopping</option>
-              <option value="food">Food</option>
+              <option value="culture" {% if selected_interest == "culture" %}selected{% endif %}>Culture</option>
+              <option value="museum" {% if selected_interest == "museum" %}selected{% endif %}>Museum</option>
+              <option value="nature" {% if selected_interest == "nature" %}selected{% endif %}>Nature</option>
+              <option value="shopping" {% if selected_interest == "shopping" %}selected{% endif %}>Shopping</option>
+              <option value="food" {% if selected_interest == "food" %}selected{% endif %}>Food</option>
             </select>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-lg btn-full">
+          <div class="form-group mb-4" id="favourite-section">
+            <div class="favourite-picker">
+              <div class="favourite-picker-title">Favourite Places</div>
+              <div class="favourite-picker-sub" id="favourite-helper-text">
+                Select favourite places to include as itinerary stops. Selected favourites will use the available stop slots.
+              </div>
+
+              <input
+                type="text"
+                id="favourites-search"
+                class="form-input favourites-search"
+                placeholder="Search favourite place..."
+              />
+
+              <div id="favourites-loading" class="favourite-place-meta">
+                Loading favourite places...
+              </div>
+
+              <div id="favourites-list" class="favourites-scroll"></div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg btn-full" id="generate-itinerary-btn">
             ⚡ Generate Itinerary
           </button>
         </form>
@@ -110,7 +543,11 @@
         <div class="card">
           <div class="empty-state">
             <div class="empty-icon">🗺️</div>
-            <div class="empty-title">Ready to plan your trip</div>
+
+            <div class="empty-title">
+              Ready to plan your trip
+            </div>
+
             <div class="empty-sub">
               Fill in the form and click Generate Itinerary to see your personalised route and timetable.
             </div>
@@ -120,19 +557,18 @@
 
         <div class="trip-summary-grid">
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Total Duration</div>
-            <div class="trip-summary-value">{{ plan.total_duration | default('Estimated') }}</div>
-          </div>
-          <div class="card trip-summary-card">
-            <div class="trip-summary-label">Weather</div>
+            <div class="trip-summary-label">Travel Duration</div>
+
             <div class="trip-summary-value">
-              {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
+              {{ plan.travel_duration | default(plan.total_duration | default('Estimated')) }}
             </div>
           </div>
+
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Transport</div>
+            <div class="trip-summary-label">Weather</div>
+
             <div class="trip-summary-value">
-              {{ plan.transport_icon | default('🚗') }} {{ plan.transport_mode | default('Driving') }}
+              {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
             </div>
           </div>
         </div>
@@ -143,30 +579,47 @@
           </div>
         {% endif %}
 
-        <div class="alert alert-info">
-          ℹ️ Distances and durations are estimates based on routing API data.
-        </div>
-
         <div class="card card-p">
           <div class="card-header">
             <span class="card-title">Timetable</span>
+
             <div style="display:flex; gap:8px;">
-              <a href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
-                 class="btn btn-secondary btn-sm">🔄 Regenerate</a>
-              <form action="{{ url_for('saved_itineraries') }}" method="post" style="display:inline; margin:0;">
-                <input type="hidden" name="_action" value="save" />
-                <input type="hidden" name="plan_id" value="{{ plan.id | default(1) }}" />
-                <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
-              </form>
+              <button type="button" class="btn btn-primary btn-sm" id="save-itinerary-btn">
+                💾 Save
+              </button>
             </div>
           </div>
+
+          {% if plan.google_maps_full_route_url %}
+            <div class="route-action-bar">
+              <a
+                href="{{ plan.google_maps_full_route_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary btn-sm"
+              >
+                🗺️ View Full Route in Google Maps
+              </a>
+            </div>
+          {% endif %}
 
           <div class="stop-list mb-4">
             {% for attraction in plan["selected"] %}
               <div class="stop-item">
                 <span class="stop-handle">⠿</span>
-                <span class="stop-name">{{ loop.index }}. {{ attraction.name }}</span>
-                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">✕</a>
+
+                <span class="stop-name">
+                  {{ loop.index }}. {{ attraction.name }}
+                </span>
+
+                <button
+                  type="button"
+                  class="stop-remove js-remove-stop"
+                  data-stop-name="{{ attraction.name | e }}"
+                  aria-label="Remove {{ attraction.name | e }}"
+                >
+                  ✕
+                </button>
               </div>
             {% endfor %}
           </div>
@@ -176,6 +629,7 @@
               <div class="timetable-row">
                 <div class="timeline-col">
                   <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}"></div>
+
                   {% if not loop.last %}
                     <div class="timeline-line"></div>
                   {% endif %}
@@ -186,14 +640,27 @@
                     {{ item.arrival_time | default(item.time | default('')) }}
                     {% if item.departure_time %} – {{ item.departure_time }}{% endif %}
                   </div>
-                  <div class="timetable-name">{{ item.name | default(item.activity) }}</div>
-                  <div class="timetable-meta">
-                    <span class="badge badge-muted">{{ item.duration | default('Estimated') }}</span>
-                    <span class="badge badge-teal">🚗 {{ item.transport | default('Driving') }}</span>
+
+                  <div class="timetable-name">
+                    {{ item.name | default(item.activity) }}
                   </div>
-                  {% if item.waze_url %}
+
+                  <div class="timetable-meta">
+                    <span class="badge badge-muted">
+                      {{ item.duration | default('Estimated') }}
+                    </span>
+                  </div>
+
+                  {% if item.google_maps_url %}
                     <div class="timetable-actions">
-                      <a href="{{ item.waze_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-sm">Waze</a>
+                      <a
+                        href="{{ item.google_maps_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-secondary btn-sm"
+                      >
+                        {{ item.google_maps_label | default('Google Maps') }}
+                      </a>
                     </div>
                   {% endif %}
                 </div>
@@ -203,17 +670,17 @@
         </div>
 
         <div class="card card-p">
-                    {% if map_data %}
+          {% if map_data %}
             <div id="routeMap"></div>
-            {% else %}
+          {% else %}
             <div class="map-placeholder" style="min-height:280px;">
-                <div class="map-inner">
+              <div class="map-inner">
                 <div class="map-icon">🗺️</div>
                 <div class="map-label">Route Map</div>
                 <div class="map-sub">Map will appear after route is generated</div>
-                </div>
+              </div>
             </div>
-            {% endif %}
+          {% endif %}
         </div>
 
       {% endif %}
@@ -223,7 +690,6 @@
 </div>
 {% endblock %}
 
-
 {% block extra_scripts %}
 {% if map_data %}
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -231,53 +697,13 @@
 <script id="map-data" type="application/json">
 {{ map_data | tojson }}
 </script>
+{% endif %}
 
-<script>
-  const mapData = JSON.parse(document.getElementById("map-data").textContent);
-
-  const startPoint = mapData.start;
-  const endPoint = mapData.end;
-  const attractions = mapData.attractions || [];
-  const routeGeometry = mapData.routeGeometry;
-
-  const map = L.map("routeMap").setView(
-    [startPoint.latitude, startPoint.longitude],
-    13
-  );
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(map);
-
-  const markerGroup = L.featureGroup();
-
-  const startMarker = L.marker([startPoint.latitude, startPoint.longitude])
-    .bindPopup("Start: " + mapData.startText)
-    .addTo(map);
-
-  markerGroup.addLayer(startMarker);
-
-  attractions.forEach((place, index) => {
-    const marker = L.marker([place.latitude, place.longitude])
-      .bindPopup((index + 1) + ". " + place.name)
-      .addTo(map);
-
-    markerGroup.addLayer(marker);
-  });
-
-  const endMarker = L.marker([endPoint.latitude, endPoint.longitude])
-    .bindPopup("End: " + mapData.endText)
-    .addTo(map);
-
-  markerGroup.addLayer(endMarker);
-
-  if (routeGeometry) {
-    const routeLayer = L.geoJSON(routeGeometry).addTo(map);
-    map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
-  } else {
-    map.fitBounds(markerGroup.getBounds(), { padding: [24, 24] });
-  }
+{% if plan %}
+<script id="plan-data" type="application/json">
+{{ plan | tojson }}
 </script>
 {% endif %}
-{% endblock %}x
+
+<script type="module" src="{{ url_for('static', filename='js/smart_itinerary.js') }}"></script>
+{% endblock %}

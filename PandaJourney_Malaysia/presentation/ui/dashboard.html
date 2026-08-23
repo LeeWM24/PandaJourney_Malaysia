@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - PandaJourney Malaysia{% endblock %}
+{% block title %}Dashboard — PandaJourney Malaysia{% endblock %}
 {% block page_title %}Dashboard{% endblock %}
-{% block page_subtitle %}Welcome back, {{ current_user.display_name }}{% endblock %}
+{% block page_subtitle %}
+Welcome back, <span id="dashboardName"></span>
+{% endblock %}
 
 {% block topbar_actions %}
-  <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">&#9992; Plan a Trip</a>
+  <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">✈️ Plan a Trip</a>
 {% endblock %}
 
 {% block content %}
@@ -19,21 +21,35 @@
 
   <div class="hero-content">
     <div>
-      <p class="hero-greeting">Good morning, {{ current_user.display_name }} &#128075;</p>
+      <p class="hero-greeting">
+      Good morning, <span id="heroName"></span> 👋
+      </p>
       <h2 class="hero-title">Where to next?</h2>
-      <a href="{{ url_for('smart_itinerary') }}" class="btn btn-accent btn-lg">&#9992; Plan a Trip</a>
+      <a href="{{ url_for('smart_itinerary') }}" class="btn btn-accent btn-lg">✈️ Plan a Trip</a>
     </div>
   </div>
 
-  <div class="hero-user">
-    <div>
-      <div class="hero-user-name">{{ current_user.display_name }}</div>
-      <div class="hero-user-email">{{ current_user.email }}</div>
+    <div class="hero-user">
+      <div>
+        <div class="hero-user-name" id="heroUserName"></div>
+        <div class="hero-user-email" id="heroUserEmail"></div>
+      </div>
+
+      <a href="{{ url_for('profile') }}"
+        class="avatar avatar-lg"
+        id="dashboardAvatar"
+        style="text-decoration:none; overflow:hidden;">
+
+        <span id="avatarInitials"></span>
+
+        <img
+          id="avatarImage"
+          src=""
+          alt="Profile"
+          style="width:100%; height:100%; object-fit:cover; display:none;"
+        >
+      </a>
     </div>
-    <a href="{{ url_for('profile') }}" class="avatar avatar-lg" style="text-decoration:none;">
-      {{ current_user.display_name[:2]|upper }}
-    </a>
-  </div>
 </div>
 
 <div class="page-inner">
@@ -41,7 +57,7 @@
   <div class="summary-cards mb-6">
     <div class="card summary-card">
       <div class="summary-card-header">
-        <span class="summary-icon">&#128190;</span>
+        <span class="summary-icon">💾</span>
         <div class="summary-dot" style="background:#0f7a5a;"></div>
       </div>
       <div class="summary-value">{{ saved_count }}</div>
@@ -50,16 +66,16 @@
 
     <div class="card summary-card">
       <div class="summary-card-header">
-        <span class="summary-icon">&#9733;</span>
+        <span class="summary-icon">⭐</span>
         <div class="summary-dot" style="background:#f59e0b;"></div>
       </div>
-      <div class="summary-value">{{ favourite_count }}</div>
+      <div class="summary-value" id="dashboard-favourite-count">0</div>
       <div class="summary-label">Favourite Attractions</div>
     </div>
 
     <div class="card summary-card">
       <div class="summary-card-header">
-        <span class="summary-icon">&#128279;</span>
+        <span class="summary-icon">🔗</span>
         <div class="summary-dot" style="background:#3b82f6;"></div>
       </div>
       <div class="summary-value">{{ shared_count }}</div>
@@ -68,7 +84,7 @@
 
     <div class="card summary-card">
       <div class="summary-card-header">
-        <span class="summary-icon">&#9992;</span>
+        <span class="summary-icon">✈️</span>
         <div class="summary-dot" style="background:#0d9488;"></div>
       </div>
       <div class="summary-value">{{ upcoming_date }}</div>
@@ -80,22 +96,27 @@
 
   <div class="quick-access-grid mb-6">
     <a href="{{ url_for('smart_attraction') }}" class="quick-tile" style="background:#e8f5f0;">
-      <span class="tile-icon">&#127796;</span>
+      <span class="tile-icon">🌴</span>
       <span class="tile-label">Smart Attraction<br>Recommendation</span>
     </a>
 
     <a href="{{ url_for('smart_itinerary') }}" class="quick-tile" style="background:#ccfbf1;">
-      <span class="tile-icon">&#128197;</span>
+      <span class="tile-icon">📅</span>
       <span class="tile-label">Smart Itinerary<br>Planning</span>
     </a>
 
+    <a href="{{ url_for('collaboration') }}" class="quick-tile" style="background:#dbeafe;">
+      <span class="tile-icon">👥</span>
+      <span class="tile-label">Collaborative<br>Planning</span>
+    </a>
+
     <a href="{{ url_for('public_itinerary') }}" class="quick-tile" style="background:#fef3c7;">
-      <span class="tile-icon">&#127760;</span>
+      <span class="tile-icon">🌐</span>
       <span class="tile-label">Public Itinerary<br>Sharing</span>
     </a>
 
     <a href="{{ url_for('profile') }}" class="quick-tile" style="background:#fce7f3;">
-      <span class="tile-icon">&#128100;</span>
+      <span class="tile-icon">👤</span>
       <span class="tile-label">User<br>Profile</span>
     </a>
   </div>
@@ -107,11 +128,16 @@
     </div>
 
     <div class="empty-state" style="padding:28px 0;">
-      <div class="empty-icon">&#128203;</div>
+      <div class="empty-icon">📋</div>
       <div class="empty-sub">Plan your first trip to see it here.</div>
     </div>
   </div>
 
 </div>
 
+<script
+  type="module"
+  src="{{ url_for('static', filename='js/dashboard.js') }}">
+</script>
 {% endblock %}
+
