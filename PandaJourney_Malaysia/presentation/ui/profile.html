@@ -86,9 +86,7 @@
 }
 
 
-/* =================================
-   Avatar Picker
-================================= */
+/*Avatar Picker*/
 
 .avatar-picker {
   position: absolute;
@@ -212,9 +210,7 @@
 }
 
 
-/* =================================
-   Interests
-================================= */
+/* Interests */
 
 .interest-chip {
   cursor: default;
@@ -241,10 +237,105 @@
   color: var(--fg-2);
 }
 
-
 /* =================================
-   Responsive
+   Account Security
 ================================= */
+
+.profile-security {
+  padding: 24px;
+}
+
+.profile-security-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.profile-security-title {
+  margin-bottom: 6px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.profile-security-sub {
+  color: var(--fg-2);
+  font-size: 13px;
+}
+
+.change-password-form {
+  display: grid;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.change-password-form.hidden,
+.google-password-note.hidden {
+  display: none !important;
+}
+
+.change-password-fields {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.change-password-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.password-message {
+  display: none;
+  padding: 11px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+.password-message.show {
+  display: block;
+}
+
+.password-message.success {
+  color: #166534;
+  background: #dcfce7;
+  border: 1px solid #86efac;
+}
+
+.password-message.error {
+  color: #991b1b;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+}
+
+.google-password-note {
+  margin-top: 18px;
+  padding: 12px 14px;
+  color: var(--fg-2);
+  background: #f2faf6;
+  border-radius: 12px;
+  font-size: 13px;
+}
+
+/*  Responsive */
+
+@media (max-width: 860px) {
+  .change-password-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-security-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .change-password-actions {
+    width: 100%;
+  }
+}
 
 @media (max-width: 860px) {
 
@@ -262,25 +353,10 @@
   }
 
 }
-
 </style>
-
 {% endblock %}
 
-
-
 {% block content %}
-
-{% set display_name =
-  current_user.get('display_name')
-  or current_user.get('displayName')
-  or ''
-%}
-
-{% set email =
-  current_user.get('email')
-  or ''
-%}
 
 {% set selected_interests =
   user_preferences.get('interests', [])
@@ -302,90 +378,57 @@
 
       <div class="profile-identity-inner">
 
-
         <!-- Avatar -->
-
         <div class="avatar-edit-wrap">
-
           <div
             class="avatar avatar-xl"
             id="avatar">
-
             <img
               id="avatar-image"
               src=""
               alt="Profile picture"
             >
-
             <span id="avatar-letter">
-              {{ display_name[:1] | upper }}
             </span>
-
-
             <button
               class="avatar-edit-btn hidden"
               id="avatar-edit-btn"
               title="Change profile picture"
               type="button">
-
               ✎
-
             </button>
-
           </div>
-
-
           <!-- Avatar Picker -->
-
           <div
             class="avatar-picker hidden"
             id="avatar-picker">
-
-
             <div class="avatar-picker-title">
               Change Profile Picture
             </div>
-
-
             <div class="avatar-source-actions">
-
               <button
                 type="button"
                 class="btn btn-secondary btn-sm"
                 id="use-google-avatar">
-
                 Google Photo
-
               </button>
-
-
               <button
                 type="button"
                 class="btn btn-secondary btn-sm"
                 id="upload-avatar-btn">
-
                 Upload Photo
-
               </button>
-
             </div>
-
-
             <input
               type="file"
               id="avatar-file-input"
               accept="image/jpeg,image/png,image/webp"
               hidden
             >
-
-
             <div class="avatar-divider">
               or choose an avatar
             </div>
-
-
             <div class="avatar-options">
-
               <button type="button" class="avatar-option" data-avatar="🐼">🐼</button>
               <button type="button" class="avatar-option" data-avatar="🐯">🐯</button>
               <button type="button" class="avatar-option" data-avatar="🐨">🐨</button>
@@ -397,29 +440,17 @@
               <button type="button" class="avatar-option" data-avatar="🏝️">🏝️</button>
               <button type="button" class="avatar-option" data-avatar="🗺️">🗺️</button>
               <button type="button" class="avatar-option" data-avatar="😎">😎</button>
-
             </div>
-
-
             <div class="avatar-picker-close">
-
               <button
                 type="button"
                 class="btn btn-ghost btn-sm"
                 id="close-avatar-picker">
-
                 Cancel
-
               </button>
-
             </div>
-
           </div>
-
         </div>
-
-
-
         <!-- Identity information -->
 
         <div class="profile-identity-main">
@@ -449,8 +480,6 @@
 
           </div>
 
-
-
           <!-- Edit -->
 
           <div id="identity-edit">
@@ -468,9 +497,7 @@
                   id="edit-name"
                   value="{{ display_name }}"
                 >
-
               </div>
-
 
               <div class="field">
 
@@ -488,26 +515,17 @@
                     cursor:not-allowed;
                   "
                 >
-
               </div>
-
             </div>
-
-
             <div
               class="edit-actions hidden"
               id="edit-actions">
-
               <button
                 class="btn btn-primary btn-sm"
                 type="button"
                 onclick="saveProfile()">
-
                 💾 Save Changes
-
               </button>
-
-
               <button
                 class="btn btn-ghost btn-sm"
                 type="button"
@@ -522,8 +540,6 @@
           </div>
 
         </div>
-
-
 
         <div class="profile-card-actions">
 
@@ -543,14 +559,7 @@
 
     </div>
 
-
-
-    <!-- =================================
-         Stats
-    ================================= -->
-
     <div class="profile-stats">
-
 
       <div class="card profile-stat-card">
 
@@ -572,33 +581,21 @@
 
       </div>
 
-
-
       <div class="card profile-stat-card">
-
         <div class="profile-stat-icon">
           ⭐
         </div>
-
         <div>
-
           <div
             class="profile-stat-value"
             id="fav-count-stat">
-
             0
-
           </div>
-
           <div class="profile-stat-label">
             Favourite Attractions
           </div>
-
         </div>
-
       </div>
-
-
 
       <div class="card profile-stat-card">
 
@@ -622,12 +619,6 @@
 
     </div>
 
-
-
-    <!-- =================================
-         Travel Interests
-    ================================= -->
-
     <div class="card profile-prefs">
 
       <div>
@@ -641,8 +632,6 @@
         </div>
 
       </div>
-
-
       {% set interests_list = [
         ('culture', '🏛️ Culture'),
         ('museum', '🖼️ Museum'),
@@ -655,8 +644,6 @@
         ('nightlife', '🌙 Nightlife'),
         ('family', '👨‍👩‍👧 Family')
       ] %}
-
-
       <div
         class="chips"
         id="interest-chips">
@@ -771,11 +758,103 @@
 
     </div>
 
+    <div class="card profile-security" id="password-security-section">
+      <div class="profile-security-header">
+        <div>
+          <div class="profile-security-title">
+            Account Security
+          </div>
 
+          <div class="profile-security-sub">
+            Update the password used to sign in to your account.
+          </div>
+        </div>
 
-    <!-- =================================
-         Sign out
-    ================================= -->
+        <button
+          type="button"
+          class="btn btn-secondary btn-sm"
+          id="open-change-password-btn">
+          🔒 Change Password
+        </button>
+      </div>
+
+      <form
+        id="change-password-form"
+        class="change-password-form hidden">
+
+        <div class="change-password-fields">
+          <div class="form-group">
+            <label class="form-label" for="current-password">
+              Current Password
+            </label>
+
+            <input
+              class="form-input"
+              id="current-password"
+              type="password"
+              autocomplete="current-password"
+              required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="new-password">
+              New Password
+            </label>
+
+            <input
+              class="form-input"
+              id="new-password"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="confirm-new-password">
+              Confirm New Password
+            </label>
+
+            <input
+              class="form-input"
+              id="confirm-new-password"
+              type="password"
+              autocomplete="new-password"
+              minlength="8"
+              required>
+          </div>
+        </div>
+
+        <div
+          class="password-message"
+          id="password-message"
+          role="status"
+          aria-live="polite">
+        </div>
+
+        <div class="change-password-actions">
+          <button
+            type="button"
+            class="btn btn-ghost btn-sm"
+            id="cancel-change-password-btn">
+            Cancel
+          </button>
+
+          <button
+            type="submit"
+            class="btn btn-primary btn-sm"
+            id="save-password-btn">
+            Update Password
+          </button>
+        </div>
+      </form>
+
+      <div
+        class="google-password-note hidden"
+        id="google-password-note">
+        Your password is managed through your Google Account.
+      </div>
+    </div>
 
     <div class="danger-zone">
 

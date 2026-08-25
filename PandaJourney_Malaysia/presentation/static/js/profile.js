@@ -7,7 +7,10 @@ import {
 import {
   onAuthStateChanged,
   signOut,
-  updateProfile
+  updateProfile,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 import {
@@ -47,6 +50,17 @@ const uploadAvatarBtn = document.getElementById("upload-avatar-btn");
 const avatarFileInput = document.getElementById("avatar-file-input");
 
 const interestHint = document.getElementById("interest-hint");
+
+// Account Security Elements
+const openChangePasswordBtn = document.getElementById("open-change-password-btn");
+const cancelChangePasswordBtn = document.getElementById("cancel-change-password-btn");
+const changePasswordForm = document.getElementById("change-password-form");
+const currentPasswordInput = document.getElementById("current-password");
+const newPasswordInput = document.getElementById("new-password");
+const confirmNewPasswordInput = document.getElementById("confirm-new-password");
+const passwordMessage = document.getElementById("password-message");
+const savePasswordBtn = document.getElementById("save-password-btn");
+const googlePasswordNote = document.getElementById("google-password-note");
 
 const FAVOURITES_COLLECTION = "Favourites";
 
@@ -164,6 +178,8 @@ onAuthStateChanged(auth, async user => {
 
   console.log("Logged in user:", user.uid);
 
+  configurePasswordSection(user);
+
   const authName =
     user.displayName ||
     user.email?.split("@")[0] ||
@@ -258,8 +274,11 @@ onAuthStateChanged(auth, async user => {
       });
     }
 
-    await loadFavourites(user);
-    await loadSavedItineraryCount(user);
+    await Promise.all([
+      loadFavourites(user),
+      loadSavedItineraryCount(user),
+      loadSharedItineraryCount(user)
+    ]);
   } catch (error) {
     console.error("Failed to load profile:", error);
   }
@@ -796,9 +815,184 @@ async function removeFavourite(documentId, user) {
   }
 }
 
+// Account Security
+
+function configurePasswordSection(user) {
+  if (
+    !openChangePasswordBtn ||
+    !changePasswordForm ||
+    !googlePasswordNote
+  ) {
+    return;
+  }
+
+  const hasPasswordProvider = user.providerData.some(
+    provider => provider.providerId === "password"
+  );
+
+  if (hasPasswordProvider) {
+    openChangePasswordBtn.classList.remove("hidden");
+    googlePasswordNote.classList.add("hidden");
+  } else {
+    openChangePasswordBtn.classList.add("hidden");
+    changePasswordForm.classList.add("hidden");
+    googlePasswordNote.classList.remove("hidden");
+  }
+}
+
+function showPasswordMessage(message, type) {
+  if (!passwordMessage) {
+    return;
+  }
+
+  passwordMessage.textContent = message;
+  passwordMessage.className =
+    `password-message ${type} show`;
+}
+
+function resetPasswordForm() {
+  changePasswordForm?.reset();
+  changePasswordForm?.classList.add("hidden");
+  openChangePasswordBtn?.classList.remove("hidden");
+
+  if (passwordMessage) {
+    passwordMessage.textContent = "";
+    passwordMessage.className = "password-message";
+  }
+}
+
+openChangePasswordBtn?.addEventListener("click", () => {
+  changePasswordForm?.classList.remove("hidden");
+  openChangePasswordBtn.classList.add("hidden");
+  currentPasswordInput?.focus();
+});
+
+cancelChangePasswordBtn?.addEventListener(
+  "click",
+  resetPasswordForm
+);
+
+changePasswordForm?.addEventListener(
+  "submit",
+  async event => {
+    event.preventDefault();
+
+    const user = auth.currentUser;
+
+    if (!user?.email) {
+      showPasswordMessage(
+        "Unable to verify the current account.",
+        "error"
+      );
+      return;
+    }
+
+    const currentPassword =
+      currentPasswordInput.value;
+
+    const newPassword =
+      newPasswordInput.value;
+
+    const confirmPassword =
+      confirmNewPasswordInput.value;
+
+    const strongPassword =
+      newPassword.length >= 8 &&
+      /[a-z]/.test(newPassword) &&
+      /[A-Z]/.test(newPassword) &&
+      /[0-9]/.test(newPassword);
+
+    if (!strongPassword) {
+      showPasswordMessage(
+        "Use at least 8 characters with uppercase, lowercase and a number.",
+        "error"
+      );
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      showPasswordMessage(
+        "New passwords do not match.",
+        "error"
+      );
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      showPasswordMessage(
+        "New password must be different from the current password.",
+        "error"
+      );
+      return;
+    }
+
+    try {
+      savePasswordBtn.disabled = true;
+      savePasswordBtn.textContent = "Updating...";
+
+      const credential =
+        EmailAuthProvider.credential(
+          user.email,
+          currentPassword
+        );
+
+      await reauthenticateWithCredential(
+        user,
+        credential
+      );
+
+      await updatePassword(
+        user,
+        newPassword
+      );
+
+      changePasswordForm.reset();
+
+      showPasswordMessage(
+        "Password updated successfully.",
+        "success"
+      );
+    } catch (error) {
+      console.error(
+        "Failed to update password:",
+        error
+      );
+
+      let message =
+        "Failed to update password. Please try again.";
+
+      if (
+        error.code === "auth/invalid-credential" ||
+        error.code === "auth/wrong-password"
+      ) {
+        message = "The current password is incorrect.";
+      } else if (error.code === "auth/weak-password") {
+        message = "The new password is too weak.";
+      } else if (
+        error.code === "auth/too-many-requests"
+      ) {
+        message =
+          "Too many attempts. Please wait and try again.";
+      } else if (
+        error.code === "auth/network-request-failed"
+      ) {
+        message =
+          "Network error. Please check your connection.";
+      }
+
+      showPasswordMessage(
+        message,
+        "error"
+      );
+    } finally {
+      savePasswordBtn.disabled = false;
+      savePasswordBtn.textContent =
+        "Update Password";
+    }
+  }
+);
 
 // Logout
-
 window.confirmLogout = async function () {
   const confirmed = confirm("Are you sure you want to sign out?");
 
@@ -813,3 +1007,57 @@ window.confirmLogout = async function () {
     console.error("Logout failed:", error);
   }
 };
+
+async function loadSavedItineraryCount(user) {
+  const countElement = document.getElementById(
+    "profile-itinerary-count"
+  );
+
+  try {
+    const itineraryQuery = query(
+      collection(db, "Itinerary"),
+      where("user_id", "==", user.uid)
+    );
+
+    const snapshot = await getDocs(itineraryQuery);
+
+    countElement.textContent = String(snapshot.size);
+  } catch (error) {
+    console.error(error);
+    countElement.textContent = "0";
+  }
+}
+
+async function loadSharedItineraryCount(user) {
+  const dashboardElement = document.getElementById(
+    "dashboard-shared-count"
+  );
+
+  const profileElement = document.getElementById(
+    "profile-shared-count"
+  );
+
+  try {
+    const sharedQuery = query(
+      collection(db, "Itinerary"),
+      where("user_id", "==", user.uid),
+      where("status", "==", "Published")
+    );
+
+    const snapshot = await getDocs(sharedQuery);
+    const count = String(snapshot.size);
+
+    if (dashboardElement) {
+      dashboardElement.textContent = count;
+    }
+
+    if (profileElement) {
+      profileElement.textContent = count;
+    }
+  } catch (error) {
+    console.error("Failed to load shared count:", error);
+
+    if (dashboardElement) dashboardElement.textContent = "0";
+    if (profileElement) profileElement.textContent = "0";
+  }
+}

@@ -31,21 +31,11 @@ app.secret_key = "panda-demo-secret"
 
 
 def get_current_user():
-    return session.get("user", {
-        "display_name": "Ahmad Faris",
-        "email": "ahmad@email.com"
-    })
+    return session.get("user", {})
 
 
 @app.route("/", methods=["GET", "POST"])  # Jiading
 def login():
-    if request.method == "POST":
-        session["user"] = {
-            "display_name": "User",
-            "email": request.form.get("email") 
-        }
-        return redirect(url_for("dashboard"))
-
     return render_template("login.html")
 
 
@@ -53,21 +43,31 @@ def login():
 def create_account():
     return render_template('create_account.html')
 
-@app.route("/dashboard")#jiading
+@app.route("/dashboard") #jiading
 def dashboard():
-    saved_list = get_saved_itineraries()
-
     return render_template(
         "dashboard.html",
         active_page="dashboard",
-        current_user=get_current_user(),
-        saved_count=len(saved_list),
-        favourite_count=0,
-        shared_count=0,
-        upcoming_date=saved_list[0].get("date", "No Trip") if saved_list else "No Trip",
-        recent_itineraries=saved_list[:3],
-        upcoming_trip=saved_list[0] if saved_list else None
+        current_user={}
     )
+
+@app.route("/profile", methods=["GET"])
+def profile():
+    return render_template(
+        "profile.html",
+        active_page="profile",
+        current_user={},
+        user_preferences={}
+    )
+
+@app.route("/user-management")  # Jiading
+def user_management():
+    return redirect(url_for("profile"))
+
+@app.route("/logout", methods=["GET", "POST"])  # Jiading
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/smart-attraction", methods=["GET", "POST"]) # Kaixi
@@ -322,59 +322,6 @@ def public_itinerary():
         current_user=get_current_user(),
         itineraries=[]
     )
-
-@app.route("/profile", methods=["GET", "POST"])  # Jiading
-def profile():
-    if request.method == "POST":
-        action = request.form.get("_action")
-
-        if action == "update_profile":
-            session["user"] = {
-                "display_name": request.form.get("display_name") or "Ahmad Faris",
-                "email": get_current_user().get("email", "ahmad@email.com")
-            }
-            flash("Profile updated.", "success")
-
-        elif action == "update_preferences":
-            flash("Preferences saved.", "success")
-
-        elif action == "remove_favourite":
-            # Favourites now live in Firestore (see profile.js /
-            # smart_attraction.js), removed client-side via deleteDoc —
-            # nothing for Flask to do here anymore.
-            flash("Favourite attraction removed.", "info")
-
-        return redirect(url_for("profile"))
-
-    saved_list = get_saved_itineraries()
-
-    return render_template(
-        "profile.html",
-        active_page="profile",
-        current_user=get_current_user(),
-        user_preferences={
-            "interests": [],
-            "min_rating": "",
-            "preferred_area": ""
-        },
-        saved_itineraries_preview=saved_list[:3],
-        shared_itineraries_preview=[],
-        saved_count=len(saved_list),
-        favourite_count=0,
-        shared_count=0
-    )
-
-
-@app.route("/user-management")  # Jiading
-def user_management():
-    return redirect(url_for("profile"))
-
-
-@app.route("/logout", methods=["GET", "POST"])  # Jiading
-def logout():
-    session.clear()
-    return redirect(url_for("login"))
-
 
 if __name__ == "__main__":
     app.run(debug=True)

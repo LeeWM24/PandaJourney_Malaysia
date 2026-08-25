@@ -11,6 +11,7 @@ import {
   sendEmailVerification,
   linkWithCredential,
   EmailAuthProvider,
+  sendPasswordResetEmail,
   signOut
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
@@ -129,6 +130,84 @@ if (googleSignup) {
       alert(error.message);
     }
   });
+}
+
+// Forgot Password
+const forgotPasswordBtn =
+  document.getElementById("forgotPasswordBtn");
+
+const forgotPasswordMessage =
+  document.getElementById("forgotPasswordMessage");
+
+if (forgotPasswordBtn) {
+  forgotPasswordBtn.addEventListener("click", async () => {
+    const emailInput = document.getElementById("email");
+    const email = emailInput?.value.trim() || "";
+
+    if (!email) {
+      showForgotPasswordMessage(
+        "Please enter your email address first.",
+        "error"
+      );
+
+      emailInput?.focus();
+      return;
+    }
+
+    if (!emailInput.checkValidity()) {
+      showForgotPasswordMessage(
+        "Please enter a valid email address.",
+        "error"
+      );
+
+      emailInput.reportValidity();
+      return;
+    }
+
+    try {
+      forgotPasswordBtn.disabled = true;
+      forgotPasswordBtn.textContent = "Sending...";
+
+      auth.useDeviceLanguage();
+
+      await sendPasswordResetEmail(auth, email);
+
+      showForgotPasswordMessage(
+        "If an account exists for this email, a password reset link has been sent. Please check your inbox and spam folder.",
+        "success"
+      );
+    } catch (error) {
+      console.error("Password reset failed:", error);
+
+      let message =
+        "Unable to send the reset email. Please try again.";
+
+      if (error.code === "auth/invalid-email") {
+        message = "Please enter a valid email address.";
+      } else if (error.code === "auth/too-many-requests") {
+        message =
+          "Too many requests. Please wait a while and try again.";
+      } else if (error.code === "auth/network-request-failed") {
+        message =
+          "Network error. Please check your connection and try again.";
+      }
+
+      showForgotPasswordMessage(message, "error");
+    } finally {
+      forgotPasswordBtn.disabled = false;
+      forgotPasswordBtn.textContent = "Forgot password?";
+    }
+  });
+}
+
+function showForgotPasswordMessage(message, type) {
+  if (!forgotPasswordMessage) {
+    return;
+  }
+
+  forgotPasswordMessage.textContent = message;
+  forgotPasswordMessage.className =
+    `login-message ${type} show`;
 }
 
 // Email Login

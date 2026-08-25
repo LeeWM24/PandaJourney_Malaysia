@@ -91,6 +91,24 @@ button, input, select, textarea { font: inherit; }
 .login-link-row { text-align: center; color: #7da38f; font-size: 13px; }
 .login-link-row a { color: var(--primary); font-weight: 700; text-decoration: none; }
 
+.forgot-password-row {display: flex; justify-content: flex-end; margin: -7px 2px 14px;}
+.forgot-password-btn {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.forgot-password-btn:hover {color: var(--primary-dark); text-decoration: underline;}
+.forgot-password-btn:disabled {opacity: 0.6; cursor: wait;}
+.login-message {display: none; padding: 11px 14px; margin-bottom: 14px; border-radius: 12px; font-size: 13px; line-height: 1.45;}
+.login-message.show {display: block;}
+.login-message.success {color: #166534; background: #dcfce7; border: 1px solid #86efac;}
+.login-message.error {color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5;}
+
 /* App shell */
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
 .sidebar { position: sticky; top: 0; height: 100vh; background: var(--sidebar); color: var(--sidebar-text); border-right: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; z-index: 20; }
