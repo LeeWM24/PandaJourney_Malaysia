@@ -568,8 +568,13 @@ def geocode_place(query: str) -> dict[str, Any] | None:
 
 
 def get_weather(latitude: float, longitude: float, trip_date: str) -> dict[str, Any] | None:
+    print(
+        f"[WEATHER REQUEST] latitude={latitude}, longitude={longitude}, date={trip_date}",
+        flush=True
+    )
+
     try:
-        data = _request_json(
+        response = requests.get(
             OPEN_METEO_URL,
             params={
                 "latitude": latitude,
@@ -585,16 +590,26 @@ def get_weather(latitude: float, longitude: float, trip_date: str) -> dict[str, 
                 "start_date": trip_date,
                 "end_date": trip_date,
             },
+            timeout=20,
         )
+
+        print(f"[WEATHER HTTP] status={response.status_code}", flush=True)
+
+        if response.status_code != 200:
+            print(f"[WEATHER RESPONSE] {response.text[:500]}", flush=True)
+
+        response.raise_for_status()
+        data = response.json()
 
         daily = data.get("daily", {})
 
         if not daily.get("time"):
+            print(f"[WEATHER NO DAILY DATA] {data}", flush=True)
             return None
 
         weather_code = daily["weather_code"][0]
 
-        return {
+        weather = {
             "date": daily["time"][0],
             "weather_code": weather_code,
             "condition": WEATHER_LABELS.get(weather_code, f"WMO code {weather_code}"),
@@ -604,7 +619,11 @@ def get_weather(latitude: float, longitude: float, trip_date: str) -> dict[str, 
             "rain_probability": daily.get("precipitation_probability_max", [None])[0],
         }
 
-    except (requests.RequestException, KeyError, IndexError, TypeError):
+        print(f"[WEATHER SUCCESS] {weather}", flush=True)
+        return weather
+
+    except (requests.RequestException, KeyError, IndexError, TypeError, ValueError) as error:
+        print(f"[WEATHER ERROR] {type(error).__name__}: {error}", flush=True)
         return None
 
 
