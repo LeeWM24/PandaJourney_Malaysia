@@ -34,33 +34,78 @@ import {
 
 // Elements
 
-const identityName = document.querySelector(".identity-name");
-const identityEmail = document.querySelector(".identity-email");
-const editName = document.getElementById("edit-name");
-const editEmail = document.getElementById("edit-email");
+const identityName =
+  document.querySelector(".identity-name");
 
-const avatarImage = document.getElementById("avatar-image");
-const avatarLetter = document.getElementById("avatar-letter");
-const avatarEditBtn = document.getElementById("avatar-edit-btn");
-const avatarPicker = document.getElementById("avatar-picker");
-const closeAvatarPicker = document.getElementById("close-avatar-picker");
-const avatarOptions = document.querySelectorAll(".avatar-option");
-const useGoogleAvatarBtn = document.getElementById("use-google-avatar");
-const uploadAvatarBtn = document.getElementById("upload-avatar-btn");
-const avatarFileInput = document.getElementById("avatar-file-input");
+const identityEmail =
+  document.querySelector(".identity-email");
 
-const interestHint = document.getElementById("interest-hint");
+const editName =
+  document.getElementById("edit-name");
+
+const editEmail =
+  document.getElementById("edit-email");
+
+const avatarImage =
+  document.getElementById("avatar-image");
+
+const avatarLetter =
+  document.getElementById("avatar-letter");
+
+const avatarEditBtn =
+  document.getElementById("avatar-edit-btn");
+
+const avatarPicker =
+  document.getElementById("avatar-picker");
+
+const closeAvatarPicker =
+  document.getElementById("close-avatar-picker");
+
+const avatarOptions =
+  document.querySelectorAll(".avatar-option");
+
+const useGoogleAvatarBtn =
+  document.getElementById("use-google-avatar");
+
+const uploadAvatarBtn =
+  document.getElementById("upload-avatar-btn");
+
+const avatarFileInput =
+  document.getElementById("avatar-file-input");
+
+const interestHint =
+  document.getElementById("interest-hint");
+
 
 // Account Security Elements
-const openChangePasswordBtn = document.getElementById("open-change-password-btn");
-const cancelChangePasswordBtn = document.getElementById("cancel-change-password-btn");
-const changePasswordForm = document.getElementById("change-password-form");
-const currentPasswordInput = document.getElementById("current-password");
-const newPasswordInput = document.getElementById("new-password");
-const confirmNewPasswordInput = document.getElementById("confirm-new-password");
-const passwordMessage = document.getElementById("password-message");
-const savePasswordBtn = document.getElementById("save-password-btn");
-const googlePasswordNote = document.getElementById("google-password-note");
+
+const openChangePasswordBtn =
+  document.getElementById("open-change-password-btn");
+
+const cancelChangePasswordBtn =
+  document.getElementById("cancel-change-password-btn");
+
+const changePasswordForm =
+  document.getElementById("change-password-form");
+
+const currentPasswordInput =
+  document.getElementById("current-password");
+
+const newPasswordInput =
+  document.getElementById("new-password");
+
+const confirmNewPasswordInput =
+  document.getElementById("confirm-new-password");
+
+const passwordMessage =
+  document.getElementById("password-message");
+
+const savePasswordBtn =
+  document.getElementById("save-password-btn");
+
+const googlePasswordNote =
+  document.getElementById("google-password-note");
+
 
 const FAVOURITES_COLLECTION = "Favourites";
 
@@ -125,7 +170,8 @@ function renderAvatar({
 
   avatarImage.style.display = "none";
   avatarLetter.style.display = "flex";
-  avatarLetter.textContent = name.charAt(0).toUpperCase();
+  avatarLetter.textContent =
+    name.charAt(0).toUpperCase();
 }
 
 
@@ -137,7 +183,10 @@ function updateAvatarSelectedStyle() {
       selectedAvatarType === "emoji" &&
       option.dataset.avatar === selectedAvatar;
 
-    option.classList.toggle("selected", isSelected);
+    option.classList.toggle(
+      "selected",
+      isSelected
+    );
   });
 }
 
@@ -192,7 +241,8 @@ onAuthStateChanged(auth, async user => {
   }
 
   if (identityEmail) {
-    identityEmail.textContent = user.email || "";
+    identityEmail.textContent =
+      user.email || "";
   }
 
   if (editName) {
@@ -200,7 +250,8 @@ onAuthStateChanged(auth, async user => {
   }
 
   if (editEmail) {
-    editEmail.value = user.email || "";
+    editEmail.value =
+      user.email || "";
   }
 
   renderAvatar({
@@ -208,31 +259,52 @@ onAuthStateChanged(auth, async user => {
     name: authName
   });
 
-  // Firestore Profile
-
   try {
-    const userRef = doc(db, "users", user.uid);
-    const snapshot = await getDoc(userRef);
+    const userRef =
+      doc(db, "users", user.uid);
+
+    const snapshot =
+      await getDoc(userRef);
 
     if (snapshot.exists()) {
       const data = snapshot.data();
 
-      console.log("Firestore profile:", data);
+      console.log(
+        "Firestore profile:",
+        data
+      );
 
       if (data.displayName) {
-        originalDisplayName = data.displayName;
-        identityName.textContent = data.displayName;
-        editName.value = data.displayName;
+        originalDisplayName =
+          data.displayName;
+
+        if (identityName) {
+          identityName.textContent =
+            data.displayName;
+        }
+
+        if (editName) {
+          editName.value =
+            data.displayName;
+        }
       }
 
       if (data.email) {
-        identityEmail.textContent = data.email;
-        editEmail.value = data.email;
+        if (identityEmail) {
+          identityEmail.textContent =
+            data.email;
+        }
+
+        if (editEmail) {
+          editEmail.value =
+            data.email;
+        }
       }
 
       // Avatar Loading
 
-      let storedType = data.avatarType || "";
+      let storedType =
+        data.avatarType || "";
 
       if (!storedType && data.avatar) {
         storedType = "emoji";
@@ -242,13 +314,23 @@ onAuthStateChanged(auth, async user => {
         storedType = "google";
       }
 
-      originalAvatarType = storedType;
-      originalAvatar = data.avatar || "";
-      originalAvatarUrl = data.avatarUrl || "";
+      originalAvatarType =
+        storedType;
 
-      selectedAvatarType = originalAvatarType;
-      selectedAvatar = originalAvatar;
-      selectedAvatarUrl = originalAvatarUrl;
+      originalAvatar =
+        data.avatar || "";
+
+      originalAvatarUrl =
+        data.avatarUrl || "";
+
+      selectedAvatarType =
+        originalAvatarType;
+
+      selectedAvatar =
+        originalAvatar;
+
+      selectedAvatarUrl =
+        originalAvatarUrl;
 
       renderAvatar({
         type: selectedAvatarType,
@@ -262,16 +344,29 @@ onAuthStateChanged(auth, async user => {
 
       // Interests
 
-      originalInterests = Array.isArray(data.interests)
-        ? [...data.interests]
-        : [];
+      originalInterests =
+        Array.isArray(data.interests)
+          ? [...data.interests]
+          : [];
 
-      document.querySelectorAll(".interest-chip").forEach(chip => {
-        const selected = originalInterests.includes(chip.dataset.interest);
+      document
+        .querySelectorAll(".interest-chip")
+        .forEach(chip => {
+          const selected =
+            originalInterests.includes(
+              chip.dataset.interest
+            );
 
-        chip.classList.toggle("active", selected);
-        chip.setAttribute("aria-pressed", selected ? "true" : "false");
-      });
+          chip.classList.toggle(
+            "active",
+            selected
+          );
+
+          chip.setAttribute(
+            "aria-pressed",
+            selected ? "true" : "false"
+          );
+        });
     }
 
     await Promise.all([
@@ -280,7 +375,10 @@ onAuthStateChanged(auth, async user => {
       loadSharedItineraryCount(user)
     ]);
   } catch (error) {
-    console.error("Failed to load profile:", error);
+    console.error(
+      "Failed to load profile:",
+      error
+    );
   }
 });
 
@@ -290,10 +388,25 @@ onAuthStateChanged(auth, async user => {
 window.toggleEdit = function () {
   isEditing = true;
 
-  const identityView = document.getElementById("identity-view");
-  const identityEdit = document.getElementById("identity-edit");
-  const editActions = document.getElementById("edit-actions");
-  const editButton = document.getElementById("edit-toggle-btn");
+  const identityView =
+    document.getElementById(
+      "identity-view"
+    );
+
+  const identityEdit =
+    document.getElementById(
+      "identity-edit"
+    );
+
+  const editActions =
+    document.getElementById(
+      "edit-actions"
+    );
+
+  const editButton =
+    document.getElementById(
+      "edit-toggle-btn"
+    );
 
   if (identityView) {
     identityView.style.display = "none";
@@ -312,15 +425,20 @@ window.toggleEdit = function () {
   }
 
   if (avatarEditBtn) {
-    avatarEditBtn.classList.remove("hidden");
+    avatarEditBtn.classList.remove(
+      "hidden"
+    );
   }
 
-  document.querySelectorAll(".interest-chip").forEach(chip => {
-    chip.classList.add("editable");
-  });
+  document
+    .querySelectorAll(".interest-chip")
+    .forEach(chip => {
+      chip.classList.add("editable");
+    });
 
   if (interestHint) {
-    interestHint.textContent = "Select the interests that describe you.";
+    interestHint.textContent =
+      "Select the interests that describe you.";
   }
 };
 
@@ -328,161 +446,214 @@ window.toggleEdit = function () {
 // Open Avatar Picker
 
 if (avatarEditBtn) {
-  avatarEditBtn.addEventListener("click", () => {
-    if (!isEditing) {
-      return;
-    }
+  avatarEditBtn.addEventListener(
+    "click",
+    () => {
+      if (!isEditing) {
+        return;
+      }
 
-    avatarPicker?.classList.toggle("hidden");
-  });
+      avatarPicker?.classList.toggle(
+        "hidden"
+      );
+    }
+  );
 }
 
 
 // Close Avatar Picker
 
 if (closeAvatarPicker) {
-  closeAvatarPicker.addEventListener("click", () => {
-    avatarPicker?.classList.add("hidden");
-  });
+  closeAvatarPicker.addEventListener(
+    "click",
+    () => {
+      avatarPicker?.classList.add(
+        "hidden"
+      );
+    }
+  );
 }
 
 
 // Google Avatar
 
 if (useGoogleAvatarBtn) {
-  useGoogleAvatarBtn.addEventListener("click", () => {
-    if (!isEditing) {
-      return;
+  useGoogleAvatarBtn.addEventListener(
+    "click",
+    () => {
+      if (!isEditing) {
+        return;
+      }
+
+      const user = auth.currentUser;
+
+      if (!user?.photoURL) {
+        alert(
+          "No Google profile photo is available for this account."
+        );
+        return;
+      }
+
+      selectedAvatarType = "google";
+      selectedAvatar = "";
+      selectedAvatarUrl = "";
+      selectedAvatarFile = null;
+
+      renderAvatar({
+        type: "google",
+        googleUrl: user.photoURL,
+        name: editName?.value || ""
+      });
+
+      updateAvatarSelectedStyle();
+
+      avatarPicker?.classList.add(
+        "hidden"
+      );
     }
-
-    const user = auth.currentUser;
-
-    if (!user?.photoURL) {
-      alert("No Google profile photo is available for this account.");
-      return;
-    }
-
-    selectedAvatarType = "google";
-    selectedAvatar = "";
-    selectedAvatarUrl = "";
-    selectedAvatarFile = null;
-
-    renderAvatar({
-      type: "google",
-      googleUrl: user.photoURL,
-      name: editName?.value || ""
-    });
-
-    updateAvatarSelectedStyle();
-    avatarPicker?.classList.add("hidden");
-  });
+  );
 }
 
 
 // Upload Button
 
 if (uploadAvatarBtn) {
-  uploadAvatarBtn.addEventListener("click", () => {
-    if (!isEditing) {
-      return;
-    }
+  uploadAvatarBtn.addEventListener(
+    "click",
+    () => {
+      if (!isEditing) {
+        return;
+      }
 
-    avatarFileInput?.click();
-  });
+      avatarFileInput?.click();
+    }
+  );
 }
 
 
 // Upload Preview
 
 if (avatarFileInput) {
-  avatarFileInput.addEventListener("change", () => {
-    const file = avatarFileInput.files?.[0];
+  avatarFileInput.addEventListener(
+    "change",
+    () => {
+      const file =
+        avatarFileInput.files?.[0];
 
-    if (!file) {
-      return;
+      if (!file) {
+        return;
+      }
+
+      const allowedTypes = [
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+      ];
+
+      if (!allowedTypes.includes(file.type)) {
+        alert(
+          "Please choose a JPG, PNG, or WebP image."
+        );
+
+        avatarFileInput.value = "";
+        return;
+      }
+
+      if (file.size > 2 * 1024 * 1024) {
+        alert(
+          "Profile picture must be smaller than 2 MB."
+        );
+
+        avatarFileInput.value = "";
+        return;
+      }
+
+      selectedAvatarFile = file;
+      selectedAvatarType = "upload";
+      selectedAvatar = "";
+
+      if (previewObjectUrl) {
+        URL.revokeObjectURL(
+          previewObjectUrl
+        );
+      }
+
+      previewObjectUrl =
+        URL.createObjectURL(file);
+
+      renderAvatar({
+        type: "upload",
+        uploadUrl: previewObjectUrl,
+        name: editName?.value || ""
+      });
+
+      updateAvatarSelectedStyle();
+
+      avatarPicker?.classList.add(
+        "hidden"
+      );
     }
-
-    const allowedTypes = [
-      "image/jpeg",
-      "image/png",
-      "image/webp"
-    ];
-
-    if (!allowedTypes.includes(file.type)) {
-      alert("Please choose a JPG, PNG, or WebP image.");
-      avatarFileInput.value = "";
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      alert("Profile picture must be smaller than 2 MB.");
-      avatarFileInput.value = "";
-      return;
-    }
-
-    selectedAvatarFile = file;
-    selectedAvatarType = "upload";
-    selectedAvatar = "";
-
-    if (previewObjectUrl) {
-      URL.revokeObjectURL(previewObjectUrl);
-    }
-
-    previewObjectUrl = URL.createObjectURL(file);
-
-    renderAvatar({
-      type: "upload",
-      uploadUrl: previewObjectUrl,
-      name: editName?.value || ""
-    });
-
-    updateAvatarSelectedStyle();
-    avatarPicker?.classList.add("hidden");
-  });
+  );
 }
 
 
 // Emoji Avatar
 
 avatarOptions.forEach(option => {
-  option.addEventListener("click", () => {
-    if (!isEditing) {
-      return;
+  option.addEventListener(
+    "click",
+    () => {
+      if (!isEditing) {
+        return;
+      }
+
+      selectedAvatarType = "emoji";
+
+      selectedAvatar =
+        option.dataset.avatar || "";
+
+      selectedAvatarUrl = "";
+      selectedAvatarFile = null;
+
+      renderAvatar({
+        type: "emoji",
+        emoji: selectedAvatar,
+        name: editName?.value || ""
+      });
+
+      updateAvatarSelectedStyle();
+
+      avatarPicker?.classList.add(
+        "hidden"
+      );
     }
-
-    selectedAvatarType = "emoji";
-    selectedAvatar = option.dataset.avatar || "";
-    selectedAvatarUrl = "";
-    selectedAvatarFile = null;
-
-    renderAvatar({
-      type: "emoji",
-      emoji: selectedAvatar,
-      name: editName?.value || ""
-    });
-
-    updateAvatarSelectedStyle();
-    avatarPicker?.classList.add("hidden");
-  });
+  );
 });
 
 
 // Interests
 
-document.querySelectorAll(".interest-chip").forEach(chip => {
-  chip.addEventListener("click", () => {
-    if (!isEditing) {
-      return;
-    }
+document
+  .querySelectorAll(".interest-chip")
+  .forEach(chip => {
+    chip.addEventListener(
+      "click",
+      () => {
+        if (!isEditing) {
+          return;
+        }
 
-    chip.classList.toggle("active");
+        chip.classList.toggle("active");
 
-    chip.setAttribute(
-      "aria-pressed",
-      chip.classList.contains("active") ? "true" : "false"
+        chip.setAttribute(
+          "aria-pressed",
+          chip.classList.contains("active")
+            ? "true"
+            : "false"
+        );
+      }
     );
   });
-});
 
 
 // Cancel Edit
@@ -491,30 +662,62 @@ window.cancelEdit = function () {
   isEditing = false;
 
   if (editName) {
-    editName.value = originalDisplayName;
+    editName.value =
+      originalDisplayName;
   }
 
   restoreOriginalAvatar();
 
-  document.querySelectorAll(".interest-chip").forEach(chip => {
-    const selected = originalInterests.includes(chip.dataset.interest);
+  document
+    .querySelectorAll(".interest-chip")
+    .forEach(chip => {
+      const selected =
+        originalInterests.includes(
+          chip.dataset.interest
+        );
 
-    chip.classList.toggle("active", selected);
-    chip.classList.remove("editable");
-    chip.setAttribute("aria-pressed", selected ? "true" : "false");
-  });
+      chip.classList.toggle(
+        "active",
+        selected
+      );
+
+      chip.classList.remove(
+        "editable"
+      );
+
+      chip.setAttribute(
+        "aria-pressed",
+        selected ? "true" : "false"
+      );
+    });
 
   if (interestHint) {
-    interestHint.textContent = "Click Edit Profile to update your interests.";
+    interestHint.textContent =
+      "Click Edit Profile to update your interests.";
   }
 
   avatarPicker?.classList.add("hidden");
   avatarEditBtn?.classList.add("hidden");
 
-  const identityView = document.getElementById("identity-view");
-  const identityEdit = document.getElementById("identity-edit");
-  const editActions = document.getElementById("edit-actions");
-  const editButton = document.getElementById("edit-toggle-btn");
+  const identityView =
+    document.getElementById(
+      "identity-view"
+    );
+
+  const identityEdit =
+    document.getElementById(
+      "identity-edit"
+    );
+
+  const editActions =
+    document.getElementById(
+      "edit-actions"
+    );
+
+  const editButton =
+    document.getElementById(
+      "edit-toggle-btn"
+    );
 
   if (identityView) {
     identityView.style.display = "block";
@@ -527,7 +730,8 @@ window.cancelEdit = function () {
   editActions?.classList.add("hidden");
 
   if (editButton) {
-    editButton.style.display = "inline-flex";
+    editButton.style.display =
+      "inline-flex";
   }
 };
 
@@ -542,34 +746,56 @@ window.saveProfile = async function () {
     return;
   }
 
-  const newDisplayName = editName?.value.trim() || "";
+  const newDisplayName =
+    editName?.value.trim() || "";
 
   if (!newDisplayName) {
-    alert("Display name cannot be empty.");
+    alert(
+      "Display name cannot be empty."
+    );
     return;
   }
 
-  const selectedInterests = Array.from(
-    document.querySelectorAll(".interest-chip.active")
-  ).map(chip => chip.dataset.interest);
+  const selectedInterests =
+    Array.from(
+      document.querySelectorAll(
+        ".interest-chip.active"
+      )
+    ).map(
+      chip => chip.dataset.interest
+    );
 
   try {
-    let finalAvatarUrl = selectedAvatarUrl;
+    let finalAvatarUrl =
+      selectedAvatarUrl;
 
     // Upload Avatar
 
-    if (selectedAvatarType === "upload" && selectedAvatarFile) {
+    if (
+      selectedAvatarType === "upload" &&
+      selectedAvatarFile
+    ) {
       const storageRef = ref(
         storage,
         `profilePictures/${user.uid}/avatar`
       );
 
-      await uploadBytes(storageRef, selectedAvatarFile, {
-        contentType: selectedAvatarFile.type
-      });
+      await uploadBytes(
+        storageRef,
+        selectedAvatarFile,
+        {
+          contentType:
+            selectedAvatarFile.type
+        }
+      );
 
-      finalAvatarUrl = await getDownloadURL(storageRef);
-      selectedAvatarUrl = finalAvatarUrl;
+      finalAvatarUrl =
+        await getDownloadURL(
+          storageRef
+        );
+
+      selectedAvatarUrl =
+        finalAvatarUrl;
     }
 
     // Firebase Auth Name
@@ -578,7 +804,7 @@ window.saveProfile = async function () {
       displayName: newDisplayName
     });
 
-    // Firestore
+    // Firestore Profile
 
     const userData = {
       displayName: newDisplayName,
@@ -593,27 +819,40 @@ window.saveProfile = async function () {
     await setDoc(
       doc(db, "users", user.uid),
       userData,
-      { merge: true }
+      {
+        merge: true
+      }
     );
 
-    console.log("Profile saved successfully:", userData);
+    console.log(
+      "Profile saved successfully:",
+      userData
+    );
 
-    // Update Original Values
+    originalDisplayName =
+      newDisplayName;
 
-    originalDisplayName = newDisplayName;
-    originalAvatarType = selectedAvatarType;
-    originalAvatar = selectedAvatar;
-    originalAvatarUrl = finalAvatarUrl || "";
-    originalInterests = [...selectedInterests];
+    originalAvatarType =
+      selectedAvatarType;
+
+    originalAvatar =
+      selectedAvatar;
+
+    originalAvatarUrl =
+      finalAvatarUrl || "";
+
+    originalInterests =
+      [...selectedInterests];
 
     selectedAvatarFile = null;
 
     if (previewObjectUrl) {
-      URL.revokeObjectURL(previewObjectUrl);
+      URL.revokeObjectURL(
+        previewObjectUrl
+      );
+
       previewObjectUrl = null;
     }
-
-    // Render Avatar
 
     renderAvatar({
       type: originalAvatarType,
@@ -624,46 +863,80 @@ window.saveProfile = async function () {
     });
 
     if (identityName) {
-      identityName.textContent = newDisplayName;
+      identityName.textContent =
+        newDisplayName;
     }
 
-    // Exit Edit
+    // Exit Edit Mode
 
     isEditing = false;
 
-    document.querySelectorAll(".interest-chip").forEach(chip => {
-      chip.classList.remove("editable");
-    });
+    document
+      .querySelectorAll(".interest-chip")
+      .forEach(chip => {
+        chip.classList.remove(
+          "editable"
+        );
+      });
 
     if (interestHint) {
-      interestHint.textContent = "Click Edit Profile to update your interests.";
+      interestHint.textContent =
+        "Click Edit Profile to update your interests.";
     }
 
-    const identityView = document.getElementById("identity-view");
-    const identityEdit = document.getElementById("identity-edit");
-    const editActions = document.getElementById("edit-actions");
-    const editButton = document.getElementById("edit-toggle-btn");
+    const identityView =
+      document.getElementById(
+        "identity-view"
+      );
+
+    const identityEdit =
+      document.getElementById(
+        "identity-edit"
+      );
+
+    const editActions =
+      document.getElementById(
+        "edit-actions"
+      );
+
+    const editButton =
+      document.getElementById(
+        "edit-toggle-btn"
+      );
 
     if (identityView) {
-      identityView.style.display = "block";
+      identityView.style.display =
+        "block";
     }
 
     if (identityEdit) {
-      identityEdit.style.display = "none";
+      identityEdit.style.display =
+        "none";
     }
 
-    editActions?.classList.add("hidden");
+    editActions?.classList.add(
+      "hidden"
+    );
 
     if (editButton) {
-      editButton.style.display = "inline-flex";
+      editButton.style.display =
+        "inline-flex";
     }
 
-    avatarEditBtn?.classList.add("hidden");
-    avatarPicker?.classList.add("hidden");
+    avatarEditBtn?.classList.add(
+      "hidden"
+    );
 
-    // Toast
+    avatarPicker?.classList.add(
+      "hidden"
+    );
 
-    const toast = document.getElementById("save-toast");
+    // Success Toast
+
+    const toast =
+      document.getElementById(
+        "save-toast"
+      );
 
     if (toast) {
       toast.classList.add("show");
@@ -673,13 +946,19 @@ window.saveProfile = async function () {
       }, 2500);
     }
   } catch (error) {
-    console.error("Error saving profile:", error);
-    alert("Failed to save profile. Check the browser console for details.");
+    console.error(
+      "Error saving profile:",
+      error
+    );
+
+    alert(
+      "Failed to save profile. Check the browser console for details."
+    );
   }
 };
 
 
-// Favourite Attractions
+// Escape HTML
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -690,10 +969,16 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-async function loadSavedItineraryCount(user) {
-  const countElement = document.getElementById(
-    "profile-itinerary-count"
-  );
+
+// Saved Itinerary Count
+
+async function loadSavedItineraryCount(
+  user
+) {
+  const countElement =
+    document.getElementById(
+      "profile-itinerary-count"
+    );
 
   if (!countElement) {
     return;
@@ -702,18 +987,23 @@ async function loadSavedItineraryCount(user) {
   try {
     const itineraryQuery = query(
       collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
+      where(
+        "user_id",
+        "==",
+        user.uid
+      )
     );
 
-    const snapshot = await getDocs(itineraryQuery);
+    const snapshot =
+      await getDocs(itineraryQuery);
 
-    countElement.textContent = String(snapshot.size);
+    countElement.textContent =
+      String(snapshot.size);
 
     console.log(
       "Profile saved itinerary count:",
       snapshot.size
     );
-
   } catch (error) {
     console.error(
       "Failed to load saved itinerary count:",
@@ -724,26 +1014,53 @@ async function loadSavedItineraryCount(user) {
   }
 }
 
+
+// Favourite Attractions
+
 async function loadFavourites(user) {
-  const loadingEl = document.getElementById("fav-loading");
-  const listEl = document.getElementById("fav-list");
-  const emptyEl = document.getElementById("fav-empty");
-  const countEl = document.getElementById("fav-count-stat");
+  const loadingEl =
+    document.getElementById(
+      "fav-loading"
+    );
+
+  const listEl =
+    document.getElementById(
+      "fav-list"
+    );
+
+  const emptyEl =
+    document.getElementById(
+      "fav-empty"
+    );
+
+  const countEl =
+    document.getElementById(
+      "fav-count-stat"
+    );
 
   try {
     const favouritesQuery = query(
-      collection(db, FAVOURITES_COLLECTION),
-      where("user_id", "==", user.uid)
+      collection(
+        db,
+        FAVOURITES_COLLECTION
+      ),
+      where(
+        "user_id",
+        "==",
+        user.uid
+      )
     );
 
-    const snapshot = await getDocs(favouritesQuery);
+    const snapshot =
+      await getDocs(favouritesQuery);
 
     if (loadingEl) {
       loadingEl.style.display = "none";
     }
 
     if (countEl) {
-      countEl.textContent = String(snapshot.size);
+      countEl.textContent =
+        String(snapshot.size);
     }
 
     if (snapshot.empty) {
@@ -771,24 +1088,47 @@ async function loadFavourites(user) {
 
     snapshot.forEach(docSnap => {
       const data = docSnap.data();
-      const row = document.createElement("div");
+
+      const row =
+        document.createElement("div");
 
       row.className = "fav-row";
 
       row.innerHTML = `
         <div class="recent-icon">⭐</div>
-        <div class="fav-row-name">${escapeHtml(data.name)}</div>
-        <button class="fav-remove" type="button">Remove</button>
+
+        <div class="fav-row-name">
+          ${escapeHtml(
+            data.name || "Unnamed Attraction"
+          )}
+        </div>
+
+        <button
+          class="fav-remove"
+          type="button">
+          Remove
+        </button>
       `;
 
-      row.querySelector(".fav-remove")?.addEventListener("click", () => {
-        removeFavourite(docSnap.id, user);
-      });
+      row
+        .querySelector(".fav-remove")
+        ?.addEventListener(
+          "click",
+          () => {
+            removeFavourite(
+              docSnap.id,
+              user
+            );
+          }
+        );
 
       listEl.appendChild(row);
     });
   } catch (error) {
-    console.error("Failed to load favourites:", error);
+    console.error(
+      "Failed to load favourites:",
+      error
+    );
 
     if (loadingEl) {
       loadingEl.style.display = "none";
@@ -797,25 +1137,88 @@ async function loadFavourites(user) {
     if (emptyEl) {
       emptyEl.style.display = "block";
     }
+
+    if (countEl) {
+      countEl.textContent = "0";
+    }
   }
 }
 
 
 // Remove Favourite
 
-async function removeFavourite(documentId, user) {
+async function removeFavourite(
+  documentId,
+  user
+) {
   try {
     await deleteDoc(
-      doc(db, FAVOURITES_COLLECTION, documentId)
+      doc(
+        db,
+        FAVOURITES_COLLECTION,
+        documentId
+      )
     );
 
     await loadFavourites(user);
   } catch (error) {
-    console.error("Failed to remove favourite:", error);
+    console.error(
+      "Failed to remove favourite:",
+      error
+    );
   }
 }
 
+
+// Shared Itinerary Count
+
+async function loadSharedItineraryCount(
+  user
+) {
+  const countElement =
+    document.getElementById(
+      "profile-shared-count"
+    );
+
+  if (!countElement) {
+    return;
+  }
+
+  try {
+    const sharedQuery = query(
+      collection(db, "Itinerary"),
+      where(
+        "user_id",
+        "==",
+        user.uid
+      ),
+      where(
+        "status",
+        "==",
+        "Published"
+      )
+    );
+
+    const snapshot =
+      await getDocs(sharedQuery);
+
+    countElement.textContent =
+      String(snapshot.size);
+  } catch (error) {
+    console.error(
+      "Failed to load shared itinerary count:",
+      error
+    );
+
+    countElement.textContent = "0";
+  }
+}
+
+
 // Account Security
+
+let canChangePassword = false;
+
 
 function configurePasswordSection(user) {
   if (
@@ -826,238 +1229,344 @@ function configurePasswordSection(user) {
     return;
   }
 
-  const hasPasswordProvider = user.providerData.some(
-    provider => provider.providerId === "password"
+  canChangePassword =
+    user.providerData.some(
+      provider =>
+        provider.providerId ===
+        "password"
+    );
+
+  changePasswordForm.reset();
+  changePasswordForm.classList.add(
+    "hidden"
   );
 
-  if (hasPasswordProvider) {
-    openChangePasswordBtn.classList.remove("hidden");
-    googlePasswordNote.classList.add("hidden");
+  if (passwordMessage) {
+    passwordMessage.textContent = "";
+
+    passwordMessage.className =
+      "password-message";
+  }
+
+  if (canChangePassword) {
+    openChangePasswordBtn
+      .classList
+      .remove("hidden");
+
+    googlePasswordNote
+      .classList
+      .add("hidden");
   } else {
-    openChangePasswordBtn.classList.add("hidden");
-    changePasswordForm.classList.add("hidden");
-    googlePasswordNote.classList.remove("hidden");
+    openChangePasswordBtn
+      .classList
+      .add("hidden");
+
+    googlePasswordNote
+      .classList
+      .remove("hidden");
   }
 }
 
-function showPasswordMessage(message, type) {
+
+openChangePasswordBtn?.addEventListener(
+  "click",
+  () => {
+    if (!canChangePassword) {
+      return;
+    }
+
+    changePasswordForm
+      ?.classList
+      .remove("hidden");
+
+    openChangePasswordBtn
+      .classList
+      .add("hidden");
+
+    currentPasswordInput?.focus();
+  }
+);
+
+
+function showPasswordMessage(
+  message,
+  type
+) {
   if (!passwordMessage) {
     return;
   }
 
-  passwordMessage.textContent = message;
+  passwordMessage.textContent =
+    message;
+
   passwordMessage.className =
     `password-message ${type} show`;
 }
 
+
 function resetPasswordForm() {
   changePasswordForm?.reset();
-  changePasswordForm?.classList.add("hidden");
-  openChangePasswordBtn?.classList.remove("hidden");
+
+  changePasswordForm
+    ?.classList
+    .add("hidden");
+
+  if (canChangePassword) {
+    openChangePasswordBtn
+      ?.classList
+      .remove("hidden");
+  } else {
+    openChangePasswordBtn
+      ?.classList
+      .add("hidden");
+  }
 
   if (passwordMessage) {
     passwordMessage.textContent = "";
-    passwordMessage.className = "password-message";
+
+    passwordMessage.className =
+      "password-message";
   }
 }
 
-openChangePasswordBtn?.addEventListener("click", () => {
-  changePasswordForm?.classList.remove("hidden");
-  openChangePasswordBtn.classList.add("hidden");
-  currentPasswordInput?.focus();
-});
+cancelChangePasswordBtn
+  ?.addEventListener(
+    "click",
+    resetPasswordForm
+  );
 
-cancelChangePasswordBtn?.addEventListener(
-  "click",
-  resetPasswordForm
-);
 
-changePasswordForm?.addEventListener(
-  "submit",
-  async event => {
-    event.preventDefault();
+changePasswordForm
+  ?.addEventListener(
+    "submit",
+    async event => {
+      event.preventDefault();
 
-    const user = auth.currentUser;
+      const user = auth.currentUser;
 
-    if (!user?.email) {
-      showPasswordMessage(
-        "Unable to verify the current account.",
-        "error"
-      );
-      return;
-    }
-
-    const currentPassword =
-      currentPasswordInput.value;
-
-    const newPassword =
-      newPasswordInput.value;
-
-    const confirmPassword =
-      confirmNewPasswordInput.value;
-
-    const strongPassword =
-      newPassword.length >= 8 &&
-      /[a-z]/.test(newPassword) &&
-      /[A-Z]/.test(newPassword) &&
-      /[0-9]/.test(newPassword);
-
-    if (!strongPassword) {
-      showPasswordMessage(
-        "Use at least 8 characters with uppercase, lowercase and a number.",
-        "error"
-      );
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      showPasswordMessage(
-        "New passwords do not match.",
-        "error"
-      );
-      return;
-    }
-
-    if (currentPassword === newPassword) {
-      showPasswordMessage(
-        "New password must be different from the current password.",
-        "error"
-      );
-      return;
-    }
-
-    try {
-      savePasswordBtn.disabled = true;
-      savePasswordBtn.textContent = "Updating...";
-
-      const credential =
-        EmailAuthProvider.credential(
-          user.email,
-          currentPassword
+      if (!user?.email) {
+        showPasswordMessage(
+          "Unable to verify the current account.",
+          "error"
         );
-
-      await reauthenticateWithCredential(
-        user,
-        credential
-      );
-
-      await updatePassword(
-        user,
-        newPassword
-      );
-
-      changePasswordForm.reset();
-
-      showPasswordMessage(
-        "Password updated successfully.",
-        "success"
-      );
-    } catch (error) {
-      console.error(
-        "Failed to update password:",
-        error
-      );
-
-      let message =
-        "Failed to update password. Please try again.";
-
-      if (
-        error.code === "auth/invalid-credential" ||
-        error.code === "auth/wrong-password"
-      ) {
-        message = "The current password is incorrect.";
-      } else if (error.code === "auth/weak-password") {
-        message = "The new password is too weak.";
-      } else if (
-        error.code === "auth/too-many-requests"
-      ) {
-        message =
-          "Too many attempts. Please wait and try again.";
-      } else if (
-        error.code === "auth/network-request-failed"
-      ) {
-        message =
-          "Network error. Please check your connection.";
+        return;
       }
 
-      showPasswordMessage(
-        message,
-        "error"
-      );
-    } finally {
-      savePasswordBtn.disabled = false;
-      savePasswordBtn.textContent =
-        "Update Password";
+      const currentPassword =
+        currentPasswordInput?.value || "";
+
+      const newPassword =
+        newPasswordInput?.value || "";
+
+      const confirmPassword =
+        confirmNewPasswordInput?.value || "";
+
+      if (!currentPassword) {
+        showPasswordMessage(
+          "Please enter your current password.",
+          "error"
+        );
+        return;
+      }
+
+      const strongPassword =
+        newPassword.length >= 8 &&
+        /[a-z]/.test(newPassword) &&
+        /[A-Z]/.test(newPassword) &&
+        /[0-9]/.test(newPassword);
+
+      if (!strongPassword) {
+        showPasswordMessage(
+          "Use at least 8 characters with uppercase, lowercase and a number.",
+          "error"
+        );
+        return;
+      }
+
+      if (
+        newPassword !==
+        confirmPassword
+      ) {
+        showPasswordMessage(
+          "New passwords do not match.",
+          "error"
+        );
+        return;
+      }
+
+      if (
+        currentPassword ===
+        newPassword
+      ) {
+        showPasswordMessage(
+          "New password must be different from the current password.",
+          "error"
+        );
+        return;
+      }
+
+      try {
+        if (savePasswordBtn) {
+          savePasswordBtn.disabled =
+            true;
+
+          savePasswordBtn.textContent =
+            "Updating...";
+        }
+
+        const credential =
+          EmailAuthProvider.credential(
+            user.email,
+            currentPassword
+          );
+
+        await reauthenticateWithCredential(
+          user,
+          credential
+        );
+
+        await updatePassword(
+          user,
+          newPassword
+        );
+
+        changePasswordForm.reset();
+
+        showPasswordMessage(
+          "Password updated successfully.",
+          "success"
+        );
+      } catch (error) {
+        console.error(
+          "Failed to update password:",
+          error
+        );
+
+        let message =
+          "Failed to update password. Please try again.";
+
+        if (
+          error.code ===
+            "auth/invalid-credential" ||
+          error.code ===
+            "auth/wrong-password"
+        ) {
+          message =
+            "The current password is incorrect.";
+        } else if (
+          error.code ===
+          "auth/weak-password"
+        ) {
+          message =
+            "The new password is too weak.";
+        } else if (
+          error.code ===
+          "auth/too-many-requests"
+        ) {
+          message =
+            "Too many attempts. Please wait and try again.";
+        } else if (
+          error.code ===
+          "auth/network-request-failed"
+        ) {
+          message =
+            "Network error. Please check your connection.";
+        }
+
+        showPasswordMessage(
+          message,
+          "error"
+        );
+      } finally {
+        if (savePasswordBtn) {
+          savePasswordBtn.disabled =
+            false;
+
+          savePasswordBtn.textContent =
+            "Update Password";
+        }
+      }
     }
-  }
-);
+  );
+
 
 // Logout
-window.confirmLogout = async function () {
-  const confirmed = confirm("Are you sure you want to sign out?");
 
-  if (!confirmed) {
+// Custom Sign Out Modal
+
+const logoutDialog =
+  document.getElementById("logout-dialog");
+
+const cancelLogoutBtn =
+  document.getElementById("cancel-logout-btn");
+
+const confirmLogoutBtn =
+  document.getElementById("confirm-logout-btn");
+
+
+window.confirmLogout = function () {
+  if (!logoutDialog) {
+    console.error(
+      "Logout dialog was not found."
+    );
     return;
   }
 
-  try {
-    await signOut(auth);
-    window.location.href = "/";
-  } catch (error) {
-    console.error("Logout failed:", error);
+  if (!logoutDialog.open) {
+    logoutDialog.showModal();
   }
 };
 
-async function loadSavedItineraryCount(user) {
-  const countElement = document.getElementById(
-    "profile-itinerary-count"
-  );
 
-  try {
-    const itineraryQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
-    );
-
-    const snapshot = await getDocs(itineraryQuery);
-
-    countElement.textContent = String(snapshot.size);
-  } catch (error) {
-    console.error(error);
-    countElement.textContent = "0";
+cancelLogoutBtn?.addEventListener(
+  "click",
+  () => {
+    logoutDialog?.close();
   }
-}
+);
 
-async function loadSharedItineraryCount(user) {
-  const dashboardElement = document.getElementById(
-    "dashboard-shared-count"
-  );
 
-  const profileElement = document.getElementById(
-    "profile-shared-count"
-  );
+logoutDialog?.addEventListener(
+  "click",
+  event => {
+    const dialogBox =
+      logoutDialog.getBoundingClientRect();
 
-  try {
-    const sharedQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid),
-      where("status", "==", "Published")
-    );
+    const clickedOutside =
+      event.clientX < dialogBox.left ||
+      event.clientX > dialogBox.right ||
+      event.clientY < dialogBox.top ||
+      event.clientY > dialogBox.bottom;
 
-    const snapshot = await getDocs(sharedQuery);
-    const count = String(snapshot.size);
-
-    if (dashboardElement) {
-      dashboardElement.textContent = count;
+    if (clickedOutside) {
+      logoutDialog.close();
     }
-
-    if (profileElement) {
-      profileElement.textContent = count;
-    }
-  } catch (error) {
-    console.error("Failed to load shared count:", error);
-
-    if (dashboardElement) dashboardElement.textContent = "0";
-    if (profileElement) profileElement.textContent = "0";
   }
-}
+);
+
+
+confirmLogoutBtn?.addEventListener(
+  "click",
+  async () => {
+    try {
+      confirmLogoutBtn.disabled = true;
+
+      confirmLogoutBtn.textContent =
+        "Signing out...";
+
+      await signOut(auth);
+
+      window.location.replace("/");
+    } catch (error) {
+      console.error(
+        "Logout failed:",
+        error
+      );
+
+      confirmLogoutBtn.disabled = false;
+
+      confirmLogoutBtn.textContent =
+        "Sign Out";
+    }
+  }
+);

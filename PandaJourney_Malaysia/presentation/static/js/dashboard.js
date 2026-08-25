@@ -16,121 +16,166 @@ import {
   getDocs
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-// Itinerary Count
 
-async function loadSavedItineraryCount(user) {
-  const countElement = document.getElementById(
-    "dashboard-itinerary-count"
-  );
+// =================================
+// HTML Elements
+// =================================
 
-  if (!countElement) {
-    return;
-  }
+const dashboardName =
+  document.getElementById("dashboardName");
 
-  try {
-    const itineraryQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
-    );
+const heroName =
+  document.getElementById("heroName");
 
-    const snapshot = await getDocs(itineraryQuery);
+const heroUserName =
+  document.getElementById("heroUserName");
 
-    countElement.textContent = String(snapshot.size);
+const heroUserEmail =
+  document.getElementById("heroUserEmail");
 
-    console.log(
-      "Dashboard saved itinerary count:",
-      snapshot.size
-    );
+const avatarImage =
+  document.getElementById("avatarImage");
 
-  } catch (error) {
-    console.error(
-      "Failed to load saved itinerary count:",
-      error
-    );
+const avatarInitials =
+  document.getElementById("avatarInitials");
 
-    countElement.textContent = "0";
-  }
+const savedCountElement =
+  document.getElementById("dashboard-saved-count");
+
+const favouriteCountElement =
+  document.getElementById("dashboard-favourite-count");
+
+const sharedCountElement =
+  document.getElementById("dashboard-shared-count");
+
+const upcomingDateElement =
+  document.getElementById("dashboard-upcoming-date");
+
+const recentListElement =
+  document.getElementById("dashboard-recent-list");
+
+
+// =================================
+// Utility Functions
+// =================================
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
-// Favourite Count
 
-async function loadFavouriteCount(user) {
-  const countElement = document.getElementById("dashboard-favourite-count");
-
-  console.log("Favourite count element:", countElement);
-  console.log("Current UID:", user.uid);
-
-  if (!countElement) {
-    console.error("dashboard-favourite-count not found.");
-    return;
+function getDateString(value) {
+  if (!value) {
+    return "";
   }
 
-  try {
-    const favouritesQuery = query(
-      collection(db, "Favourites"),
-      where("user_id", "==", user.uid)
-    );
-
-    const snapshot = await getDocs(favouritesQuery);
-
-    console.log("Favourite documents found:", snapshot.size);
-
-    snapshot.forEach(docSnap => {
-      console.log("Favourite:", docSnap.id, docSnap.data());
-    });
-
-    countElement.textContent = String(snapshot.size);
-  } catch (error) {
-    console.error("Failed to load favourite count:", error);
-    countElement.textContent = "0";
+  if (typeof value === "string") {
+    return value.slice(0, 10);
   }
+
+  if (value?.toDate) {
+    return value
+      .toDate()
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  if (value instanceof Date) {
+    return value
+      .toISOString()
+      .slice(0, 10);
+  }
+
+  return "";
 }
 
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    console.log("No Firebase user logged in.");
-    return;
+
+function getUpdatedTime(value) {
+  if (!value) {
+    return 0;
   }
 
-  console.log("Dashboard user:", user);
+  if (value?.toMillis) {
+    return value.toMillis();
+  }
 
+  if (value?.toDate) {
+    return value.toDate().getTime();
+  }
+
+  const parsedTime =
+    new Date(value).getTime();
+
+  return Number.isNaN(parsedTime)
+    ? 0
+    : parsedTime;
+}
+
+
+// =================================
+// Dashboard User Profile
+// =================================
+
+async function loadDashboardUser(user) {
   let name =
     user.displayName ||
     user.email?.split("@")[0] ||
-    "";
+    "Traveller";
 
   let avatarType = "";
   let avatar = "";
   let avatarUrl = "";
 
   try {
-    const userRef = doc(db, "users", user.uid);
-    const snapshot = await getDoc(userRef);
+    const userRef =
+      doc(db, "users", user.uid);
+
+    const snapshot =
+      await getDoc(userRef);
 
     if (snapshot.exists()) {
       const data = snapshot.data();
 
-      console.log("Dashboard profile:", data);
+      console.log(
+        "Dashboard profile:",
+        data
+      );
 
       if (data.displayName) {
         name = data.displayName;
       }
 
-      avatarType = data.avatarType || "";
-      avatar = data.avatar || "";
-      avatarUrl = data.avatarUrl || "";
+      avatarType =
+        data.avatarType || "";
+
+      avatar =
+        data.avatar || "";
+
+      avatarUrl =
+        data.avatarUrl || "";
 
       if (!avatarType && avatar) {
         avatarType = "emoji";
       }
+
+      if (
+        !avatarType &&
+        user.photoURL
+      ) {
+        avatarType = "google";
+      }
     }
   } catch (error) {
-    console.error("Failed to load dashboard profile:", error);
+    console.error(
+      "Failed to load dashboard profile:",
+      error
+    );
   }
-
-  const dashboardName = document.getElementById("dashboardName");
-  const heroName = document.getElementById("heroName");
-  const heroUserName = document.getElementById("heroUserName");
 
   if (dashboardName) {
     dashboardName.textContent = name;
@@ -144,257 +189,415 @@ onAuthStateChanged(auth, async (user) => {
     heroUserName.textContent = name;
   }
 
-  const heroUserEmail = document.getElementById("heroUserEmail");
-
   if (heroUserEmail) {
-    heroUserEmail.textContent = user.email || "";
+    heroUserEmail.textContent =
+      user.email || "";
   }
 
-  const avatarImage = document.getElementById("avatarImage");
-  const avatarInitials = document.getElementById("avatarInitials");
-
-  if (avatarType === "upload" && avatarUrl) {
-    if (avatarImage) {
-      avatarImage.src = avatarUrl;
-      avatarImage.style.display = "block";
-    }
-
-    if (avatarInitials) {
-      avatarInitials.style.display = "none";
-    }
-  } else if (avatarType === "emoji" && avatar) {
-    if (avatarImage) {
-      avatarImage.style.display = "none";
-    }
-
-    if (avatarInitials) {
-      avatarInitials.textContent = avatar;
-      avatarInitials.style.display = "flex";
-    }
-  } else if ((avatarType === "google" || !avatarType) && user.photoURL) {
-    if (avatarImage) {
-      avatarImage.src = user.photoURL;
-      avatarImage.style.display = "block";
-    }
-
-    if (avatarInitials) {
-      avatarInitials.style.display = "none";
-    }
-  } else {
-    if (avatarImage) {
-      avatarImage.style.display = "none";
-    }
-
-    if (avatarInitials) {
-      avatarInitials.textContent = name.charAt(0).toUpperCase();
-      avatarInitials.style.display = "flex";
-    }
-  }
-
-  await loadFavouriteCount(user);
-  await loadSavedItineraryCount(user);
-});
-
-async function loadSavedItineraryCount(user) {
-  const countElement = document.getElementById(
-    "dashboard-itinerary-count"
-  );
-
-  try {
-    const itineraryQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
-    );
-
-    const snapshot = await getDocs(itineraryQuery);
-
-    countElement.textContent = String(snapshot.size);
-  } catch (error) {
-    console.error("Failed to load itinerary count:", error);
-    countElement.textContent = "0";
-  }
+  renderDashboardAvatar({
+    type: avatarType,
+    emoji: avatar,
+    uploadUrl: avatarUrl,
+    googleUrl: user.photoURL || "",
+    name
+  });
 }
 
+
+// =================================
+// Dashboard Avatar
+// =================================
+
+function renderDashboardAvatar({
+  type = "",
+  emoji = "",
+  uploadUrl = "",
+  googleUrl = "",
+  name = ""
+}) {
+  if (!avatarImage || !avatarInitials) {
+    return;
+  }
+
+  if (
+    type === "upload" &&
+    uploadUrl
+  ) {
+    avatarImage.src = uploadUrl;
+    avatarImage.style.display = "block";
+
+    avatarInitials.style.display =
+      "none";
+
+    return;
+  }
+
+  if (
+    type === "emoji" &&
+    emoji
+  ) {
+    avatarImage.removeAttribute("src");
+    avatarImage.style.display = "none";
+
+    avatarInitials.textContent =
+      emoji;
+
+    avatarInitials.style.display =
+      "flex";
+
+    return;
+  }
+
+  if (
+    (type === "google" || !type) &&
+    googleUrl
+  ) {
+    avatarImage.src = googleUrl;
+    avatarImage.style.display = "block";
+
+    avatarInitials.style.display =
+      "none";
+
+    return;
+  }
+
+  avatarImage.removeAttribute("src");
+  avatarImage.style.display = "none";
+
+  avatarInitials.textContent =
+    name.charAt(0).toUpperCase() ||
+    "?";
+
+  avatarInitials.style.display =
+    "flex";
+}
+
+
+// =================================
+// Favourite Count
+// =================================
+
 async function loadFavouriteCount(user) {
-  const countElement = document.getElementById(
-    "dashboard-favourite-count"
-  );
+  if (!favouriteCountElement) {
+    console.error(
+      "dashboard-favourite-count was not found."
+    );
+    return;
+  }
 
   try {
     const favouritesQuery = query(
       collection(db, "Favourites"),
-      where("user_id", "==", user.uid)
+      where(
+        "user_id",
+        "==",
+        user.uid
+      )
     );
 
-    const snapshot = await getDocs(favouritesQuery);
+    const snapshot =
+      await getDocs(favouritesQuery);
 
-    countElement.textContent = String(snapshot.size);
+    favouriteCountElement.textContent =
+      String(snapshot.size);
+
+    console.log(
+      "Dashboard favourite count:",
+      snapshot.size
+    );
   } catch (error) {
-    console.error("Failed to load favourite count:", error);
-    countElement.textContent = "0";
+    console.error(
+      "Failed to load favourite count:",
+      error
+    );
+
+    favouriteCountElement.textContent =
+      "0";
   }
 }
 
-async function loadSharedItineraryCount(user) {
-  const dashboardElement = document.getElementById(
-    "dashboard-shared-count"
-  );
 
-  const profileElement = document.getElementById(
-    "profile-shared-count"
-  );
+// =================================
+// Itinerary Dashboard Data
+// =================================
 
-  try {
-    const sharedQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid),
-      where("status", "==", "Published")
-    );
-
-    const snapshot = await getDocs(sharedQuery);
-    const count = String(snapshot.size);
-
-    if (dashboardElement) {
-      dashboardElement.textContent = count;
-    }
-
-    if (profileElement) {
-      profileElement.textContent = count;
-    }
-  } catch (error) {
-    console.error("Failed to load shared count:", error);
-
-    if (dashboardElement) dashboardElement.textContent = "0";
-    if (profileElement) profileElement.textContent = "0";
-  }
-}
-
-async function loadUpcomingTrip(user) {
-  const element = document.getElementById(
-    "dashboard-upcoming-date"
-  );
-
+async function loadItineraryData(user) {
   try {
     const itineraryQuery = query(
       collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
+      where(
+        "user_id",
+        "==",
+        user.uid
+      )
     );
 
-    const snapshot = await getDocs(itineraryQuery);
-    const today = new Date().toISOString().slice(0, 10);
+    const snapshot =
+      await getDocs(itineraryQuery);
 
-    const upcoming = snapshot.docs
-      .map(docSnap => ({
+    const itineraries =
+      snapshot.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data()
+      }));
+
+    updateSavedCount(itineraries);
+    updateSharedCount(itineraries);
+    updateUpcomingTrip(itineraries);
+    updateRecentItineraries(itineraries);
+
+    console.log(
+      "Dashboard itineraries:",
+      itineraries.length
+    );
+  } catch (error) {
+    console.error(
+      "Failed to load itinerary data:",
+      error
+    );
+
+    if (savedCountElement) {
+      savedCountElement.textContent =
+        "0";
+    }
+
+    if (sharedCountElement) {
+      sharedCountElement.textContent =
+        "0";
+    }
+
+    if (upcomingDateElement) {
+      upcomingDateElement.textContent =
+        "No Trip";
+    }
+
+    if (recentListElement) {
+      recentListElement.innerHTML = `
+        <div
+          class="empty-state"
+          style="padding: 28px 0;">
+
+          <div class="empty-icon">
+            ⚠️
+          </div>
+
+          <div class="empty-sub">
+            Unable to load itineraries.
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+
+
+// =================================
+// Saved Itinerary Count
+// =================================
+
+function updateSavedCount(itineraries) {
+  if (!savedCountElement) {
+    return;
+  }
+
+  savedCountElement.textContent =
+    String(itineraries.length);
+}
+
+
+// =================================
+// Shared Itinerary Count
+// =================================
+
+function updateSharedCount(itineraries) {
+  if (!sharedCountElement) {
+    return;
+  }
+
+  const sharedCount =
+    itineraries.filter(item =>
+      String(item.status || "")
+        .toLowerCase() ===
+      "published"
+    ).length;
+
+  sharedCountElement.textContent =
+    String(sharedCount);
+}
+
+
+// =================================
+// Upcoming Trip
+// =================================
+
+function updateUpcomingTrip(itineraries) {
+  if (!upcomingDateElement) {
+    return;
+  }
+
+  const today =
+    new Date()
+      .toISOString()
+      .slice(0, 10);
+
+  const upcoming =
+    itineraries
+      .map(item => ({
+        ...item,
+        dateValue: getDateString(
+          item.travel_date ||
+          item.date ||
+          item.start_date
+        )
       }))
-      .filter(item => item.travel_date && item.travel_date >= today)
+      .filter(item =>
+        item.dateValue &&
+        item.dateValue >= today
+      )
       .sort((a, b) =>
-        a.travel_date.localeCompare(b.travel_date)
+        a.dateValue.localeCompare(
+          b.dateValue
+        )
       );
 
-    element.textContent = upcoming.length
-      ? upcoming[0].travel_date
+  upcomingDateElement.textContent =
+    upcoming.length
+      ? upcoming[0].dateValue
       : "No Trip";
-  } catch (error) {
-    console.error("Failed to load upcoming trip:", error);
-    element.textContent = "No Trip";
+}
+
+
+// =================================
+// Recent Itineraries
+// =================================
+
+function updateRecentItineraries(
+  itineraries
+) {
+  if (!recentListElement) {
+    return;
   }
-}
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-async function loadRecentItineraries(user) {
-  const listElement = document.getElementById(
-    "dashboard-recent-list"
-  );
-
-  try {
-    const itineraryQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
-    );
-
-    const snapshot = await getDocs(itineraryQuery);
-
-    const itineraries = snapshot.docs
-      .map(docSnap => ({
-        id: docSnap.id,
-        ...docSnap.data()
-      }))
+  const recentItineraries =
+    [...itineraries]
       .sort((a, b) => {
-        const aTime = a.updated_at?.toMillis?.() || 0;
-        const bTime = b.updated_at?.toMillis?.() || 0;
+        const aTime =
+          getUpdatedTime(
+            a.updated_at ||
+            a.updatedAt ||
+            a.created_at ||
+            a.createdAt
+          );
+
+        const bTime =
+          getUpdatedTime(
+            b.updated_at ||
+            b.updatedAt ||
+            b.created_at ||
+            b.createdAt
+          );
+
         return bTime - aTime;
       })
       .slice(0, 3);
 
-    if (!itineraries.length) {
-      listElement.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🗓️</div>
-          <div class="empty-sub">
-            No saved itineraries yet.
-          </div>
-        </div>
-      `;
-      return;
-    }
+  if (!recentItineraries.length) {
+    recentListElement.innerHTML = `
+      <div
+        class="empty-state"
+        style="padding: 28px 0;">
 
-    listElement.innerHTML = itineraries.map(item => `
-      <div class="recent-item">
-        <div class="recent-icon">🗓️</div>
-
-        <div class="recent-info">
-          <div class="recent-title">
-            ${escapeHtml(item.title || "Untitled Trip")}
-          </div>
-
-          <div class="recent-meta">
-            ${escapeHtml(item.destination || "Malaysia")}
-            ·
-            ${escapeHtml(item.travel_date || "No date")}
-          </div>
+        <div class="empty-icon">
+          🗓️
         </div>
 
-        <a
-          href="/saved-itineraries/${encodeURIComponent(item.id)}"
-          class="btn btn-secondary btn-sm">
-          View
-        </a>
-      </div>
-    `).join("");
-  } catch (error) {
-    console.error("Failed to load recent itineraries:", error);
-
-    listElement.innerHTML = `
-      <div class="empty-state">
-        Unable to load itineraries.
+        <div class="empty-sub">
+          No saved itineraries yet.
+        </div>
       </div>
     `;
-  }
-}
 
-onAuthStateChanged(auth, async (user) => {
-  if (!user) {
-    window.location.href = "/";
     return;
   }
 
-  await loadDashboardUser(user);
+  recentListElement.innerHTML =
+    recentItineraries
+      .map(item => {
+        const title =
+          item.title ||
+          item.trip_name ||
+          item.name ||
+          "Untitled Trip";
 
-  await Promise.all([
-    loadSavedItineraryCount(user),
-    loadFavouriteCount(user),
-    loadSharedItineraryCount(user),
-    loadUpcomingTrip(user),
-    loadRecentItineraries(user)
-  ]);
-});
+        const destination =
+          item.destination ||
+          item.location ||
+          "Malaysia";
+
+        const travelDate =
+          getDateString(
+            item.travel_date ||
+            item.date ||
+            item.start_date
+          ) ||
+          "No date";
+
+        return `
+          <div class="recent-item">
+            <div class="recent-icon">
+              🗓️
+            </div>
+
+            <div class="recent-info">
+              <div class="recent-title">
+                ${escapeHtml(title)}
+              </div>
+
+              <div class="recent-meta">
+                ${escapeHtml(destination)}
+                ·
+                ${escapeHtml(travelDate)}
+              </div>
+            </div>
+
+            <a
+              href="/saved-itineraries/${encodeURIComponent(item.id)}"
+              class="btn btn-secondary btn-sm">
+              View
+            </a>
+          </div>
+        `;
+      })
+      .join("");
+}
+
+
+// =================================
+// Firebase Authentication
+// =================================
+
+onAuthStateChanged(
+  auth,
+  async user => {
+    if (!user) {
+      console.log(
+        "No Firebase user logged in."
+      );
+
+      window.location.href = "/";
+      return;
+    }
+
+    console.log(
+      "Dashboard user:",
+      user.uid
+    );
+
+    await loadDashboardUser(user);
+
+    await Promise.all([
+      loadFavouriteCount(user),
+      loadItineraryData(user)
+    ]);
+  }
+);

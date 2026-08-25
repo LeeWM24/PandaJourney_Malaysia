@@ -4,20 +4,94 @@
 {% block page_title %}My Profile{% endblock %}
 {% block page_subtitle %}Manage your account and profile{% endblock %}
 
-
 {% block topbar_actions %}
 <button
   type="button"
   class="btn btn-danger btn-sm"
+  id="topbar-signout-btn"
   onclick="confirmLogout()">
   🚪 Sign out
 </button>
 {% endblock %}
 
-
 {% block extra_head %}
-
 <style>
+/* =================================
+   Custom Sign Out Dialog
+================================= */
+
+.logout-dialog {
+  width: min(420px, calc(100% - 40px));
+  padding: 28px;
+  color: var(--fg);
+  background: #ffffff;
+  border: 1px solid #d7e9e2;
+  border-radius: 22px;
+  box-shadow: 0 24px 70px rgba(12, 46, 36, 0.24);
+}
+
+.logout-dialog[open] {
+  animation: logout-dialog-open 0.2s ease;
+}
+
+.logout-dialog::backdrop {
+  background: rgba(15, 35, 29, 0.52);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.logout-dialog-icon {
+  width: 52px;
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+  background: #fff0f0;
+  border-radius: 16px;
+  font-size: 24px;
+}
+
+.logout-dialog-content h3 {
+  margin: 0 0 8px;
+  font-size: 21px;
+  font-weight: 800;
+}
+
+.logout-dialog-content p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.logout-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.logout-dialog-actions .btn {
+  min-width: 100px;
+}
+
+#confirm-logout-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+@keyframes logout-dialog-open {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 
 /* =================================
    Profile Edit
@@ -57,7 +131,6 @@
   gap: 10px;
 }
 
-
 /* =================================
    Avatar
 ================================= */
@@ -85,28 +158,19 @@
   justify-content: center;
 }
 
-
-/*Avatar Picker*/
+/* Avatar Picker */
 
 .avatar-picker {
   position: absolute;
-
   top: 50%;
   left: calc(100% + 14px);
-
   transform: translateY(-50%);
-
   width: 290px;
   padding: 16px;
-
   background: white;
-
   border: 1px solid #d6e9e2;
   border-radius: 16px;
-
-  box-shadow:
-    0 10px 30px rgba(0,0,0,.12);
-
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
   z-index: 100;
 }
 
@@ -115,19 +179,15 @@
 }
 
 .avatar-picker-title {
+  margin-bottom: 12px;
   font-size: 15px;
   font-weight: 700;
-  margin-bottom: 12px;
 }
-
-
-/* Google + Upload */
 
 .avatar-source-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-
   margin-bottom: 14px;
 }
 
@@ -136,18 +196,13 @@
   white-space: nowrap;
 }
 
-
-/* Divider */
-
 .avatar-divider {
   display: flex;
   align-items: center;
   gap: 8px;
-
   margin: 12px 0;
-
-  font-size: 11px;
   color: var(--fg-2);
+  font-size: 11px;
 }
 
 .avatar-divider::before,
@@ -158,9 +213,6 @@
   background: var(--border);
 }
 
-
-/* Emoji */
-
 .avatar-options {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -170,26 +222,19 @@
 .avatar-option {
   width: 40px;
   height: 40px;
-
   padding: 0;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
+  background: white;
   border: 1px solid #cde4dc;
   border-radius: 50%;
-
-  background: white;
-
   font-size: 21px;
-
   cursor: pointer;
-
   transition:
-    transform .15s ease,
-    background .15s ease,
-    border-color .15s ease;
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .avatar-option:hover {
@@ -209,13 +254,14 @@
   margin-top: 12px;
 }
 
-
-/* Interests */
+/* =================================
+   Interests
+================================= */
 
 .interest-chip {
   cursor: default;
   user-select: none;
-  opacity: .85;
+  opacity: 0.85;
 }
 
 .interest-chip.editable {
@@ -233,8 +279,8 @@
 
 .interest-hint {
   margin-top: 10px;
-  font-size: 12px;
   color: var(--fg-2);
+  font-size: 12px;
 }
 
 /* =================================
@@ -271,6 +317,7 @@
   border-top: 1px solid var(--border);
 }
 
+#open-change-password-btn.hidden,
 .change-password-form.hidden,
 .google-password-note.hidden {
   display: none !important;
@@ -320,9 +367,12 @@
   font-size: 13px;
 }
 
-/*  Responsive */
+/* =================================
+   Responsive
+================================= */
 
 @media (max-width: 860px) {
+  .profile-edit-fields,
   .change-password-fields {
     grid-template-columns: 1fr;
   }
@@ -335,47 +385,41 @@
   .change-password-actions {
     width: 100%;
   }
-}
-
-@media (max-width: 860px) {
-
-  .profile-edit-fields {
-    grid-template-columns: 1fr;
-  }
 
   .avatar-picker {
     top: calc(100% + 12px);
     left: 0;
-
     transform: none;
-
     width: 280px;
   }
+}
 
+@media (max-width: 520px) {
+  .logout-dialog {
+    padding: 22px;
+    border-radius: 18px;
+  }
+
+  .logout-dialog-actions {
+    flex-direction: column-reverse;
+  }
+
+  .logout-dialog-actions .btn {
+    width: 100%;
+  }
 }
 </style>
 {% endblock %}
 
 {% block content %}
-
-{% set selected_interests =
-  user_preferences.get('interests', [])
-  if user_preferences
-  else []
-%}
-
-
 <div class="page-inner">
-
   <div class="profile-wrap">
-
 
     <!-- =================================
          Identity
     ================================= -->
 
     <div class="card profile-identity">
-
       <div class="profile-identity-inner">
 
         <!-- Avatar -->
@@ -383,28 +427,32 @@
           <div
             class="avatar avatar-xl"
             id="avatar">
+
             <img
               id="avatar-image"
               src=""
-              alt="Profile picture"
-            >
-            <span id="avatar-letter">
-            </span>
+              alt="Profile picture">
+
+            <span id="avatar-letter"></span>
+
             <button
+              type="button"
               class="avatar-edit-btn hidden"
               id="avatar-edit-btn"
-              title="Change profile picture"
-              type="button">
+              title="Change profile picture">
               ✎
             </button>
           </div>
+
           <!-- Avatar Picker -->
           <div
             class="avatar-picker hidden"
             id="avatar-picker">
+
             <div class="avatar-picker-title">
               Change Profile Picture
             </div>
+
             <div class="avatar-source-actions">
               <button
                 type="button"
@@ -412,6 +460,7 @@
                 id="use-google-avatar">
                 Google Photo
               </button>
+
               <button
                 type="button"
                 class="btn btn-secondary btn-sm"
@@ -419,28 +468,30 @@
                 Upload Photo
               </button>
             </div>
+
             <input
               type="file"
               id="avatar-file-input"
               accept="image/jpeg,image/png,image/webp"
-              hidden
-            >
+              hidden>
+
             <div class="avatar-divider">
               or choose an avatar
             </div>
+
             <div class="avatar-options">
               <button type="button" class="avatar-option" data-avatar="🐼">🐼</button>
               <button type="button" class="avatar-option" data-avatar="🐯">🐯</button>
               <button type="button" class="avatar-option" data-avatar="🐨">🐨</button>
               <button type="button" class="avatar-option" data-avatar="🦊">🦊</button>
               <button type="button" class="avatar-option" data-avatar="🐻">🐻</button>
-
               <button type="button" class="avatar-option" data-avatar="✈️">✈️</button>
               <button type="button" class="avatar-option" data-avatar="🌴">🌴</button>
               <button type="button" class="avatar-option" data-avatar="🏝️">🏝️</button>
               <button type="button" class="avatar-option" data-avatar="🗺️">🗺️</button>
               <button type="button" class="avatar-option" data-avatar="😎">😎</button>
             </div>
+
             <div class="avatar-picker-close">
               <button
                 type="button"
@@ -451,23 +502,14 @@
             </div>
           </div>
         </div>
-        <!-- Identity information -->
 
+        <!-- Identity Information -->
         <div class="profile-identity-main">
-
-
           <div id="identity-view">
-
-            <div class="profile-name identity-name">
-              {{ display_name }}
-            </div>
-
-            <div class="profile-email identity-email">
-              {{ email }}
-            </div>
+            <div class="profile-name identity-name"></div>
+            <div class="profile-email identity-email"></div>
 
             <div class="flex flex-wrap gap-2 mt-2">
-
               <span class="provider-badge">
                 Account
               </span>
@@ -475,32 +517,23 @@
               <span class="badge badge-success">
                 ✓ Verified
               </span>
-
             </div>
-
           </div>
 
-          <!-- Edit -->
-
+          <!-- Identity Edit -->
           <div id="identity-edit">
-
             <div class="profile-edit-fields">
-
               <div class="field">
-
                 <label for="edit-name">
                   Display Name
                 </label>
 
                 <input
                   type="text"
-                  id="edit-name"
-                  value="{{ display_name }}"
-                >
+                  id="edit-name">
               </div>
 
               <div class="field">
-
                 <label for="edit-email">
                   Email Address
                 </label>
@@ -508,89 +541,83 @@
                 <input
                   type="email"
                   id="edit-email"
-                  value="{{ email }}"
                   readonly
                   style="
-                    background:#f5f5f5;
-                    cursor:not-allowed;
-                  "
-                >
+                    background: #f5f5f5;
+                    cursor: not-allowed;
+                  ">
               </div>
             </div>
+
             <div
               class="edit-actions hidden"
               id="edit-actions">
+
               <button
-                class="btn btn-primary btn-sm"
                 type="button"
+                class="btn btn-primary btn-sm"
                 onclick="saveProfile()">
                 💾 Save Changes
               </button>
+
               <button
-                class="btn btn-ghost btn-sm"
                 type="button"
+                class="btn btn-ghost btn-sm"
                 onclick="cancelEdit()">
-
                 Cancel
-
               </button>
-
             </div>
-
           </div>
-
         </div>
 
         <div class="profile-card-actions">
-
           <button
+            type="button"
             class="btn btn-secondary btn-sm"
             id="edit-toggle-btn"
-            type="button"
             onclick="toggleEdit()">
-
             ✎ Edit Profile
-
           </button>
-
         </div>
 
       </div>
-
     </div>
 
+    <!-- =================================
+         Profile Statistics
+    ================================= -->
+
     <div class="profile-stats">
-
       <div class="card profile-stat-card">
-
         <div class="profile-stat-icon">
           💾
         </div>
 
         <div>
-
-          <div class="profile-stat-value">
-            {{ saved_count | default(0) }}
+          <div
+            class="profile-stat-value"
+            id="profile-itinerary-count">
+            0
           </div>
 
           <div class="profile-stat-label">
             Saved Itineraries
           </div>
-
         </div>
-
       </div>
 
       <div class="card profile-stat-card">
         <div class="profile-stat-icon">
           ⭐
         </div>
+
         <div>
           <div
             class="profile-stat-value"
             id="fav-count-stat">
             0
           </div>
+
           <div class="profile-stat-label">
             Favourite Attractions
           </div>
@@ -598,31 +625,30 @@
       </div>
 
       <div class="card profile-stat-card">
-
         <div class="profile-stat-icon">
           🔗
         </div>
 
         <div>
-
-          <div class="profile-stat-value">
-            {{ shared_count | default(0) }}
+          <div
+            class="profile-stat-value"
+            id="profile-shared-count">
+            0
           </div>
 
           <div class="profile-stat-label">
             Shared Itineraries
           </div>
-
         </div>
-
       </div>
-
     </div>
 
+    <!-- =================================
+         Travel Interests
+    ================================= -->
+
     <div class="card profile-prefs">
-
       <div>
-
         <div class="profile-prefs-title">
           Travel Interests
         </div>
@@ -630,8 +656,8 @@
         <div class="profile-prefs-sub">
           Interests that describe this traveller
         </div>
-
       </div>
+
       {% set interests_list = [
         ('culture', '🏛️ Culture'),
         ('museum', '🖼️ Museum'),
@@ -644,65 +670,36 @@
         ('nightlife', '🌙 Nightlife'),
         ('family', '👨‍👩‍👧 Family')
       ] %}
+
       <div
         class="chips"
         id="interest-chips">
 
-
         {% for value, label in interests_list %}
-
         <button
           type="button"
-
-          class="
-            chip
-            interest-chip
-            {% if value in selected_interests %}
-              active
-            {% endif %}
-          "
-
+          class="chip interest-chip"
           data-interest="{{ value }}"
-
-          aria-pressed="
-            {% if value in selected_interests %}
-              true
-            {% else %}
-              false
-            {% endif %}
-          ">
-
+          aria-pressed="false">
           {{ label }}
-
         </button>
-
         {% endfor %}
-
       </div>
-
 
       <div
         class="interest-hint"
         id="interest-hint">
-
         Click Edit Profile to update your interests.
-
       </div>
-
     </div>
-
-
 
     <!-- =================================
          Favourite Attractions
     ================================= -->
 
     <div class="card card-p">
-
       <div class="card-header">
-
         <div>
-
           <div class="card-title">
             Favourite Attractions
           </div>
@@ -710,36 +707,29 @@
           <div class="card-subtitle">
             Attractions saved by the current user
           </div>
-
         </div>
-
       </div>
-
 
       <div
         id="fav-loading"
         style="
-          padding:12px 0;
-          color:var(--fg-2);
+          padding: 12px 0;
+          color: var(--fg-2);
         ">
-
         Loading favourite attractions...
-
       </div>
-
 
       <div
         id="fav-list"
-        style="display:none;">
+        style="display: none;">
       </div>
-
 
       <div
         id="fav-empty"
         class="empty-state"
         style="
-          min-height:150px;
-          display:none;
+          min-height: 150px;
+          display: none;
         ">
 
         <div class="empty-icon">
@@ -753,12 +743,17 @@
         <div class="empty-sub">
           Star an attraction on the Smart Attraction page to save it here.
         </div>
-
       </div>
-
     </div>
 
-    <div class="card profile-security" id="password-security-section">
+    <!-- =================================
+         Account Security
+    ================================= -->
+
+    <div
+      class="card profile-security"
+      id="password-security-section">
+
       <div class="profile-security-header">
         <div>
           <div class="profile-security-title">
@@ -784,7 +779,9 @@
 
         <div class="change-password-fields">
           <div class="form-group">
-            <label class="form-label" for="current-password">
+            <label
+              class="form-label"
+              for="current-password">
               Current Password
             </label>
 
@@ -797,7 +794,9 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="new-password">
+            <label
+              class="form-label"
+              for="new-password">
               New Password
             </label>
 
@@ -811,7 +810,9 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="confirm-new-password">
+            <label
+              class="form-label"
+              for="confirm-new-password">
               Confirm New Password
             </label>
 
@@ -856,10 +857,12 @@
       </div>
     </div>
 
+    <!-- =================================
+         Danger Zone
+    ================================= -->
+
     <div class="danger-zone">
-
       <div>
-
         <div class="danger-zone-title">
           Sign out of PandaJourney
         </div>
@@ -867,25 +870,60 @@
         <div class="danger-zone-sub">
           You'll be redirected to the login page.
         </div>
-
       </div>
 
-
       <button
-        class="btn btn-danger btn-sm"
         type="button"
+        class="btn btn-danger btn-sm"
         onclick="confirmLogout()">
-
         🚪 Sign out
-
       </button>
-
     </div>
 
   </div>
-
 </div>
 
+<!-- =================================
+     Custom Sign Out Dialog
+================================= -->
+
+<dialog
+  class="logout-dialog"
+  id="logout-dialog"
+  aria-labelledby="logout-dialog-title">
+
+  <div class="logout-dialog-icon">
+    🚪
+  </div>
+
+  <div class="logout-dialog-content">
+    <h3 id="logout-dialog-title">
+      Sign out?
+    </h3>
+
+    <p>
+      Are you sure you want to sign out of PandaJourney?
+    </p>
+  </div>
+
+  <div class="logout-dialog-actions">
+    <button
+      type="button"
+      class="btn btn-ghost"
+      id="cancel-logout-btn">
+      Cancel
+    </button>
+
+    <button
+      type="button"
+      class="btn btn-danger"
+      id="confirm-logout-btn">
+      Sign Out
+    </button>
+  </div>
+</dialog>
+
+<!-- Profile Saved Toast -->
 
 <div
   class="toast"
@@ -896,18 +934,12 @@
   <span>
     Profile saved successfully!
   </span>
-
 </div>
-
 {% endblock %}
 
-
-
 {% block extra_scripts %}
-
 <script
   type="module"
   src="{{ url_for('static', filename='js/profile.js') }}">
 </script>
-
 {% endblock %}
