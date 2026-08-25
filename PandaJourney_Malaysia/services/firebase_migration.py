@@ -16,7 +16,7 @@ def migrate_local_json_to_firestore(db, collab_service, default_user: Dict[str, 
     local_collab = LocalCollaborationService()
     local_data = local_collab._read_data()
     counts = {"saved_inserted": 0, "collaboration_inserted": 0, "skipped": 0}
-    user_uid = default_user.get("uid", "user_123")
+    user_uid = default_user.get("uid") or "guest"
 
     for item in read_saved_itineraries():
         item_id = str(item.get("id"))

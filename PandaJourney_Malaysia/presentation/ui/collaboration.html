@@ -236,7 +236,16 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script>
+<script type="module">
+import { auth, db } from "{{ url_for('static', filename='js/firebase-config.js') }}";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
 (function () {
   const root          = document.getElementById('collabRoot');
   const itineraryId   = root.dataset.itineraryId || '';
@@ -245,79 +254,6 @@
   const currentRole   = root.dataset.userRole || 'Viewer';
   const canEdit       = currentRole === 'Owner' || currentRole === 'Editor';
   const isOwner       = currentRole === 'Owner';
-
-  function setupImageLikeSectionScaling() {
-    return;
-    const sections = document.querySelectorAll('#collabRoot .resizable-section');
-    if (!sections.length || !window.ResizeObserver) return;
-
-    function scaleSection(section) {
-      const wrapper = section.querySelector(':scope > .resize-scale-content');
-      if (!wrapper) return;
-
-      const styles = window.getComputedStyle(section);
-      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
-      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
-      const availableWidth = Math.max(1, section.clientWidth - horizontalPadding);
-      const availableHeight = Math.max(1, section.clientHeight - verticalPadding);
-      const baseWidth = parseFloat(wrapper.dataset.baseWidth) || availableWidth;
-
-      wrapper.style.transform = 'scale(1)';
-      wrapper.style.height = 'auto';
-      const baseHeight = Math.max(parseFloat(wrapper.dataset.baseHeight) || 1, wrapper.scrollHeight);
-      wrapper.dataset.baseHeight = String(baseHeight);
-
-      const scale = Math.min(availableWidth / baseWidth, availableHeight / baseHeight, 1);
-      wrapper.style.transform = `scale(${scale})`;
-      wrapper.style.width = `${baseWidth}px`;
-      wrapper.style.height = `${baseHeight}px`;
-    }
-
-    sections.forEach(section => {
-      if (section.querySelector(':scope > .resize-scale-content')) return;
-
-      const wrapper = document.createElement('div');
-      wrapper.className = 'resize-scale-content';
-      while (section.firstChild) wrapper.appendChild(section.firstChild);
-      section.appendChild(wrapper);
-
-      const styles = window.getComputedStyle(section);
-      const horizontalPadding = parseFloat(styles.paddingLeft) + parseFloat(styles.paddingRight);
-      const verticalPadding = parseFloat(styles.paddingTop) + parseFloat(styles.paddingBottom);
-      const baseWidth = Math.max(1, section.clientWidth - horizontalPadding);
-      const baseHeight = Math.max(1, wrapper.scrollHeight);
-
-      wrapper.dataset.baseWidth = String(baseWidth);
-      wrapper.dataset.baseHeight = String(baseHeight);
-      wrapper.style.width = `${baseWidth}px`;
-    });
-
-    const observer = new ResizeObserver(entries => {
-      entries.forEach(entry => scaleSection(entry.target));
-    });
-
-    const mutationObserver = new MutationObserver(mutations => {
-      const changedSections = new Set(
-        mutations
-          .map(mutation => {
-            const target = mutation.target.nodeType === Node.ELEMENT_NODE
-              ? mutation.target
-              : mutation.target.parentElement;
-            return target ? target.closest('.resizable-section') : null;
-          })
-          .filter(Boolean)
-      );
-      changedSections.forEach(scaleSection);
-    });
-
-    sections.forEach(section => {
-      observer.observe(section);
-      mutationObserver.observe(section, { childList: true, subtree: true, characterData: true });
-      scaleSection(section);
-    });
-  }
-
-  setupImageLikeSectionScaling();
 
   const toast         = document.getElementById('appToast');
   const bellButton    = document.getElementById('bellButton');
@@ -330,6 +266,9 @@
   const unreadNotificationIds = new Set();
   const pendingActions = new Set();
   let submittingComment = false;
+  let usingSnapshotListeners = false;
+  let fallbackPollingStarted = false;
+  const unsubscribeListeners = [];
 
   function beginAction(key, controls = []) {
     if (pendingActions.has(key)) return false;
@@ -363,10 +302,6 @@
     bellBadge.style.display = count > 0 ? 'flex' : 'none';
   }
 
-  function bumpBellBadge() {
-    /* Local activity belongs in Recent Updates, not the notification badge. */
-  }
-
   async function markNotificationsSeen() {
     setBellBadgeCount(0);
     unreadNotificationIds.clear();
@@ -382,7 +317,9 @@
 
   function formatCommentTime(value) {
     if (!value) return 'just now';
-    const createdAt = new Date(value);
+    const createdAt = value && typeof value.toDate === 'function'
+      ? value.toDate()
+      : new Date(value);
     if (Number.isNaN(createdAt.getTime())) return value;
 
     const seconds = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / 1000));
@@ -412,6 +349,33 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#039;');
+  }
+
+  function timestampValue(value) {
+    if (!value) return '';
+    if (typeof value.toDate === 'function') return value.toDate().toISOString();
+    if (typeof value === 'object' && Number.isFinite(value.seconds)) {
+      return new Date(value.seconds * 1000).toISOString();
+    }
+    return value;
+  }
+
+  function parseDateValue(value) {
+    const normalized = timestampValue(value);
+    if (!normalized) return 0;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  }
+
+  function activityIconLabel(message = '', icon = '') {
+    const text = `${message} ${icon}`.toLowerCase();
+    if (text.includes('comment')) return 'C';
+    if (text.includes('invite') || text.includes('invitation')) return 'I';
+    if (text.includes('accepted')) return 'A';
+    if (text.includes('deleted') || text.includes('removed')) return 'D';
+    if (text.includes('added') || text.includes('new stop')) return '+';
+    if (text.includes('renamed') || text.includes('updated') || text.includes('edited')) return 'E';
+    return 'N';
   }
 
   function cleanSeparatorText(value) {
@@ -652,6 +616,7 @@
   const inviteError = document.getElementById('inviteErrorMsg');
   const collabList  = document.getElementById('collaboratorList');
   const AVATAR_COLORS = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#10b981'];
+  const serverOwnerCollaborators = {};
 
   function emailIsValid(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
   function initialsFromEmail(v) {
@@ -702,13 +667,29 @@
   function renderCollaborators(collaborators) {
     if (!collabList) return;
     collabList.innerHTML = '';
-    Object.entries(collaborators || {}).forEach(([uid, collaborator]) => {
+    Object.entries({ ...serverOwnerCollaborators, ...(collaborators || {}) }).forEach(([uid, collaborator]) => {
       collabList.appendChild(buildCollaboratorRow(uid, collaborator || {}));
     });
     applyAuthorityState();
   }
 
+  if (collabList) {
+    collabList.querySelectorAll('.collaborator-row').forEach(row => {
+      const role = row.querySelector('.role-owner') ? 'Owner' : '';
+      if (!role) return;
+      const uid = row.dataset.collaboratorUid || '';
+      if (!uid) return;
+      serverOwnerCollaborators[uid] = {
+        role,
+        status: 'active',
+        name: row.querySelector('.collab-name')?.textContent.trim() || 'Owner',
+        email: row.querySelector('.collab-email')?.textContent.trim() || ''
+      };
+    });
+  }
+
   async function refreshCollaborators() {
+    if (usingSnapshotListeners) return;
     const response = await fetch(`/api/collaboration/collaborators/${encodeURIComponent(itineraryId)}`);
     if (!response.ok) return;
     const data = await response.json();
@@ -869,6 +850,7 @@
   }
 
   async function refreshComments() {
+    if (usingSnapshotListeners) return;
     const response = await fetch(`/api/collaboration/comments/${encodeURIComponent(itineraryId)}`);
     if (!response.ok) return;
     const data = await response.json();
@@ -876,6 +858,7 @@
   }
 
   async function refreshActivities() {
+    if (usingSnapshotListeners) return;
     const response = await fetch(`/api/collaboration/activity/${encodeURIComponent(itineraryId)}`);
     if (!response.ok) return;
     const data = await response.json();
@@ -1507,6 +1490,7 @@
 
   /* Poll for notifications */
   async function checkForUpdates() {
+    if (usingSnapshotListeners) return;
     try {
       const response = await fetch(`/api/collaboration/notifications?itineraryId=${itineraryId}`);
       if (!response.ok) return;
@@ -1529,8 +1513,145 @@
     await Promise.allSettled([refreshComments(), refreshActivities(), refreshCollaborators()]);
     await checkForUpdates();
   }
-  setInterval(refreshCollaborationState, 5000);
-  setTimeout(refreshCollaborationState, 1000);
+
+  function startFallbackPolling(reason) {
+    if (fallbackPollingStarted) return;
+    fallbackPollingStarted = true;
+    usingSnapshotListeners = false;
+    console.warn('Firestore live listeners unavailable; falling back to API polling.', reason || '');
+    refreshCollaborationState();
+    startPolling();
+  }
+
+  function handleSnapshotError(error) {
+    unsubscribeListeners.splice(0).forEach(unsubscribe => unsubscribe());
+    startFallbackPolling(error);
+  }
+
+  function startFirestoreListeners(user) {
+    if (!user || !itineraryId) {
+      startFallbackPolling('Missing Firebase user or itinerary id.');
+      return;
+    }
+
+    usingSnapshotListeners = true;
+    stopPolling();
+
+    const commentsQuery = query(
+      collection(db, 'comments'),
+      where('itinerary_id', '==', itineraryId)
+    );
+    unsubscribeListeners.push(onSnapshot(commentsQuery, snapshot => {
+      const comments = snapshot.docs
+        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+        .sort((a, b) => parseDateValue(a.createdAt || a.created_at) - parseDateValue(b.createdAt || b.created_at));
+      renderComments(comments);
+    }, handleSnapshotError));
+
+    const activitiesRef = collection(db, 'Itinerary', itineraryId, 'activities');
+    unsubscribeListeners.push(onSnapshot(activitiesRef, snapshot => {
+      const activities = snapshot.docs
+        .map(docSnap => {
+          const activity = { id: docSnap.id, ...docSnap.data() };
+          const createdAt = timestampValue(activity.createdAt || activity.created_at);
+          return {
+            ...activity,
+            createdAt,
+            iconLabel: activity.iconLabel || activityIconLabel(activity.message || '', activity.icon || ''),
+            timeAgo: activity.timeAgo || formatCommentTime(createdAt),
+            sourceType: activity.sourceType || 'activity',
+            sourceId: activity.sourceId || activity.id || docSnap.id
+          };
+        })
+        .sort((a, b) => parseDateValue(b.createdAt) - parseDateValue(a.createdAt));
+      renderActivities(activities);
+    }, handleSnapshotError));
+
+    const collaboratorsQuery = query(
+      collection(db, 'collaborators'),
+      where('itinerary_id', '==', itineraryId)
+    );
+    unsubscribeListeners.push(onSnapshot(collaboratorsQuery, snapshot => {
+      const collaborators = {};
+      snapshot.docs.forEach(docSnap => {
+        const row = { id: docSnap.id, ...docSnap.data() };
+        const uid = row.invitee_user_id || row.user_id || row.owner_user_id || '';
+        if (!uid) return;
+        const rawStatus = row.status || 'pending';
+        collaborators[uid] = {
+          role: row.role || row.permission || 'Viewer',
+          status: rawStatus === 'accepted' ? 'active' : rawStatus === 'queued' ? 'pending' : rawStatus,
+          name: row.name || row.invitee_name || row.invitee_email || uid,
+          email: row.invitee_email || row.email || '',
+          collaborator_id: row.collaborator_id || docSnap.id
+        };
+      });
+      renderCollaborators(collaborators);
+    }, handleSnapshotError));
+
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
+      where('user_id', '==', user.uid)
+    );
+    unsubscribeListeners.push(onSnapshot(notificationsQuery, snapshot => {
+      const notifications = snapshot.docs
+        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+        .filter(notification => notification.itineraryId === itineraryId || notification.reference_id === itineraryId);
+      let unreadCount = 0;
+      notifications.forEach(notification => {
+        if (!notification.isRead && !notification.is_read) unreadCount += 1;
+        if (notification.id && seenNotificationIds.has(notification.id)) return;
+        if (notification.id) seenNotificationIds.add(notification.id);
+        if (!notification.isRead && !notification.is_read) {
+          const createdAt = timestampValue(notification.createdAt || notification.created_at);
+          unreadNotificationIds.add(notification.id);
+          prependNotification({
+            ...notification,
+            createdAt,
+            iconLabel: notification.iconLabel || activityIconLabel(notification.message || '', notification.icon || notification.type || ''),
+            timeAgo: notification.timeAgo || formatCommentTime(createdAt)
+          });
+        }
+      });
+      setBellBadgeCount(unreadCount);
+    }, handleSnapshotError));
+  }
+
+  let pollInterval = null;
+
+  function stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollInterval = setInterval(refreshCollaborationState, 20000);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (usingSnapshotListeners) return;
+
+    if (document.visibilityState === 'visible') {
+      refreshCollaborationState();
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  });
+
+  window.addEventListener('pagehide', stopPolling);
+
+  window.addEventListener('pagehide', function () {
+    unsubscribeListeners.splice(0).forEach(unsubscribe => unsubscribe());
+  });
+
+  onAuthStateChanged(auth, function (user) {
+    if (usingSnapshotListeners || fallbackPollingStarted) return;
+    startFirestoreListeners(user);
+  });
 })();
 </script>
 {% endblock %}

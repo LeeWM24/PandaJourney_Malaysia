@@ -290,6 +290,18 @@ class LocalCollaborationService:
         notifications.append(notification)
         return notification
 
+    def create_notification(
+        self,
+        recipient_uid: str,
+        message: str,
+        itin_id: str,
+        icon: str = "notification",
+    ) -> Dict[str, Any]:
+        data = self._read_data()
+        notification = self._notify(data, recipient_uid, message, itin_id, icon)
+        self._write_data(data)
+        return notification
+
     def _send_external_invite_email(self, invited_email: str, owner_name: str, itinerary_title: str) -> Dict[str, Any]:
         join_url = os.getenv("PANDAJOURNEY_REGISTER_URL") or "/create-account"
         subject = f"{owner_name} invited you to PandaJourney"
@@ -444,7 +456,7 @@ class LocalCollaborationService:
         if itin_id in data["itineraries"]:
             return data["itineraries"][itin_id]
 
-        owner_uid = owner.get("uid", "user_123")
+        owner_uid = owner.get("uid") or "guest"
         owner_email = owner.get("email", "")
         owner_name = owner.get("display_name") or owner.get("displayName") or "You"
 
@@ -526,25 +538,20 @@ class LocalCollaborationService:
             
             owner_name = self._get_user_name(data, owner_id, "Someone")
             itinerary_title = data["itineraries"][itin_id].get("title", "an itinerary")
-            # Send notification
-            notification = {
-                "id": f"notif_{len(data['notifications']) + 1}",
-                "notification_id": f"notif_{len(data['notifications']) + 1}",
-                "recipientUid": invited_uid,
-                "message": "You were invited to collaborate on an itinerary!",
-                "itineraryId": itin_id,
-                "isRead": False,
-                "createdAt": self._get_current_timestamp(),
-                "icon": "✉️"
-            }
-            data["notifications"].append(notification)
+            self._notify(
+                data,
+                invited_uid,
+                f"{owner_name} invited you to collaborate on \"{itinerary_title}\"",
+                itin_id,
+                "invite"
+            )
             self._append_activity(
                 data,
                 itin_id,
                 owner_id,
                 owner_name,
                 f"Invitation sent to {invited_email}",
-                "✉️"
+                "invite"
             )
             
             self._write_data(data)
@@ -587,7 +594,7 @@ class LocalCollaborationService:
                     if email_result.get("sent")
                     else f"External invitation queued for {invited_email}"
                 ),
-                "✉️"
+                "invite"
             )
             data["itineraries"][itin_id]["collaborators"][pending_uid] = {
                 "role": "Viewer",
@@ -639,7 +646,7 @@ class LocalCollaborationService:
                     user_uid,
                     user_name,
                     f"{user_name} accepted the invitation",
-                    "✅"
+                    "accepted"
                 )
             
             self._write_data(data)
@@ -684,6 +691,7 @@ class LocalCollaborationService:
             f"{collaborator.get('name') or collaborator_uid} assigned as {role}",
             "role"
         )
+        self._notify(data, collaborator_uid, f"Your itinerary role changed to {role}", str(itin_id), "role")
         self._write_data(data)
         return {"success": True, "message": "Role updated", "role": role}
 
@@ -720,6 +728,7 @@ class LocalCollaborationService:
             f"{removed_name} was removed from the plan",
             "removed"
         )
+        self._notify(data, collaborator_uid, "You were removed from an itinerary", str(itin_id), "removed")
         self._write_data(data)
         return {"success": True, "message": "Collaborator removed"}
     
@@ -749,20 +758,13 @@ class LocalCollaborationService:
             "📝"
         )
         
-        # Notify collaborators
-        collaborators = data["itineraries"][itin_id].get("collaborators", {})
-        for collab_uid, collab_data in collaborators.items():
-            if collab_uid != editor_uid and collab_data.get("status") == "active":
-                notification = {
-                    "id": f"notif_{len(data['notifications']) + 1}",
-                    "recipientUid": collab_uid,
-                    "message": f"Itinerary was updated with {len(stops)} stops",
-                    "itineraryId": itin_id,
-                    "isRead": False,
-                    "createdAt": self._get_current_timestamp(),
-                    "icon": "📝"
-                }
-                data["notifications"].append(notification)
+        self._notify_active_collaborators(
+            data,
+            itin_id,
+            editor_uid,
+            f"{editor_name} updated the itinerary to {len(stops)} stops",
+            "edited"
+        )
         
         self._write_data(data)
         return {'success': True, 'message': 'Itinerary updated successfully'}
@@ -770,6 +772,9 @@ class LocalCollaborationService:
     # FR 4.5: Add Comment
     def add_comment(self, itin_id: str, author_uid: str, author_name: str, text: str) -> Dict[str, Any]:
         data = self._read_data()
+        text = (text or "").strip()
+        if not text:
+            return {'success': False, 'message': 'Comment cannot be empty'}
         
         if itin_id not in data["comments"]:
             data["comments"][itin_id] = []
@@ -796,20 +801,13 @@ class LocalCollaborationService:
         if itin_id in data["itineraries"]:
             data["itineraries"][itin_id]["lastActivityAt"] = self._get_current_timestamp()
             
-            # Notify collaborators about the comment
-            collaborators = data["itineraries"][itin_id].get("collaborators", {})
-            for collab_uid, collab_data in collaborators.items():
-                if collab_uid != author_uid and collab_data.get("status") == "active":
-                    notification = {
-                        "id": f"notif_{len(data['notifications']) + 1}",
-                        "recipientUid": collab_uid,
-                        "message": f"{author_name} added a comment",
-                        "itineraryId": itin_id,
-                        "isRead": False,
-                        "createdAt": self._get_current_timestamp(),
-                        "icon": "💬"
-                    }
-                    data["notifications"].append(notification)
+            self._notify_active_collaborators(
+                data,
+                itin_id,
+                author_uid,
+                f"{activity_name} added a comment: \"{text[:80]}\"",
+                "comment"
+            )
         
         self._write_data(data)
         return {'success': True, 'message': 'Comment added successfully', 'comment': comment}
@@ -870,6 +868,7 @@ class LocalCollaborationService:
     # Update single stop
     def update_stop(self, itin_id: str, stop_index: int, stop_data: Dict[str, Any], editor_uid: str) -> Dict[str, Any]:
         data = self._read_data()
+        stop_data = stop_data or {}
         
         if itin_id not in data["itineraries"]:
             return {'success': False, 'message': 'Itinerary not found'}
@@ -909,20 +908,13 @@ class LocalCollaborationService:
             "✏️"
         )
         
-        # Notify collaborators
-        collaborators = data["itineraries"][itin_id].get("collaborators", {})
-        for collab_uid, collab_data in collaborators.items():
-            if collab_uid != editor_uid and collab_data.get("status") == "active":
-                notification = {
-                    "id": f"notif_{len(data['notifications']) + 1}",
-                    "recipientUid": collab_uid,
-                    "message": f"Stop {stop_index + 1} was updated: {stop_data.get('name', 'Unknown')}",
-                    "itineraryId": itin_id,
-                    "isRead": False,
-                    "createdAt": self._get_current_timestamp(),
-                    "icon": "✏️"
-                }
-                data["notifications"].append(notification)
+        self._notify_active_collaborators(
+            data,
+            itin_id,
+            editor_uid,
+            f"Stop {stop_index + 1} was updated: {stop_data.get('name', 'Unknown')}",
+            "edited"
+        )
         
         self._write_data(data)
         return {'success': True, 'message': 'Stop updated successfully'}
@@ -953,20 +945,13 @@ class LocalCollaborationService:
             "✏️"
         )
 
-        # Notify collaborators
-        collaborators = data["itineraries"][itin_id].get("collaborators", {})
-        for collab_uid, collab_data in collaborators.items():
-            if collab_uid != editor_uid and collab_data.get("status") == "active":
-                notification = {
-                    "id": f"notif_{len(data['notifications']) + 1}",
-                    "recipientUid": collab_uid,
-                    "message": f"Trip renamed to \"{new_title}\"",
-                    "itineraryId": itin_id,
-                    "isRead": False,
-                    "createdAt": self._get_current_timestamp(),
-                    "icon": "✏️"
-                }
-                data["notifications"].append(notification)
+        self._notify_active_collaborators(
+            data,
+            itin_id,
+            editor_uid,
+            f"Trip renamed to \"{new_title}\"",
+            "edited"
+        )
 
         self._write_data(data)
         return {'success': True, 'message': 'Title updated successfully', 'title': new_title}
@@ -997,19 +982,13 @@ class LocalCollaborationService:
             "edited"
         )
 
-        collaborators = data["itineraries"][itin_id].get("collaborators", {})
-        for collab_uid, collab_data in collaborators.items():
-            if collab_uid != editor_uid and collab_data.get("status") == "active":
-                notification = {
-                    "id": f"notif_{len(data['notifications']) + 1}",
-                    "recipientUid": collab_uid,
-                    "message": f"Trip date changed to \"{new_date}\"",
-                    "itineraryId": itin_id,
-                    "isRead": False,
-                    "createdAt": self._get_current_timestamp(),
-                    "icon": "edited"
-                }
-                data["notifications"].append(notification)
+        self._notify_active_collaborators(
+            data,
+            itin_id,
+            editor_uid,
+            f"Trip date changed to \"{new_date}\"",
+            "edited"
+        )
 
         self._write_data(data)
         return {'success': True, 'message': 'Date updated successfully', 'date': new_date}
@@ -1064,30 +1043,6 @@ class LocalCollaborationService:
                 "timeAgo": self._format_time_ago(created_at),
                 "sourceType": "comment",
                 "sourceId": comment.get("id", "")
-            })
-
-        seen_notifications = set()
-        for notification in []:
-            if notification.get("itineraryId") != itin_id:
-                continue
-            key = (
-                notification.get("message", ""),
-                notification.get("createdAt", ""),
-                notification.get("icon", "")
-            )
-            if key in seen_notifications:
-                continue
-            seen_notifications.add(key)
-            created_at = notification.get("createdAt", "")
-            activities.append({
-                "id": f"notification_activity_{notification.get('id', created_at)}",
-                "itineraryId": itin_id,
-                "message": notification.get("message", "Notification sent"),
-                "icon": notification.get("icon", "🔔"),
-                "createdAt": created_at,
-                "timeAgo": self._format_time_ago(created_at),
-                "sourceType": "notification",
-                "sourceId": notification.get("id", "")
             })
 
         deduped: List[Dict[str, Any]] = []

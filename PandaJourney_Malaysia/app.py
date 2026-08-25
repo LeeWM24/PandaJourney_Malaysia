@@ -231,6 +231,10 @@ def login():
         return redirect(url_for("dashboard"))
 
     if request.method == "POST":
+        if firebase_db is not None:
+            flash("Please sign in with Firebase before continuing.", "warning")
+            return redirect(url_for("login"))
+
         email = request.form.get("email") or "guest@example.com"
         firebase_user = find_firebase_user_by_email(email)
         display_name = (
@@ -917,7 +921,7 @@ def create_test_notification():
     itinerary_id = request.form.get("itinerary_id") or payload.get("itinerary_id") or ""
     message = "Test notification from PandaJourney Firebase setup"
 
-    notification = collab_service._notify(
+    notification = collab_service.create_notification(
         recipient_uid=user_uid,
         message=message,
         itin_id=itinerary_id,

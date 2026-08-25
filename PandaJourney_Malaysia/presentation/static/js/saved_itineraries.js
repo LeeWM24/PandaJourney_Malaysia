@@ -32,6 +32,7 @@ const pastControl = document.getElementById("past-control");
 const pastSection = document.getElementById("past-section");
 const pastListElement = document.getElementById("past-list");
 const togglePastButton = document.getElementById("toggle-past-btn");
+const hasClientManagedSavedView = Boolean(upcomingSection || listElement || emptyElement);
 
 let currentUser = null;
 let pastVisible = false;
@@ -627,12 +628,19 @@ async function performDeleteItinerary(documentId, itineraryId) {
 
 initModalEvents();
 
+if (!hasClientManagedSavedView) {
+  hideLoading();
+}
+
 onAuthStateChanged(auth, function (user) {
   currentUser = user;
 
   if (!user) {
     hideLoading();
-    showEmpty();
+    return;
+  }
+
+  if (!hasClientManagedSavedView) {
     return;
   }
 

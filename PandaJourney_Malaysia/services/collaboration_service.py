@@ -371,6 +371,15 @@ class CollaborationService(LocalCollaborationService):
         self.db.collection(self.NOTIFICATIONS).document(doc_ref.id).set({"notification_id": doc_ref.id}, merge=True)
         return notification
 
+    def create_notification(
+        self,
+        recipient_uid: str,
+        message: str,
+        itin_id: str,
+        icon: str = "notification",
+    ) -> Dict[str, Any]:
+        return self._notify(recipient_uid, message, itin_id, icon)
+
     def create_itinerary_from_saved(
         self,
         saved_item: Dict[str, Any],
@@ -382,7 +391,7 @@ class CollaborationService(LocalCollaborationService):
         if existing.exists:
             return self._normalize_itinerary_for_display(self._doc_data(existing))
 
-        owner_uid = owner.get("uid", "user_123")
+        owner_uid = owner.get("uid") or "guest"
         owner_email = owner.get("email", "")
         owner_name = owner.get("display_name") or owner.get("displayName") or "You"
         now = self._get_current_timestamp()
