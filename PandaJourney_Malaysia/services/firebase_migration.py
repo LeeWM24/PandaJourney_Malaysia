@@ -20,7 +20,7 @@ def migrate_local_json_to_firestore(db, collab_service, default_user: Dict[str, 
 
     for item in read_saved_itineraries():
         item_id = str(item.get("id"))
-        if _exists(db.collection("itineraries").document(item_id)):
+        if _exists(db.collection("Itinerary").document(item_id)):
             counts["skipped"] += 1
             continue
 
@@ -29,24 +29,24 @@ def migrate_local_json_to_firestore(db, collab_service, default_user: Dict[str, 
         collab_service.create_itinerary_from_saved(saved_item, default_user)
 
     for itin_id, itinerary in local_data.get("itineraries", {}).items():
-        if _exists(db.collection("collaboration_itineraries").document(str(itin_id))):
+        if _exists(db.collection("Itinerary").document(str(itin_id))):
             counts["skipped"] += 1
             continue
 
-        db.collection("collaboration_itineraries").document(str(itin_id)).set(itinerary)
-        if hasattr(collab_service, "_mirror_itinerary_to_erd"):
-            collab_service._mirror_itinerary_to_erd(itinerary)
+        if hasattr(collab_service, "_write_itinerary_data"):
+            collab_service._write_itinerary_data(itinerary)
+        else:
+            db.collection("Itinerary").document(str(itin_id)).set(itinerary)
         counts["collaboration_inserted"] += 1
 
     for invitation in local_data.get("invitations", []):
         invitation_id = str(invitation.get("id"))
-        if not invitation_id or _exists(db.collection("collaboration_invitations").document(invitation_id)):
+        if not invitation_id or _exists(db.collection("collaborators").document(invitation_id)):
             counts["skipped"] += 1
             continue
 
-        db.collection("collaboration_invitations").document(invitation_id).set(invitation)
-        if hasattr(collab_service, "_mirror_collaborator_to_erd"):
-            collab_service._mirror_collaborator_to_erd(
+        if hasattr(collab_service, "_write_collaborator"):
+            collab_service._write_collaborator(
                 invitation_id,
                 invitation.get("itineraryId"),
                 invitation.get("ownerId"),
@@ -55,22 +55,21 @@ def migrate_local_json_to_firestore(db, collab_service, default_user: Dict[str, 
                 invitation.get("status", "pending"),
                 invitation.get("invitedUid", ""),
             )
+        else:
+            db.collection("collaborators").document(invitation_id).set(invitation)
 
     for itin_id, comments in local_data.get("comments", {}).items():
         for index, comment in enumerate(comments, start=1):
             comment_id = str(comment.get("id") or f"{itin_id}_comment_{index}")
             comment_ref = (
-                db.collection("collaboration_itineraries")
-                .document(str(itin_id))
-                .collection("comments")
-                .document(comment_id)
+                db.collection("comments").document(comment_id)
             )
             if _exists(comment_ref):
                 counts["skipped"] += 1
                 continue
 
-            comment_ref.set(comment)
-            db.collection("comments").document(comment_id).set({
+            comment_ref.set({
+                **comment,
                 "comment_id": comment_id,
                 "itinerary_id": str(itin_id),
                 "user_id": comment.get("authorUid", ""),
@@ -85,7 +84,7 @@ def migrate_local_json_to_firestore(db, collab_service, default_user: Dict[str, 
         for index, activity in enumerate(activities, start=1):
             activity_id = str(activity.get("id") or f"{itin_id}_activity_{index}")
             activity_ref = (
-                db.collection("collaboration_itineraries")
+                db.collection("Itinerary")
                 .document(str(itin_id))
                 .collection("activities")
                 .document(activity_id)
@@ -97,12 +96,12 @@ def migrate_local_json_to_firestore(db, collab_service, default_user: Dict[str, 
 
     for notification in local_data.get("notifications", []):
         notification_id = str(notification.get("id"))
-        if not notification_id or _exists(db.collection("collaboration_notifications").document(notification_id)):
+        if not notification_id or _exists(db.collection("notifications").document(notification_id)):
             counts["skipped"] += 1
             continue
 
-        db.collection("collaboration_notifications").document(notification_id).set(notification)
         db.collection("notifications").document(notification_id).set({
+            **notification,
             "notification_id": notification_id,
             "user_id": notification.get("recipientUid", ""),
             "type": notification.get("icon", "notification"),

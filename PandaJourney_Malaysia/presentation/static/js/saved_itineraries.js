@@ -161,7 +161,33 @@ function formatDate(dateText) {
 
 function formatDuration(hours) {
   if (!hours) return "Estimated";
+  if (typeof hours === "string" && /hour|hr|min/i.test(hours)) return hours;
   return `${hours} hrs`;
+}
+
+function formatMinutesDuration(minutes) {
+  const value = Number(minutes || 0);
+  if (!value) return "";
+  const hrs = Math.floor(value / 60);
+  const mins = value % 60;
+  if (hrs && mins) return `${hrs} hr ${mins} min`;
+  if (hrs) return `${hrs} hr${hrs === 1 ? "" : "s"}`;
+  return `${mins} min`;
+}
+
+function getItineraryDate(data) {
+  return data.travel_date || data.date || data.trip_date || "";
+}
+
+function getItineraryDuration(data) {
+  return (
+    formatMinutesDuration(data.total_duration_minutes) ||
+    formatMinutesDuration(data.travel_duration_minutes) ||
+    data.total_duration ||
+    data.travel_duration ||
+    data.available_hours ||
+    ""
+  );
 }
 
 async function getStopCount(itineraryId) {
@@ -365,8 +391,8 @@ async function loadSavedItineraries(user) {
       itinerary_id: itineraryId,
       title: data.title || "Untitled Trip",
       destination: data.destination || "Malaysia",
-      date: data.travel_date || "",
-      duration: data.available_hours || "",
+      date: getItineraryDate(data),
+      duration: getItineraryDuration(data),
       stop_count: stopCount,
       status: data.status || "Draft",
       updated_at: data.updated_at || null

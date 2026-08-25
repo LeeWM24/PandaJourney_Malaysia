@@ -2,12 +2,13 @@ import json
 from pathlib import Path
 from datetime import datetime
 
+from google.cloud.firestore_v1 import FieldFilter
+
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BASE_DIR / "data"
 SAVED_FILE = DATA_DIR / "saved_itineraries.json"
-SAVED_COLLECTION = "user_saved_itineraries"
-ITINERARY_COLLECTION = "itineraries"
+ITINERARY_COLLECTION = "Itinerary"
 ITINERARY_STOP_COLLECTION = "itinerary_stops"
 PUBLIC_ITINERARY_COLLECTION = "public_itineraries"
 TIMEOUT_SECONDS = 10
@@ -24,30 +25,7 @@ def using_firestore():
 
 
 def get_default_itineraries():
-    return [
-        {
-            "id": 1,
-            "title": "Penang Heritage Walk",
-            "status": "Completed",
-            "destination": "Penang",
-            "date": "Jul 20, 2026",
-            "duration": "7 hrs",
-            "stop_count": 6,
-            "is_public": False,
-            "created_at": "2026-07-20 10:00:00"
-        },
-        {
-            "id": 2,
-            "title": "Cameron Highlands Nature Escape",
-            "status": "Upcoming",
-            "destination": "Pahang",
-            "date": "Aug 10, 2026",
-            "duration": "6 hrs",
-            "stop_count": 4,
-            "is_public": True,
-            "created_at": "2026-07-21 12:00:00"
-        }
-    ]
+    return []
 
 
 def ensure_saved_file():
@@ -62,10 +40,6 @@ def read_saved_itineraries():
 
     with open(SAVED_FILE, "r", encoding="utf-8") as file:
         itineraries = json.load(file)
-
-    if itineraries == []:
-        itineraries = get_default_itineraries()
-        write_saved_itineraries(itineraries)
 
     return itineraries
 
@@ -84,11 +58,9 @@ def _now_string():
 def _doc_to_saved_item(doc):
     data = doc.to_dict() or {}
     data.setdefault("id", doc.id)
+    data.setdefault("date", data.get("travel_date", ""))
+    data.setdefault("user_uid", data.get("user_id"))
     return data
-
-
-def _saved_collection():
-    return _firestore_db.collection(SAVED_COLLECTION)
 
 
 def _itinerary_collection():
@@ -101,10 +73,6 @@ def _stop_collection():
 
 def _public_collection():
     return _firestore_db.collection(PUBLIC_ITINERARY_COLLECTION)
-
-
-def _saved_doc(itinerary_id):
-    return _saved_collection().document(str(itinerary_id))
 
 
 def _normalize_stop_for_erd(stop, itinerary_id, index):
@@ -172,11 +140,14 @@ def _write_erd_itinerary(plan_data, itinerary_id, user_uid, now):
 def _get_firestore_saved_itineraries(user_uid=None):
     items_by_id = {}
 
-    for collection_name in (ITINERARY_COLLECTION, SAVED_COLLECTION):
-        query = _firestore_db.collection(collection_name)
-        if user_uid:
-            query = query.where("user_uid", "==", user_uid)
+    queries = [_itinerary_collection()]
+    if user_uid:
+        queries = [
+            _itinerary_collection().where(filter=FieldFilter("user_id", "==", user_uid)),
+            _itinerary_collection().where(filter=FieldFilter("user_uid", "==", user_uid)),
+        ]
 
+    for query in queries:
         for doc in query.stream(retry=None, timeout=TIMEOUT_SECONDS):
             item = _doc_to_saved_item(doc)
             item.setdefault("id", item.get("itinerary_id") or doc.id)
@@ -195,14 +166,13 @@ def _find_firestore_item(itinerary_id, user_uid=None):
     if not itinerary_id:
         return None, None
 
-    for doc_ref in (_itinerary_collection().document(str(itinerary_id)), _saved_doc(itinerary_id)):
-        doc = doc_ref.get(retry=None, timeout=TIMEOUT_SECONDS)
-        if not doc.exists:
-            continue
-
+    doc_ref = _itinerary_collection().document(str(itinerary_id))
+    doc = doc_ref.get(retry=None, timeout=TIMEOUT_SECONDS)
+    if doc.exists:
         item = _doc_to_saved_item(doc)
         item.setdefault("user_uid", item.get("user_id"))
-        if user_uid and item.get("user_uid") != user_uid:
+        owner_ids = {item.get("user_uid"), item.get("user_id")}
+        if user_uid and user_uid not in owner_ids:
             return None, doc_ref
         return item, doc_ref
 
@@ -249,7 +219,6 @@ def save_itinerary(plan_data, user_uid=None):
             "timetable": plan_data.get("timetable", [])
         }
         new_itinerary.update(_write_erd_itinerary({**plan_data, **new_itinerary}, doc_ref.id, user_uid, now))
-        _saved_collection().document(doc_ref.id).set(new_itinerary, merge=True)
         return new_itinerary
 
     itineraries = read_saved_itineraries()
@@ -323,12 +292,6 @@ def toggle_publish_status(itinerary_id, user_uid=None):
             "published_at": now if not is_public else None,
             "updated_at": now
         }, merge=True)
-        _saved_collection().document(str(itinerary_id)).set({
-            "is_public": not is_public,
-            "status": "Published" if not is_public else "Draft",
-            "published_at": now if not is_public else None,
-            "updated_at": now
-        }, merge=True)
         if not is_public:
             _public_collection().document(str(itinerary_id)).set({
                 "public_id": str(itinerary_id),
@@ -395,7 +358,6 @@ def update_saved_itinerary_details(itinerary_id, *, user_uid=None, title=None, d
                 stop_data = _normalize_stop_for_erd(stop, itinerary_id, index)
                 _stop_collection().document(stop_data["stop_id"]).set(stop_data, merge=True)
         doc_ref.set(updates, merge=True)
-        _saved_collection().document(str(itinerary_id)).set(updates, merge=True)
         return True
 
     try:

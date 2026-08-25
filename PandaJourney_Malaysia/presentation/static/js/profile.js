@@ -681,18 +681,22 @@ async function loadSavedItineraryCount(user) {
   }
 
   try {
-    const itineraryQuery = query(
-      collection(db, "Itinerary"),
-      where("user_id", "==", user.uid)
-    );
+    const itemsById = new Set();
+    const queries = [
+      query(collection(db, "Itinerary"), where("user_id", "==", user.uid)),
+      query(collection(db, "Itinerary"), where("user_uid", "==", user.uid))
+    ];
 
-    const snapshot = await getDocs(itineraryQuery);
+    for (const itineraryQuery of queries) {
+      const snapshot = await getDocs(itineraryQuery);
+      snapshot.forEach(docSnap => itemsById.add(docSnap.id));
+    }
 
-    countElement.textContent = String(snapshot.size);
+    countElement.textContent = String(itemsById.size);
 
     console.log(
       "Profile saved itinerary count:",
-      snapshot.size
+      itemsById.size
     );
 
   } catch (error) {

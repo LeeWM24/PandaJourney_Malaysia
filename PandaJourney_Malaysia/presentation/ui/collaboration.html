@@ -7,17 +7,18 @@
 {% block topbar_actions %}
   <button class="bell-button" type="button" id="bellButton" aria-label="Notifications">
     <span aria-hidden="true">&#128276;</span>
-    <span class="bell-badge" id="bellBadge">4</span>
+    <span class="bell-badge" id="bellBadge" style="display:none;">0</span>
   </button>
 {% endblock %}
 
 {% block content %}
 <div
-  class="page-inner"
+  class="page-inner page-inner-flush"
   id="collabRoot"
   data-itinerary-id="{{ itinerary_id }}"
   data-user-uid="{{ current_user.uid if current_user else '' }}"
   data-user-name="{{ current_user.display_name if current_user else '' }}"
+  data-user-role="{{ itinerary_data.collaborators.get(current_user.uid, {}).get('role', 'Viewer') if itinerary_data and itinerary_data.collaborators and current_user else 'Viewer' }}"
 >
   <div class="collab-layout">
 
@@ -33,7 +34,7 @@
             contenteditable="true"
             spellcheck="false"
             aria-label="Trip title, click to rename"
-          >{{ itinerary_data.title if itinerary_data else 'Cameron Highlands Trip' }}</h2>
+          >{{ itinerary_data.title if itinerary_data else 'Untitled Trip' }}</h2>
           <span class="collab-title-edit-hint" aria-hidden="true">&#9998; click to rename</span>
         </div>
         <p class="card-subtitle" id="collabTripMeta" style="margin-top:-8px; margin-bottom:16px;">
@@ -43,19 +44,14 @@
             contenteditable="true"
             spellcheck="false"
             aria-label="Trip date, click to edit"
-          >{{ itinerary_data.date if itinerary_data else 'Aug 10, 2026' }}</span> &middot;
-          <span id="collabStopCount">{{ itinerary_data.stops|length if itinerary_data and itinerary_data.stops else 4 }}</span> stops &middot;
+          >{{ itinerary_data.date if itinerary_data else '' }}</span> &middot;
+          <span id="collabStopCount">{{ itinerary_data.stops|length if itinerary_data and itinerary_data.stops else 0 }}</span> stops &middot;
           <span id="collabTotalHours">0 hrs</span>
         </p>
 
         <!-- Timeline -->
         <div class="timetable" id="stopTimeline" role="list" aria-label="Itinerary stops">
-          {% set stops = itinerary_data.stops if itinerary_data and itinerary_data.stops else [
-            {'name': 'KLIA2 Departure', 'time': '07:00', 'duration': '2 hrs', 'icon': '&#128652;'},
-            {'name': 'Tanah Rata Town Centre', 'time': '09:30', 'duration': '1.5 hrs', 'icon': '&#127794;'},
-            {'name': 'Mossy Forest Walk', 'time': '11:00', 'duration': '2 hrs', 'icon': '&#127807;'},
-            {'name': 'Cameron Bharat Tea Plantation', 'time': '13:30', 'duration': '1.5 hrs', 'icon': '&#127861;'}
-          ] %}
+          {% set stops = itinerary_data.stops if itinerary_data and itinerary_data.stops else [] %}
           {% for stop in stops %}
           {% set stop_number = stop.stopNumber if stop.stopNumber else loop.index %}
           <div class="timetable-row" role="listitem" draggable="true" data-stop-index="{{ loop.index0 }}" data-stop-number="{{ stop_number }}">
@@ -151,13 +147,9 @@
         </form>
 
         <ul style="list-style:none; padding:0; margin:0;" id="collaboratorList" aria-label="Current collaborators">
-          {% set demo_collabs = itinerary_data.collaborators if itinerary_data and itinerary_data.collaborators else {
-            'user_123': {'name': 'Ahmad Faris', 'email': 'ahmad@email.com', 'role': 'Owner', 'color': '#0f8a67'},
-            'user_456': {'name': 'Siti Nurhaliza', 'email': 'siti@email.com', 'role': 'Editor', 'color': '#3b82f6'},
-            'user_789': {'name': 'Raj Kumar', 'email': 'raj@email.com', 'role': 'Viewer', 'color': '#8b5cf6'}
-          } %}
+          {% set demo_collabs = itinerary_data.collaborators if itinerary_data and itinerary_data.collaborators else {} %}
           {% for uid, c in demo_collabs.items() %}
-          <li class="collaborator-row {% if c.status == 'pending' %}is-pending{% endif %}">
+          <li class="collaborator-row {% if c.status == 'pending' %}is-pending{% endif %}" data-collaborator-uid="{{ uid }}">
             <div class="avatar avatar-sm" style="--avatar-bg: {{ c.color if c.color else '#0f8a67' }}; background-color: var(--avatar-bg);">
               {{ c.name[:2]|upper if c.name else '??' }}
             </div>
@@ -168,7 +160,6 @@
             <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">
               {% if c.status == 'pending' %}
                 <span class="pending-pill">Pending</span>
-                <button class="accept-sim-btn" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance for {{ c.name }}">&#10003;</button>
               {% elif c.role == 'Owner' %}
                 <button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>
               {% else %}
@@ -248,11 +239,15 @@
 <script>
 (function () {
   const root          = document.getElementById('collabRoot');
-  const itineraryId   = root.dataset.itineraryId || 'itin_test';
-  const currentUid    = root.dataset.userUid || 'user_123';
+  const itineraryId   = root.dataset.itineraryId || '';
+  const currentUid    = root.dataset.userUid || 'guest';
   const currentName   = root.dataset.userName || 'You';
+  const currentRole   = root.dataset.userRole || 'Viewer';
+  const canEdit       = currentRole === 'Owner' || currentRole === 'Editor';
+  const isOwner       = currentRole === 'Owner';
 
   function setupImageLikeSectionScaling() {
+    return;
     const sections = document.querySelectorAll('#collabRoot .resizable-section');
     if (!sections.length || !window.ResizeObserver) return;
 
@@ -331,11 +326,30 @@
   const viewAllActivity = document.getElementById('viewAllActivity');
   const RECENT_UPDATE_LIMIT = 4;
   let showingAllActivity = false;
-  const seenNotificationIds = new Set(
-    Array.from(updateList.querySelectorAll('[data-source-type="notification"][data-source-id]'))
-      .map(row => row.dataset.sourceId)
-      .filter(Boolean)
-  );
+  const seenNotificationIds = new Set();
+  const unreadNotificationIds = new Set();
+  const pendingActions = new Set();
+  let submittingComment = false;
+
+  function beginAction(key, controls = []) {
+    if (pendingActions.has(key)) return false;
+    pendingActions.add(key);
+    controls.forEach(control => {
+      if (!control) return;
+      control.disabled = true;
+      control.setAttribute('aria-busy', 'true');
+    });
+    return true;
+  }
+
+  function endAction(key, controls = []) {
+    pendingActions.delete(key);
+    controls.forEach(control => {
+      if (!control) return;
+      control.disabled = false;
+      control.removeAttribute('aria-busy');
+    });
+  }
 
   function showToast(message) {
     toast.textContent = message;
@@ -350,12 +364,20 @@
   }
 
   function bumpBellBadge() {
-    const current = parseInt(bellBadge.textContent, 10) || 0;
-    setBellBadgeCount(current + 1);
+    /* Local activity belongs in Recent Updates, not the notification badge. */
   }
 
-  function markNotificationsSeen() {
+  async function markNotificationsSeen() {
     setBellBadgeCount(0);
+    unreadNotificationIds.clear();
+    document.querySelectorAll('.notif-row.is-unread').forEach(row => row.classList.remove('is-unread'));
+    try {
+      await fetch('/api/collaboration/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itineraryId })
+      });
+    } catch (err) { /* best-effort read receipt */ }
   }
 
   function formatCommentTime(value) {
@@ -490,7 +512,7 @@
   if (bellButton) {
     bellButton.addEventListener('click', markNotificationsSeen);
   }
-  setBellBadgeCount(parseInt(bellBadge.textContent, 10) || 0);
+  setBellBadgeCount(0);
   syncActivityListVisibility();
   normalizeStopTimeDisplay();
 
@@ -501,6 +523,27 @@
 
   if (viewOnlyDismiss) {
     viewOnlyDismiss.addEventListener('click', () => { viewOnlyBanner.style.display = 'none'; });
+  }
+
+  function applyAuthorityState() {
+    if (!canEdit && viewOnlyBanner) viewOnlyBanner.style.display = 'flex';
+    titleText.setAttribute('contenteditable', canEdit ? 'true' : 'false');
+    dateText.setAttribute('contenteditable', canEdit ? 'true' : 'false');
+    document.querySelectorAll('.stop-action-btn, #addStopBtn').forEach(button => {
+      button.disabled = !canEdit;
+      button.style.display = canEdit ? '' : 'none';
+    });
+    document.querySelectorAll('#stopTimeline .timetable-row').forEach(row => {
+      row.setAttribute('draggable', canEdit ? 'true' : 'false');
+    });
+    if (!isOwner) {
+      const inviteForm = document.getElementById('inviteForm');
+      if (inviteForm) inviteForm.style.display = 'none';
+      document.querySelectorAll('.role-pill:not(.role-owner)').forEach(button => {
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+      });
+    }
   }
 
   /* Editable trip title (plan name) */
@@ -521,6 +564,7 @@
   });
 
   titleText.addEventListener('blur', async function () {
+    if (!canEdit) return;
     const newTitle = this.textContent.replace(/\s+/g, ' ').trim();
 
     if (!newTitle) {
@@ -540,8 +584,7 @@
       if (result.success) {
         this.textContent = result.title || newTitle;
         titleBeforeEdit = this.textContent;
-        prependUpdate('E', `${currentName} renamed the trip to "${this.textContent}"`);
-        bumpBellBadge();
+        refreshActivities();
         showToast('Trip name updated');
       } else {
         this.textContent = titleBeforeEdit;
@@ -571,6 +614,7 @@
   });
 
   dateText.addEventListener('blur', async function () {
+    if (!canEdit) return;
     const newDate = this.textContent.replace(/\s+/g, ' ').trim();
 
     if (!newDate) {
@@ -590,8 +634,7 @@
       if (result.success) {
         this.textContent = result.date || newDate;
         dateBeforeEdit = this.textContent;
-        prependUpdate('E', `${currentName} changed the trip date to "${this.textContent}"`);
-        bumpBellBadge();
+        refreshActivities();
         showToast('Trip date updated');
       } else {
         this.textContent = dateBeforeEdit;
@@ -626,6 +669,52 @@
       .some(el => el.textContent.trim().toLowerCase() === email.toLowerCase());
   }
 
+  function buildCollaboratorRow(uid, collaborator) {
+    const name = collaborator.name || collaborator.email || 'Collaborator';
+    const email = collaborator.email || '';
+    const role = collaborator.role || 'Viewer';
+    const status = collaborator.status || 'active';
+    const isPending = status === 'pending' || status === 'queued';
+    const color = collaborator.color || colorForEmail(email || uid || name);
+    const initials = name.split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase() || initialsFromEmail(email || name);
+    const li = document.createElement('li');
+    li.className = `collaborator-row ${isPending ? 'is-pending' : ''}`;
+    li.dataset.collaboratorUid = uid || '';
+
+    let roleMarkup = '<span class="pending-pill">Pending</span>';
+    if (!isPending && role === 'Owner') {
+      roleMarkup = '<button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>';
+    } else if (!isPending) {
+      const disabledAttrs = isOwner ? '' : ' disabled aria-disabled="true"';
+      roleMarkup = `
+        <button class="role-pill role-${escapeHtml(role.toLowerCase())}" type="button" aria-haspopup="true" aria-label="Role: ${escapeHtml(role)}. Click to change"${disabledAttrs}>
+          ${escapeHtml(role)} <span class="chevron" aria-hidden="true">&#9662;</span>
+        </button>`;
+    }
+
+    li.innerHTML = `
+      <div class="avatar avatar-sm" style="--avatar-bg: ${escapeHtml(color)}; background-color: var(--avatar-bg);">${escapeHtml(initials)}</div>
+      <div class="collab-info"><p class="collab-name">${escapeHtml(name)}</p><p class="collab-email">${escapeHtml(email)}</p></div>
+      <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">${roleMarkup}</div>`;
+    return li;
+  }
+
+  function renderCollaborators(collaborators) {
+    if (!collabList) return;
+    collabList.innerHTML = '';
+    Object.entries(collaborators || {}).forEach(([uid, collaborator]) => {
+      collabList.appendChild(buildCollaboratorRow(uid, collaborator || {}));
+    });
+    applyAuthorityState();
+  }
+
+  async function refreshCollaborators() {
+    const response = await fetch(`/api/collaboration/collaborators/${encodeURIComponent(itineraryId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.success) renderCollaborators(data.collaborators || {});
+  }
+
   if (inviteForm) {
     inviteForm.addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -647,8 +736,10 @@
       inviteInput.classList.remove('is-error');
 
       const inviteBtn = inviteForm.querySelector('.invite-btn');
-      inviteBtn.disabled = true;
+      const actionKey = `invite:${email.toLowerCase()}`;
+      if (!beginAction(actionKey, [inviteBtn, inviteInput])) return;
       inviteBtn.textContent = 'Sending...';
+      let successMessage = `Invitation sent to ${email}`;
 
       try {
         const response = await fetch('/api/collaboration/invite', {
@@ -664,29 +755,18 @@
           inviteInput.classList.add('is-error');
           return;
         }
+        successMessage = result.message || successMessage;
       } catch (err) {
         showToast('Failed to send invitation. Please try again.');
         return;
       } finally {
-        inviteBtn.disabled = false;
+        endAction(actionKey, [inviteBtn, inviteInput]);
         inviteBtn.textContent = 'Invite';
       }
 
-      const li = document.createElement('li');
-      li.className = 'collaborator-row is-pending';
-      const color = colorForEmail(email);
-      li.innerHTML = `
-        <div class="avatar avatar-sm" style="--avatar-bg: ${color}; background-color: var(--avatar-bg);">${initialsFromEmail(email)}</div>
-        <div class="collab-info"><p class="collab-name">${email}</p><p class="collab-email">${email}</p></div>
-        <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">
-          <span class="pending-pill">Pending</span>
-          <button class="accept-sim-btn" type="button" title="Simulate: invitee accepts" aria-label="Simulate acceptance for ${email}">&#10003;</button>
-        </div>`;
-      collabList.appendChild(li);
-
-      prependUpdate('I', `Invitation sent to ${email}`);
-      bumpBellBadge();
-      showToast(`Invitation sent to ${email}`);
+      await refreshCollaborators();
+      await refreshActivities();
+      showToast(successMessage);
       inviteInput.value = '';
     });
 
@@ -697,25 +777,6 @@
       }
     });
   }
-
-  collabList.addEventListener('click', function (e) {
-    const acceptBtn = e.target.closest('.accept-sim-btn');
-    if (!acceptBtn) return;
-
-    const row = acceptBtn.closest('.collaborator-row');
-    const name = row.querySelector('.collab-name').textContent.trim();
-
-    row.classList.remove('is-pending');
-    const wrap = row.querySelector('.collaborator-role-wrap');
-    wrap.innerHTML = `
-      <button class="role-pill role-viewer" type="button" aria-haspopup="true" aria-label="Role: Viewer. Click to change">
-        Viewer <span class="chevron" aria-hidden="true">&#9662;</span>
-      </button>`;
-
-    prependUpdate('A', `${name} accepted the invitation`);
-    bumpBellBadge();
-    showToast(`${name} joined the itinerary`);
-  });
 
   /* Comments */
   const commentForm  = document.getElementById('commentForm');
@@ -746,6 +807,79 @@
         <p class="comment-text">${escapeHtml(text)}</p>
       </div>`;
     return article;
+  }
+
+  function renderComments(comments) {
+    if (!commentsList) return;
+    commentsList.innerHTML = '';
+    comments.forEach(comment => {
+      commentsList.appendChild(buildCommentArticle({
+        id: comment.id || comment.comment_id,
+        authorUid: comment.authorUid || comment.user_id,
+        authorName: comment.authorName || comment.name || 'Someone',
+        text: comment.text || comment.comment_text || '',
+        createdAt: comment.updatedAt || comment.updated_at || comment.createdAt || comment.created_at || ''
+      }));
+    });
+  }
+
+  function renderActivities(activities) {
+    if (!updateList) return;
+    updateList.innerHTML = '';
+    if (!activities.length) {
+      updateList.innerHTML = `
+        <li class="notif-row" data-empty-activity="true">
+          <div class="notif-icon" aria-hidden="true">N</div>
+          <div><p class="notif-text">No activity yet</p><p class="notif-time">Start collaborating to see updates here</p></div>
+        </li>`;
+      syncActivityListVisibility();
+      return;
+    }
+    activities.forEach(activity => {
+      const li = document.createElement('li');
+      const sourceId = activity.sourceId || activity.id || '';
+      li.className = `notif-row ${unreadNotificationIds.has(sourceId) ? 'is-unread' : ''}`;
+      li.dataset.sourceType = activity.sourceType || 'activity';
+      li.dataset.sourceId = sourceId;
+      li.innerHTML = `
+        <div class="notif-icon" aria-hidden="true">${escapeHtml(activity.iconLabel || 'N')}</div>
+        <div><p class="notif-text">${escapeHtml(activity.message || 'Updated')}</p><p class="notif-time">${escapeHtml(activity.timeAgo || formatCommentTime(activity.createdAt))}</p></div>`;
+      updateList.appendChild(li);
+    });
+    syncActivityListVisibility();
+  }
+
+  function prependNotification(notification) {
+    if (!updateList || !notification || !notification.id) return;
+    if (updateList.querySelector(`[data-source-id="${CSS.escape(notification.id)}"]`)) return;
+
+    const emptyRow = updateList.querySelector('[data-empty-activity="true"]');
+    if (emptyRow) emptyRow.remove();
+
+    const li = document.createElement('li');
+    li.className = 'notif-row is-unread';
+    li.dataset.sourceType = 'notification';
+    li.dataset.sourceId = notification.id;
+    unreadNotificationIds.add(notification.id);
+    li.innerHTML = `
+      <div class="notif-icon" aria-hidden="true">${escapeHtml(notification.iconLabel || 'N')}</div>
+      <div><p class="notif-text">${escapeHtml(notification.message || 'New update')}</p><p class="notif-time">${escapeHtml(notification.timeAgo || formatCommentTime(notification.createdAt || notification.created_at))}</p></div>`;
+    updateList.prepend(li);
+    syncActivityListVisibility();
+  }
+
+  async function refreshComments() {
+    const response = await fetch(`/api/collaboration/comments/${encodeURIComponent(itineraryId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.success) renderComments(data.comments || []);
+  }
+
+  async function refreshActivities() {
+    const response = await fetch(`/api/collaboration/activity/${encodeURIComponent(itineraryId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.success) renderActivities(data.activities || []);
   }
 
   function startCommentEdit(article) {
@@ -833,8 +967,8 @@
         if (result.success) {
           textEl.textContent = result.comment && result.comment.text ? result.comment.text : newText;
           finishCommentEdit(article);
-          prependUpdate('E', `${currentName} edited a comment`);
-          bumpBellBadge();
+          refreshComments();
+          refreshActivities();
           showToast('Comment updated');
         } else {
           showToast(`Failed to update comment: ${result.message}`);
@@ -851,6 +985,7 @@
   if (commentForm) {
     commentForm.addEventListener('submit', async function (e) {
       e.preventDefault();
+      if (submittingComment) return;
       const text = commentInput.value.trim();
 
       if (!text) {
@@ -862,7 +997,8 @@
       commentInput.classList.remove('is-error');
 
       const sendBtn = commentForm.querySelector('.comment-send-btn');
-      sendBtn.disabled = true;
+      submittingComment = true;
+      if (!beginAction('comment:add', [sendBtn, commentInput])) return;
       sendBtn.textContent = '...';
 
       try {
@@ -874,26 +1010,18 @@
         const result = await response.json();
 
         if (result.success) {
-          const article = buildCommentArticle({
-            id: result.comment && result.comment.id,
-            authorUid: currentUid,
-            authorName: currentName,
-            text,
-            createdAt: result.comment && result.comment.createdAt ? result.comment.createdAt : ''
-          });
-          commentsList.appendChild(article);
           commentInput.value = '';
-
-          prependUpdate('C', `${currentName} added a comment`);
-          bumpBellBadge();
-          showToast('Comment added');
+          await refreshComments();
+          await refreshActivities();
+          showToast(`Comment added: "${text.slice(0, 60)}"`);
         } else {
           showToast(`Failed to add comment: ${result.message}`);
         }
       } catch (err) {
         showToast('Failed to add comment. Please try again.');
       } finally {
-        sendBtn.disabled = false;
+        submittingComment = false;
+        endAction('comment:add', [sendBtn, commentInput]);
         sendBtn.innerHTML = '&#10148;';
       }
     });
@@ -917,6 +1045,8 @@
   const saveBtn = document.getElementById('edit-stop-save');
   const stopTimeline = document.getElementById('stopTimeline');
   const stopCountEl = document.getElementById('collabStopCount');
+
+  applyAuthorityState();
 
   let currentStopRow = null;
   let draggedStopRow = null;
@@ -974,7 +1104,7 @@
   }
 
   function enableStopDragging(row) {
-    row.setAttribute('draggable', 'true');
+    row.setAttribute('draggable', canEdit ? 'true' : 'false');
   }
 
   function splitTimeDuration(value) {
@@ -995,16 +1125,24 @@
   }
 
   async function persistStops() {
-    const response = await fetch('/api/collaboration/update-itinerary', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        itineraryId,
-        editorUid: currentUid,
-        stops: collectStops()
-      })
-    });
-    return response.json();
+    if (pendingActions.has('stops:persist')) {
+      return { success: false, message: 'Please wait for the current stop update to finish.' };
+    }
+    pendingActions.add('stops:persist');
+    try {
+      const response = await fetch('/api/collaboration/update-itinerary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itineraryId,
+          editorUid: currentUid,
+          stops: collectStops()
+        })
+      });
+      return await response.json();
+    } finally {
+      pendingActions.delete('stops:persist');
+    }
   }
 
   function openEditModal(stopRow) {
@@ -1065,8 +1203,7 @@
         currentStopRow.querySelector('.stop-time').textContent = formatTimeDuration(newTime, newDuration);
         updateTripDuration();
 
-        prependUpdate('E', `${currentName} updated "${newName}"`);
-        bumpBellBadge();
+        refreshActivities();
         showToast(`"${newName}" updated`);
         closeEditModal();
       } else {
@@ -1084,6 +1221,10 @@
     const editBtn = e.target.closest('.stop-action-btn:not(.is-delete)');
     if (editBtn) {
       e.preventDefault();
+      if (!canEdit) {
+        showToast('You have view-only access.');
+        return;
+      }
       const row = editBtn.closest('.timetable-row');
       if (row) openEditModal(row);
       return;
@@ -1092,16 +1233,19 @@
     const deleteBtn = e.target.closest('.stop-action-btn.is-delete');
     if (deleteBtn) {
       e.preventDefault();
+      if (!canEdit) {
+        showToast('You have view-only access.');
+        return;
+      }
       const row = deleteBtn.closest('.timetable-row');
       const name = row.querySelector('.stop-name').textContent.trim();
       if (confirm(`Are you sure you want to delete "${name}"?`)) {
         row.remove();
         updateStopIndexes();
-        prependUpdate('D', `Deleted stop "${name}"`);
-        bumpBellBadge();
         showToast(`"${name}" deleted`);
         persistStops().then(result => {
-          if (!result.success) showToast(`Delete was not saved: ${result.message}`);
+          if (result.success) refreshActivities();
+          else showToast(`Delete was not saved: ${result.message}`);
         }).catch(() => showToast('Delete was not saved. Please refresh and try again.'));
       }
     }
@@ -1110,6 +1254,10 @@
   const addStopBtn = document.getElementById('addStopBtn');
   if (addStopBtn) {
     addStopBtn.addEventListener('click', async function () {
+      if (!canEdit) {
+        showToast('You have view-only access.');
+        return;
+      }
       const count = stopTimeline.querySelectorAll('.timetable-row').length;
       const row = document.createElement('div');
       row.className = 'timetable-row';
@@ -1152,8 +1300,7 @@
       }
       updateStopIndexes();
 
-      prependUpdate('+', `${currentName} added a new stop`);
-      bumpBellBadge();
+      refreshActivities();
       showToast('New stop added - click edit to customize');
       setTimeout(() => openEditModal(row), 250);
     });
@@ -1164,6 +1311,7 @@
   stopTimeline.addEventListener('dragstart', function (e) {
     const row = e.target.closest('.timetable-row');
     if (!row) return;
+    if (!canEdit) return;
 
     draggedStopRow = row;
     dragStartOrder = snapshotStopOrder();
@@ -1198,8 +1346,7 @@
     try {
       const result = await persistStops();
       if (result.success) {
-        prependUpdate('E', `${currentName} moved "${movedName}" to stop ${newStopNumber}`);
-        bumpBellBadge();
+        refreshActivities();
         showToast(`"${movedName}" moved to stop ${newStopNumber}`);
       } else {
         restoreStopOrder(dragStartOrder);
@@ -1232,10 +1379,16 @@
 
   /* Role dropdown (client-side demo) */
   document.addEventListener('click', function (e) {
+    if (e.target.closest('.role-dropdown')) return;
+
     document.querySelectorAll('.role-dropdown').forEach(d => d.remove());
 
     const pill = e.target.closest('.role-pill:not(.role-owner)');
     if (!pill) return;
+    if (!isOwner) {
+      showToast('Only the owner can change collaborator roles.');
+      return;
+    }
     if (pill.closest('.is-pending')) return;
 
     const wrap = pill.closest('.collaborator-role-wrap');
@@ -1252,27 +1405,102 @@
   document.addEventListener('click', function (e) {
     const setRoleBtn = e.target.closest('[data-set-role]');
     if (setRoleBtn) {
+      e.preventDefault();
+      if (!isOwner) {
+        showToast('Only the owner can change collaborator roles.');
+        return;
+      }
       const row = setRoleBtn.closest('.collaborator-row');
       const name = row.querySelector('.collab-name').textContent.trim();
       const role = setRoleBtn.dataset.setRole;
+      const collaboratorUid = row.dataset.collaboratorUid || '';
       const pill = row.querySelector('.role-pill');
-      pill.className = `role-pill role-${role.toLowerCase()}`;
-      pill.innerHTML = `${role} <span class="chevron" aria-hidden="true">&#9662;</span>`;
-      prependUpdate('R', `${name} assigned as ${role}`);
-      bumpBellBadge();
-      showToast(`${name} is now ${role}`);
-      setRoleBtn.closest('.role-dropdown').remove();
+      const dropdown = setRoleBtn.closest('.role-dropdown');
+
+      if (!collaboratorUid) {
+        showToast('Could not identify collaborator.');
+        if (dropdown) dropdown.remove();
+        return;
+      }
+
+      setRoleBtn.disabled = true;
+
+      fetch('/api/collaboration/update-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itineraryId,
+          ownerUid: currentUid,
+          collaboratorUid,
+          role
+        })
+      })
+        .then(response => response.json())
+        .then(result => {
+          if (!result.success) {
+            showToast(result.message || 'Could not update role.');
+            return;
+          }
+
+          const nextRole = result.role || role;
+          pill.className = `role-pill role-${nextRole.toLowerCase()}`;
+          pill.innerHTML = `${nextRole} <span class="chevron" aria-hidden="true">&#9662;</span>`;
+          pill.setAttribute('aria-label', `Role: ${nextRole}. Click to change`);
+          refreshActivities();
+          showToast(`${name} is now ${nextRole}`);
+        })
+        .catch(() => showToast('Could not update role. Please try again.'))
+        .finally(() => {
+          if (dropdown) dropdown.remove();
+        });
     }
 
     const removeBtn = e.target.closest('[data-remove-collab]');
     if (removeBtn) {
+      e.preventDefault();
+      if (!isOwner) {
+        showToast('Only the owner can remove collaborators.');
+        return;
+      }
       const row = removeBtn.closest('.collaborator-row');
       const name = row.querySelector('.collab-name').textContent.trim();
+      const collaboratorUid = row.dataset.collaboratorUid || '';
+      const dropdown = removeBtn.closest('.role-dropdown');
+
+      if (!collaboratorUid) {
+        showToast('Could not identify collaborator.');
+        if (dropdown) dropdown.remove();
+        return;
+      }
+
       if (confirm(`Remove ${name}? They will lose access immediately.`)) {
-        row.remove();
-        prependUpdate('D', `${name} was removed from the plan`);
-        bumpBellBadge();
-        showToast(`${name} removed`);
+        removeBtn.disabled = true;
+
+        fetch('/api/collaboration/remove-collaborator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itineraryId,
+            ownerUid: currentUid,
+            collaboratorUid
+          })
+        })
+          .then(response => response.json())
+          .then(result => {
+            if (!result.success) {
+              showToast(result.message || 'Could not remove collaborator.');
+              return;
+            }
+
+            row.remove();
+            refreshActivities();
+            refreshCollaborators();
+            showToast(`${name} removed`);
+          })
+          .catch(() => showToast('Could not remove collaborator. Please try again.'))
+          .finally(() => {
+            if (dropdown) dropdown.remove();
+          });
       }
     }
   });
@@ -1284,16 +1512,25 @@
       if (!response.ok) return;
       const data = await response.json();
       const newNotifications = data.notifications || [];
+      let unreadCount = 0;
       newNotifications.forEach(n => {
+        if (!n.isRead && !n.is_read) unreadCount += 1;
         if (n.id && seenNotificationIds.has(n.id)) return;
         if (n.id) seenNotificationIds.add(n.id);
-        prependUpdate(n.iconLabel || 'N', n.message);
-        bumpBellBadge();
+        if (!n.isRead && !n.is_read) {
+          unreadNotificationIds.add(n.id);
+          prependNotification(n);
+        }
       });
+      setBellBadgeCount(unreadCount);
     } catch (err) { /* expected during local dev without a live socket */ }
   }
-  setInterval(checkForUpdates, 5000);
-  setTimeout(checkForUpdates, 1000);
+  async function refreshCollaborationState() {
+    await Promise.allSettled([refreshComments(), refreshActivities(), refreshCollaborators()]);
+    await checkForUpdates();
+  }
+  setInterval(refreshCollaborationState, 5000);
+  setTimeout(refreshCollaborationState, 1000);
 })();
 </script>
 {% endblock %}

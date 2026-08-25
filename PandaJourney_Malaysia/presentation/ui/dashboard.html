@@ -60,7 +60,7 @@ Welcome back, <span id="dashboardName"></span>
         <span class="summary-icon">💾</span>
         <div class="summary-dot" style="background:#0f7a5a;"></div>
       </div>
-      <div class="summary-value">{{ saved_count }}</div>
+      <div class="summary-value" id="dashboard-itinerary-count">{{ saved_count }}</div>
       <div class="summary-label">Saved Itineraries</div>
     </div>
 
@@ -69,7 +69,7 @@ Welcome back, <span id="dashboardName"></span>
         <span class="summary-icon">⭐</span>
         <div class="summary-dot" style="background:#f59e0b;"></div>
       </div>
-      <div class="summary-value" id="dashboard-favourite-count">0</div>
+      <div class="summary-value" id="dashboard-favourite-count">{{ favourite_count }}</div>
       <div class="summary-label">Favourite Attractions</div>
     </div>
 

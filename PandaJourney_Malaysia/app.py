@@ -1,5 +1,7 @@
 import os
 from pathlib import Path
+from hashlib import sha1
+from datetime import date, datetime
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -152,10 +154,44 @@ collab_service = create_collaboration_service()
 # ==========================================
 def get_current_user():
     return session.get("user", {
-        "display_name": "Ahmad Faris",
-        "email": "ahmad@email.com",
-        "uid": "user_123"
+        "display_name": "Guest",
+        "email": "guest@example.com",
+        "uid": "guest"
     })
+
+
+def is_logged_in_user(user):
+    return bool(user and user.get("uid") and user.get("uid") != "guest")
+
+
+def make_local_uid(email):
+    normalized_email = (email or "guest@example.com").strip().lower()
+    digest = sha1(normalized_email.encode("utf-8")).hexdigest()[:10]
+    return f"user_{digest}"
+
+
+def find_firebase_user_by_email(email):
+    if firebase_db is None or not email:
+        return None
+
+    try:
+        from google.cloud.firestore_v1 import FieldFilter
+
+        users = (
+            firebase_db.collection("users")
+            .where(filter=FieldFilter("email", "==", email.strip().lower()))
+            .limit(1)
+            .stream(retry=None, timeout=10)
+        )
+        user_doc = next(users, None)
+        if not user_doc:
+            return None
+        user = user_doc.to_dict() or {}
+        user.setdefault("uid", user_doc.id)
+        return user
+    except Exception as error:
+        app.logger.warning("Could not resolve Firebase user by email: %s", error)
+        return None
 
 
 def read_collaboration_data_safely():
@@ -172,35 +208,131 @@ def read_collaboration_data_safely():
             "users": {},
         }
 
+
+def claim_queued_invitations_for_user(user):
+    if not user or not user.get("uid") or not user.get("email"):
+        return
+
+    claim = getattr(collab_service, "claim_queued_invitations", None)
+    if not claim:
+        return
+
+    try:
+        claim(user)
+    except Exception as error:
+        app.logger.warning("Could not claim queued invitations: %s", error)
+
 # ==========================================
 # User & Authentication Routes
 # ==========================================
 @app.route("/", methods=["GET", "POST"]) # Jiading
 def login():
+    if request.method == "GET" and is_logged_in_user(session.get("user")):
+        return redirect(url_for("dashboard"))
+
     if request.method == "POST":
+        email = request.form.get("email") or "guest@example.com"
+        firebase_user = find_firebase_user_by_email(email)
+        display_name = (
+            (firebase_user or {}).get("displayName")
+            or (firebase_user or {}).get("name")
+            or email.split("@")[0].replace(".", " ").replace("_", " ").title()
+        )
         session["user"] = {
-            "display_name": "Ahmad Faris",
-            "email": request.form.get("email") or "ahmad@email.com",
-            "uid": "user_123"
+            "display_name": display_name or "Guest",
+            "email": email,
+            "uid": (firebase_user or {}).get("uid") or make_local_uid(email)
         }
+        claim_queued_invitations_for_user(session["user"])
         return redirect(url_for("dashboard"))
 
     return render_template("login.html")
 
+
+def get_itinerary_date_value(itinerary):
+    return (
+        (itinerary or {}).get("travel_date")
+        or (itinerary or {}).get("date")
+        or (itinerary or {}).get("trip_date")
+        or ""
+    )
+
+
+def parse_itinerary_date(date_value):
+    if not date_value:
+        return None
+
+    text = str(date_value).strip()
+    for date_format in ("%Y-%m-%d", "%Y-%m-%d %H:%M:%S", "%b %d, %Y", "%B %d, %Y"):
+        try:
+            return datetime.strptime(text, date_format).date()
+        except ValueError:
+            continue
+
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+
+
+def get_shared_itinerary_count(collaboration_data, current_uid):
+    shared_ids = set()
+    for itin_id, itinerary in collaboration_data.get("itineraries", {}).items():
+        membership = (itinerary.get("collaborators") or {}).get(current_uid)
+        if membership and membership.get("status") == "active" and membership.get("role") != "Owner":
+            shared_ids.add(str(itin_id))
+
+    for invitation in collaboration_data.get("invitations", []):
+        if invitation.get("invitedUid") == current_uid and invitation.get("status") == "accepted":
+            shared_ids.add(str(invitation.get("itineraryId")))
+
+    return len(shared_ids)
+
+
+def get_upcoming_trip(saved_items):
+    today = date.today()
+    dated_items = []
+
+    for item in saved_items:
+        trip_date = parse_itinerary_date(get_itinerary_date_value(item))
+        if trip_date and trip_date >= today:
+            dated_items.append((trip_date, item))
+
+    if dated_items:
+        return sorted(dated_items, key=lambda entry: entry[0])[0][1]
+
+    return None
+
+
+def get_user_dashboard_stats(current_uid):
+    saved_list = get_saved_itineraries(current_uid)
+    collaboration_data = read_collaboration_data_safely()
+    upcoming_trip = get_upcoming_trip(saved_list)
+
+    return {
+        "saved_list": saved_list,
+        "saved_count": len(saved_list),
+        "favourite_count": 0,
+        "shared_count": get_shared_itinerary_count(collaboration_data, current_uid),
+        "upcoming_trip": upcoming_trip,
+        "upcoming_date": get_itinerary_date_value(upcoming_trip) if upcoming_trip else "No Trip",
+    }
+
 @app.route("/dashboard") # Jiading
 def dashboard():
-    saved_list = get_saved_itineraries(get_current_user().get("uid"))
+    current_user = get_current_user()
+    stats = get_user_dashboard_stats(current_user.get("uid"))
 
     return render_template(
         "dashboard.html",
         active_page="dashboard",
-        current_user=get_current_user(),
-        saved_count=len(saved_list),
-        favourite_count=0,
-        shared_count=0,
-        upcoming_date=saved_list[0].get("date", "No Trip") if saved_list else "No Trip",
-        recent_itineraries=saved_list[:3],
-        upcoming_trip=saved_list[0] if saved_list else None
+        current_user=current_user,
+        saved_count=stats["saved_count"],
+        favourite_count=stats["favourite_count"],
+        shared_count=stats["shared_count"],
+        upcoming_date=stats["upcoming_date"],
+        recent_itineraries=stats["saved_list"][:3],
+        upcoming_trip=stats["upcoming_trip"]
     )
 
 @app.route("/create-account")
@@ -209,14 +341,17 @@ def create_account():
 
 @app.route("/profile", methods=["GET", "POST"]) # Jiading
 def profile():
+    current_user = get_current_user()
+    current_uid = current_user.get("uid")
+
     if request.method == "POST":
         action = request.form.get("_action")
 
         if action == "update_profile":
             session["user"] = {
-                "display_name": request.form.get("display_name") or "Ahmad Faris",
-                "email": get_current_user().get("email", "ahmad@email.com"),
-                "uid": get_current_user().get("uid", "user_123")
+                "display_name": request.form.get("display_name") or current_user.get("display_name", "Guest"),
+                "email": current_user.get("email", "guest@example.com"),
+                "uid": current_uid or "guest"
             }
             flash("Profile updated.", "success")
         elif action == "update_preferences":
@@ -226,10 +361,12 @@ def profile():
 
         return redirect(url_for("profile"))
 
+    stats = get_user_dashboard_stats(current_uid)
+
     return render_template(
         "profile.html",
         active_page="profile",
-        current_user=get_current_user(),
+        current_user=current_user,
         user_preferences={
             "interests": [],
             "min_rating": "",
@@ -238,9 +375,9 @@ def profile():
         favourite_attractions=[],
         saved_itineraries_preview=[],
         shared_itineraries_preview=[],
-        saved_count=7,
-        favourite_count=24,
-        shared_count=3
+        saved_count=stats["saved_count"],
+        favourite_count=stats["favourite_count"],
+        shared_count=stats["shared_count"]
     )
 
 @app.route("/user-management") # Jiading
@@ -251,6 +388,31 @@ def user_management():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+@app.route("/api/auth/session", methods=["POST"])
+def sync_auth_session():
+    payload = request.get_json(silent=True) or {}
+    uid = (payload.get("uid") or "").strip()
+    email = (payload.get("email") or "").strip().lower()
+
+    if not uid:
+        return jsonify({"success": False, "message": "Missing Firebase user id."}), 400
+
+    display_name = (
+        payload.get("displayName")
+        or payload.get("display_name")
+        or (email.split("@")[0].replace(".", " ").replace("_", " ").title() if email else "User")
+    )
+
+    session["user"] = {
+        "display_name": display_name,
+        "email": email,
+        "uid": uid,
+    }
+    claim_queued_invitations_for_user(session["user"])
+
+    return jsonify({"success": True, "user": session["user"]})
 
 # ==========================================
 # Core Feature Routes
@@ -480,8 +642,11 @@ def public_itinerary():
 # ==========================================
 @app.route("/collaboration", methods=["GET", "POST"])
 def collaboration():
-    # Dynamic Itinerary ID passed via query parameter (?id=itin_test)
-    itin_id = request.args.get('id', 'itin_test')
+    # Dynamic Itinerary ID passed via query parameter (?id=<saved itinerary id>)
+    itin_id = request.args.get('id')
+    if not itin_id:
+        flash("Choose a saved itinerary to collaborate on.", "warning")
+        return redirect(url_for("saved_itineraries"))
 
     # Fetch itinerary data from local JSON storage
     itin_data = collab_service.get_itinerary(itin_id)
@@ -512,6 +677,29 @@ def get_comments(itin_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
+@app.route('/api/collaboration/activity/<itin_id>', methods=['GET'])
+def get_collaboration_activity(itin_id):
+    try:
+        return jsonify({
+            'success': True,
+            'activities': collab_service.get_activities(itin_id)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'activities': [], 'error': str(e)}), 500
+
+
+@app.route('/api/collaboration/collaborators/<itin_id>', methods=['GET'])
+def get_collaborators(itin_id):
+    try:
+        itinerary = collab_service.get_itinerary(itin_id) or {}
+        return jsonify({
+            'success': True,
+            'collaborators': itinerary.get('collaborators', {})
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'collaborators': {}, 'error': str(e)}), 500
+
 # FR 4.1: Send Invitation
 @app.route('/api/collaboration/invite', methods=['POST'])
 def invite():
@@ -531,6 +719,29 @@ def respond_invite():
         invitation_id=data.get('invitationId'),
         user_uid=data.get('userId'),
         action=data.get('action') # 'accept' or 'decline'
+    )
+    return jsonify(result)
+
+
+@app.route('/api/collaboration/update-role', methods=['POST'])
+def update_collaborator_role():
+    data = request.json or {}
+    result = collab_service.update_collaborator_role(
+        itin_id=data.get('itineraryId'),
+        owner_uid=data.get('ownerUid', get_current_user().get('uid')),
+        collaborator_uid=data.get('collaboratorUid'),
+        role=data.get('role')
+    )
+    return jsonify(result)
+
+
+@app.route('/api/collaboration/remove-collaborator', methods=['POST'])
+def remove_collaborator():
+    data = request.json or {}
+    result = collab_service.remove_collaborator(
+        itin_id=data.get('itineraryId'),
+        owner_uid=data.get('ownerUid', get_current_user().get('uid')),
+        collaborator_uid=data.get('collaboratorUid')
     )
     return jsonify(result)
 
@@ -635,7 +846,7 @@ def update_date():
 # Get notifications for real-time updates
 @app.route('/api/collaboration/notifications', methods=['GET'])
 def get_notifications():
-    itinerary_id = request.args.get('itineraryId', 'itin_test')
+    itinerary_id = request.args.get('itineraryId', '')
     user_uid = get_current_user().get('uid')
 
     try:
@@ -652,6 +863,19 @@ def get_notifications():
             'notifications': [],
             'error': str(e)
         })
+
+
+@app.route('/api/collaboration/notifications/read', methods=['POST'])
+def mark_notifications_read():
+    data = request.json or {}
+    itinerary_id = data.get('itineraryId', '')
+    user_uid = get_current_user().get('uid')
+
+    try:
+        updated = collab_service.mark_notifications_read(user_uid, itinerary_id)
+        return jsonify({'success': True, 'updated': updated})
+    except Exception as e:
+        return jsonify({'success': False, 'updated': 0, 'error': str(e)}), 500
 
 
 @app.route("/health/firebase", methods=["GET"])
@@ -688,9 +912,9 @@ def create_test_notification():
         }), 503
 
     current_user = get_current_user()
-    user_uid = current_user.get("uid", "user_123")
+    user_uid = current_user.get("uid", "guest")
     payload = request.get_json(silent=True) or {}
-    itinerary_id = request.form.get("itinerary_id") or payload.get("itinerary_id") or "itin_test"
+    itinerary_id = request.form.get("itinerary_id") or payload.get("itinerary_id") or ""
     message = "Test notification from PandaJourney Firebase setup"
 
     notification = collab_service._notify(
@@ -703,7 +927,7 @@ def create_test_notification():
     return jsonify({
         "success": True,
         "message": "Test notification created.",
-        "collaboration_collection": "collaboration_notifications",
+        "collaboration_collection": "notifications",
         "erd_collection": "notifications",
         "notification": notification,
     })

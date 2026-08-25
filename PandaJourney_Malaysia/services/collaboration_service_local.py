@@ -1,6 +1,9 @@
 import json
+import os
+import smtplib
 from copy import deepcopy
 from datetime import datetime
+from email.message import EmailMessage
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -55,8 +58,27 @@ class LocalCollaborationService:
     
     def _write_data(self, data: Dict[str, Any]):
         """Write data to JSON file"""
+        data["notifications"] = self._dedupe_notifications(data.get("notifications", []))
         with open(self.data_file, 'w', encoding='utf-8') as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
+
+    def _dedupe_notifications(self, notifications: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        deduped = []
+        seen = set()
+        for notification in notifications:
+            minute_key = (notification.get("createdAt") or notification.get("created_at") or "")[:16]
+            key = (
+                notification.get("recipientUid") or notification.get("user_id"),
+                notification.get("itineraryId") or notification.get("reference_id"),
+                notification.get("message"),
+                notification.get("icon") or notification.get("type"),
+                minute_key,
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(notification)
+        return deduped
     
     def _get_current_timestamp(self) -> str:
         """Get current ISO timestamp"""
@@ -114,7 +136,11 @@ class LocalCollaborationService:
     def _normalize_itinerary_for_display(self, itinerary: Dict[str, Any]) -> Dict[str, Any]:
         normalized = deepcopy(itinerary)
         for index, stop in enumerate(normalized.get("stops", []), start=1):
-            parsed = self._split_saved_time_duration(stop.get("time", ""), stop.get("duration", ""))
+            parsed = self._split_saved_time_duration(
+                stop.get("time") or stop.get("arrival_time", ""),
+                stop.get("duration") or stop.get("visit_duration") or self._format_minutes_as_duration(stop.get("visit_duration_minutes"))
+            )
+            stop["name"] = stop.get("name") or stop.get("stop_name") or stop.get("title") or f"Stop {index}"
             stop["time"] = parsed["time"]
             stop["duration"] = parsed["duration"]
             stop["stopNumber"] = int(stop.get("stopNumber") or index)
@@ -129,15 +155,31 @@ class LocalCollaborationService:
     def _normalize_stops_for_save(self, stops: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         normalized = []
         for index, stop in enumerate(stops, start=1):
-            parsed = self._split_saved_time_duration(stop.get("time", ""), stop.get("duration", ""))
+            parsed = self._split_saved_time_duration(
+                stop.get("time") or stop.get("arrival_time", ""),
+                stop.get("duration") or stop.get("visit_duration") or self._format_minutes_as_duration(stop.get("visit_duration_minutes"))
+            )
             normalized.append({
                 **stop,
+                "name": stop.get("name") or stop.get("stop_name") or stop.get("title") or f"Stop {index}",
                 "time": parsed["time"],
                 "duration": parsed["duration"],
                 "stopNumber": int(stop.get("stopNumber") or index),
                 "icon": stop.get("icon") or "pin"
             })
         return sorted(normalized, key=lambda stop: int(stop.get("stopNumber") or 0))
+
+    def _format_minutes_as_duration(self, minutes: Any) -> str:
+        try:
+            value = int(minutes or 0)
+        except (TypeError, ValueError):
+            return ""
+        if value <= 0:
+            return ""
+        hours = value / 60
+        if value % 60 == 0:
+            return f"{value // 60} hrs"
+        return f"{hours:.1f} hrs"
 
     def _activity_icon_label(self, message: str = "", icon: str = "") -> str:
         text = f"{message} {icon}".lower()
@@ -177,6 +219,15 @@ class LocalCollaborationService:
 
         return fallback
 
+    def _can_edit_itinerary(self, data: Dict[str, Any], itin_id: str, user_uid: str) -> bool:
+        collaborator = (
+            data.get("itineraries", {})
+            .get(str(itin_id), {})
+            .get("collaborators", {})
+            .get(str(user_uid), {})
+        )
+        return collaborator.get("status") == "active" and collaborator.get("role") in ("Owner", "Editor")
+
     def _append_activity(
         self,
         data: Dict[str, Any],
@@ -199,13 +250,166 @@ class LocalCollaborationService:
         activities.append(activity)
         return activity
 
+    def _notify(
+        self,
+        data: Dict[str, Any],
+        recipient_uid: str,
+        message: str,
+        itin_id: str,
+        icon: str = "notification",
+    ) -> Dict[str, Any]:
+        notifications = data.setdefault("notifications", [])
+        now = self._get_current_timestamp()
+        for existing in reversed(notifications):
+            if (
+                (existing.get("recipientUid") == recipient_uid or existing.get("user_id") == recipient_uid)
+                and (existing.get("itineraryId") == itin_id or existing.get("reference_id") == itin_id)
+                and existing.get("message") == message
+                and (existing.get("icon") == icon or existing.get("type") == icon)
+                and not existing.get("isRead")
+                and self._timestamps_are_close(existing.get("createdAt") or existing.get("created_at", ""), now, 12)
+            ):
+                return existing
+        notif_id = f"notif_{len(notifications) + 1}"
+        notification = {
+            "id": notif_id,
+            "notification_id": notif_id,
+            "recipientUid": recipient_uid,
+            "user_id": recipient_uid,
+            "message": message,
+            "title": message,
+            "itineraryId": itin_id,
+            "reference_id": itin_id,
+            "isRead": False,
+            "is_read": False,
+            "createdAt": now,
+            "created_at": now,
+            "icon": icon,
+            "type": icon,
+        }
+        notifications.append(notification)
+        return notification
+
+    def _send_external_invite_email(self, invited_email: str, owner_name: str, itinerary_title: str) -> Dict[str, Any]:
+        join_url = os.getenv("PANDAJOURNEY_REGISTER_URL") or "/create-account"
+        subject = f"{owner_name} invited you to PandaJourney"
+        body = (
+            f"{owner_name} is trying to invite you to collaborate on \"{itinerary_title}\" in PandaJourney.\n\n"
+            f"Register now to accept the invitation: {join_url}?email={invited_email}\n"
+        )
+
+        smtp_host = os.getenv("SMTP_HOST")
+        mail_from = os.getenv("MAIL_FROM") or os.getenv("SMTP_USER")
+        if not smtp_host or not mail_from:
+            return {
+                "sent": False,
+                "reason": "SMTP email settings are not configured.",
+                "to": invited_email,
+                "subject": subject,
+                "joinUrl": f"{join_url}?email={invited_email}",
+            }
+
+        message = EmailMessage()
+        message["From"] = mail_from
+        message["To"] = invited_email
+        message["Subject"] = subject
+        message.set_content(body)
+
+        port = int(os.getenv("SMTP_PORT", "587"))
+        username = os.getenv("SMTP_USER")
+        password = os.getenv("SMTP_PASSWORD")
+        use_tls = os.getenv("SMTP_USE_TLS", "true").lower() in ("1", "true", "yes", "on")
+
+        with smtplib.SMTP(smtp_host, port, timeout=15) as smtp:
+            if use_tls:
+                smtp.starttls()
+            if username and password:
+                smtp.login(username, password)
+            smtp.send_message(message)
+
+        return {
+            "sent": True,
+            "to": invited_email,
+            "subject": subject,
+            "joinUrl": f"{join_url}?email={invited_email}",
+        }
+
+    def _queued_invite_uid(self, email: str) -> str:
+        return f"pending_{email.replace('@', '_at_').replace('.', '_')}"
+
+    def claim_queued_invitations(self, user: Dict[str, Any]) -> int:
+        data = self._read_data()
+        uid = str(user.get("uid") or "")
+        email = (user.get("email") or "").strip().lower()
+        display_name = user.get("display_name") or user.get("displayName") or user.get("name") or email
+
+        if not uid or not email:
+            return 0
+
+        pending_uid = self._queued_invite_uid(email)
+        claimed = 0
+
+        data.setdefault("users", {}).setdefault(uid, {
+            "uid": uid,
+            "displayName": display_name,
+            "email": email,
+        })
+
+        for invitation in data.get("invitations", []):
+            if (
+                (invitation.get("invitedEmail") or "").lower() == email
+                and invitation.get("status") == "pending"
+            ):
+                invitation["invitedUid"] = uid
+                claimed += 1
+
+        for itin_id, itinerary in data.get("itineraries", {}).items():
+            collaborators = itinerary.setdefault("collaborators", {})
+            pending_collaborator = collaborators.pop(pending_uid, None)
+            if not pending_collaborator:
+                continue
+
+            collaborators[uid] = {
+                **pending_collaborator,
+                "name": display_name,
+                "email": email,
+                "status": "pending",
+            }
+            self._append_activity(
+                data,
+                str(itin_id),
+                uid,
+                display_name,
+                f"{display_name} can now respond to the invitation",
+                "invite"
+            )
+            claimed += 1
+
+        if claimed:
+            self._write_data(data)
+
+        return claimed
+
+    def _notify_active_collaborators(
+        self,
+        data: Dict[str, Any],
+        itin_id: str,
+        actor_uid: str,
+        message: str,
+        icon: str,
+    ) -> None:
+        collaborators = data.get("itineraries", {}).get(itin_id, {}).get("collaborators", {})
+        for collab_uid, collab_data in collaborators.items():
+            if collab_uid != actor_uid and collab_data.get("status") == "active":
+                self._notify(data, collab_uid, message, itin_id, icon)
+
     def _default_stops_from_saved(self, saved_item: Dict[str, Any]) -> List[Dict[str, Any]]:
         timetable = saved_item.get("timetable") or []
         if timetable:
             return [{
-                "name": stop.get("name") or stop.get("title") or f"Stop {index + 1}",
-                "time": stop.get("time", ""),
-                "duration": stop.get("duration", ""),
+                "name": stop.get("name") or stop.get("stop_name") or stop.get("title") or f"Stop {index + 1}",
+                "time": stop.get("time") or stop.get("arrival_time", ""),
+                "duration": stop.get("duration") or stop.get("visit_duration") or self._format_minutes_as_duration(stop.get("visit_duration_minutes")),
                 "icon": stop.get("icon", "pin"),
                 "stopNumber": int(stop.get("stopNumber") or index + 1)
             } for index, stop in enumerate(timetable)]
@@ -213,9 +417,9 @@ class LocalCollaborationService:
         selected = saved_item.get("selected") or []
         if selected:
             return [{
-                "name": stop.get("name") or stop.get("title") or f"Stop {index + 1}",
-                "time": stop.get("time", ""),
-                "duration": stop.get("duration", ""),
+                "name": stop.get("name") or stop.get("stop_name") or stop.get("title") or f"Stop {index + 1}",
+                "time": stop.get("time") or stop.get("arrival_time", ""),
+                "duration": stop.get("duration") or stop.get("visit_duration") or self._format_minutes_as_duration(stop.get("visit_duration_minutes")),
                 "icon": stop.get("icon", "pin"),
                 "stopNumber": int(stop.get("stopNumber") or index + 1)
             } for index, stop in enumerate(selected)]
@@ -320,9 +524,12 @@ class LocalCollaborationService:
             }
             data["itineraries"][itin_id]["collaboratorEmails"].append(invited_email)
             
+            owner_name = self._get_user_name(data, owner_id, "Someone")
+            itinerary_title = data["itineraries"][itin_id].get("title", "an itinerary")
             # Send notification
             notification = {
                 "id": f"notif_{len(data['notifications']) + 1}",
+                "notification_id": f"notif_{len(data['notifications']) + 1}",
                 "recipientUid": invited_uid,
                 "message": "You were invited to collaborate on an itinerary!",
                 "itineraryId": itin_id,
@@ -335,7 +542,7 @@ class LocalCollaborationService:
                 data,
                 itin_id,
                 owner_id,
-                self._get_user_name(data, owner_id, "Someone"),
+                owner_name,
                 f"Invitation sent to {invited_email}",
                 "✉️"
             )
@@ -348,16 +555,58 @@ class LocalCollaborationService:
                 'collaborator': data["itineraries"][itin_id]["collaborators"][invited_uid]
             }
         else:
+            pending_uid = self._queued_invite_uid(invited_email)
+            owner_name = self._get_user_name(data, owner_id, "Someone")
+            itinerary_title = data["itineraries"][itin_id].get("title", "an itinerary")
+            invitation = {
+                "id": f"inv_{len(data['invitations']) + 1}",
+                "itineraryId": itin_id,
+                "invitedEmail": invited_email,
+                "invitedUid": pending_uid,
+                "ownerId": owner_id,
+                "status": "pending",
+                "role": "Viewer",
+                "createdAt": self._get_current_timestamp()
+            }
+            data["invitations"].append(invitation)
+            try:
+                email_result = self._send_external_invite_email(invited_email, owner_name, itinerary_title)
+            except Exception as error:
+                email_result = {
+                    "sent": False,
+                    "reason": f"Email send failed: {error}",
+                    "to": invited_email,
+                }
             self._append_activity(
                 data,
                 itin_id,
                 owner_id,
-                self._get_user_name(data, owner_id, "Someone"),
-                f"External invitation queued for {invited_email}",
+                owner_name,
+                (
+                    f"Email invitation sent to unregistered user {invited_email}"
+                    if email_result.get("sent")
+                    else f"External invitation queued for {invited_email}"
+                ),
                 "✉️"
             )
+            data["itineraries"][itin_id]["collaborators"][pending_uid] = {
+                "role": "Viewer",
+                "status": "pending",
+                "name": invited_email,
+                "email": invited_email
+            }
+            data["itineraries"][itin_id]["collaboratorEmails"].append(invited_email)
             self._write_data(data)
-            return {'success': True, 'message': 'External email invitation queued.'}
+            return {
+                'success': True,
+                'message': (
+                    'Invitation email sent. They can register to join this itinerary.'
+                    if email_result.get("sent")
+                    else 'External invitation queued. Configure SMTP settings to send the email.'
+                ),
+                'emailQueued': True,
+                'email': email_result
+            }
     
     # FR 4.2: Accept/Decline Invitation
     def respond_invitation(self, invitation_id: str, user_uid: str, action: str) -> Dict[str, Any]:
@@ -403,6 +652,76 @@ class LocalCollaborationService:
             return {'success': True, 'message': 'Invitation declined'}
         else:
             return {'success': False, 'message': 'Invalid action'}
+
+    def update_collaborator_role(self, itin_id: str, owner_uid: str, collaborator_uid: str, role: str) -> Dict[str, Any]:
+        data = self._read_data()
+        itinerary = data.get("itineraries", {}).get(str(itin_id))
+        if not itinerary:
+            return {"success": False, "message": "Itinerary not found"}
+
+        collaborators = itinerary.get("collaborators", {})
+        owner = collaborators.get(owner_uid, {})
+        if owner.get("role") != "Owner":
+            return {"success": False, "message": "Only the owner can change collaborator roles"}
+
+        if role not in ("Editor", "Viewer"):
+            return {"success": False, "message": "Invalid role"}
+
+        collaborator = collaborators.get(collaborator_uid)
+        if not collaborator:
+            return {"success": False, "message": "Collaborator not found"}
+        if collaborator.get("role") == "Owner":
+            return {"success": False, "message": "Owner role cannot be changed"}
+
+        collaborator["role"] = role
+        collaborator["status"] = collaborator.get("status") or "active"
+        itinerary["updatedAt"] = self._get_current_timestamp()
+        self._append_activity(
+            data,
+            str(itin_id),
+            owner_uid,
+            self._get_user_name(data, owner_uid, "Owner"),
+            f"{collaborator.get('name') or collaborator_uid} assigned as {role}",
+            "role"
+        )
+        self._write_data(data)
+        return {"success": True, "message": "Role updated", "role": role}
+
+    def remove_collaborator(self, itin_id: str, owner_uid: str, collaborator_uid: str) -> Dict[str, Any]:
+        data = self._read_data()
+        itinerary = data.get("itineraries", {}).get(str(itin_id))
+        if not itinerary:
+            return {"success": False, "message": "Itinerary not found"}
+
+        collaborators = itinerary.get("collaborators", {})
+        owner = collaborators.get(owner_uid, {})
+        if owner.get("role") != "Owner":
+            return {"success": False, "message": "Only the owner can remove collaborators"}
+
+        collaborator = collaborators.get(collaborator_uid)
+        if not collaborator:
+            return {"success": False, "message": "Collaborator not found"}
+        if collaborator.get("role") == "Owner":
+            return {"success": False, "message": "Owner cannot be removed"}
+
+        removed_name = collaborator.get("name") or collaborator_uid
+        removed_email = collaborator.get("email", "")
+        collaborators.pop(collaborator_uid, None)
+        itinerary["collaboratorEmails"] = [
+            email for email in itinerary.get("collaboratorEmails", [])
+            if email.lower() != removed_email.lower()
+        ]
+        itinerary["updatedAt"] = self._get_current_timestamp()
+        self._append_activity(
+            data,
+            str(itin_id),
+            owner_uid,
+            self._get_user_name(data, owner_uid, "Owner"),
+            f"{removed_name} was removed from the plan",
+            "removed"
+        )
+        self._write_data(data)
+        return {"success": True, "message": "Collaborator removed"}
     
     # FR 4.4: Update Shared Itinerary
     def update_itinerary(self, itin_id: str, editor_uid: str, stops: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -410,6 +729,8 @@ class LocalCollaborationService:
         
         if itin_id not in data["itineraries"]:
             return {'success': False, 'message': 'Itinerary not found'}
+        if not self._can_edit_itinerary(data, itin_id, editor_uid):
+            return {'success': False, 'message': 'You do not have permission to edit this itinerary'}
         if not isinstance(stops, list):
             return {'success': False, 'message': 'Stops must be a list'}
         
@@ -521,6 +842,13 @@ class LocalCollaborationService:
 
                 if itin_id in data["itineraries"]:
                     data["itineraries"][itin_id]["lastActivityAt"] = self._get_current_timestamp()
+                    self._notify_active_collaborators(
+                        data,
+                        itin_id,
+                        author_uid,
+                        f"{actor_name} edited a comment",
+                        "edited"
+                    )
 
                 self._write_data(data)
                 return {'success': True, 'message': 'Comment updated successfully', 'comment': comment}
@@ -545,6 +873,8 @@ class LocalCollaborationService:
         
         if itin_id not in data["itineraries"]:
             return {'success': False, 'message': 'Itinerary not found'}
+        if not self._can_edit_itinerary(data, itin_id, editor_uid):
+            return {'success': False, 'message': 'You do not have permission to edit this itinerary'}
 
         try:
             stop_index = int(stop_index)
@@ -603,6 +933,8 @@ class LocalCollaborationService:
 
         if itin_id not in data["itineraries"]:
             return {'success': False, 'message': 'Itinerary not found'}
+        if not self._can_edit_itinerary(data, itin_id, editor_uid):
+            return {'success': False, 'message': 'You do not have permission to edit this itinerary'}
 
         new_title = (new_title or '').strip()
         if not new_title:
@@ -645,6 +977,8 @@ class LocalCollaborationService:
 
         if itin_id not in data["itineraries"]:
             return {'success': False, 'message': 'Itinerary not found'}
+        if not self._can_edit_itinerary(data, itin_id, editor_uid):
+            return {'success': False, 'message': 'You do not have permission to edit this itinerary'}
 
         new_date = (new_date or '').strip()
         if not new_date:
@@ -691,6 +1025,9 @@ class LocalCollaborationService:
     # Get saved activity for one itinerary, newest first
     def get_activities(self, itin_id: str) -> List[Dict[str, Any]]:
         data = self._read_data()
+        return self._build_activity_feed(data, itin_id)
+
+    def _build_activity_feed(self, data: Dict[str, Any], itin_id: str) -> List[Dict[str, Any]]:
         activities: List[Dict[str, Any]] = []
 
         for activity in data.get("activities", {}).get(itin_id, []):
@@ -730,7 +1067,7 @@ class LocalCollaborationService:
             })
 
         seen_notifications = set()
-        for notification in data.get("notifications", []):
+        for notification in []:
             if notification.get("itineraryId") != itin_id:
                 continue
             key = (
@@ -773,7 +1110,7 @@ class LocalCollaborationService:
         data = self._read_data()
         user_notifications = []
         for notif in data.get("notifications", []):
-            if notif.get("recipientUid") != user_uid:
+            if notif.get("recipientUid") != user_uid and notif.get("user_id") != user_uid:
                 continue
             user_notifications.append({
                 **notif,
@@ -781,3 +1118,19 @@ class LocalCollaborationService:
                 "timeAgo": self._format_time_ago(notif.get("createdAt", ""))
             })
         return user_notifications
+
+    def mark_notifications_read(self, user_uid: str, itinerary_id: str = "") -> int:
+        data = self._read_data()
+        updated = 0
+        for notif in data.get("notifications", []):
+            if notif.get("recipientUid") != user_uid and notif.get("user_id") != user_uid:
+                continue
+            if itinerary_id and notif.get("itineraryId") != itinerary_id and notif.get("reference_id") != itinerary_id:
+                continue
+            if not notif.get("isRead") or not notif.get("is_read"):
+                notif["isRead"] = True
+                notif["is_read"] = True
+                updated += 1
+        if updated:
+            self._write_data(data)
+        return updated

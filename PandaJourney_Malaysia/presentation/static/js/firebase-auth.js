@@ -17,10 +17,15 @@ import {
 // Firebase Firestore
 import {
   getFirestore,
+  collection,
   doc,
   getDoc,
+  getDocs,
+  query,
   setDoc,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc,
+  where
 }
 from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
@@ -46,6 +51,46 @@ provider.setCustomParameters({
   prompt: "select_account"
 });
 
+async function syncFlaskSession(user) {
+  const response = await fetch("/api/auth/session", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      uid: user.uid,
+      email: user.email || "",
+      displayName: user.displayName || ""
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error("Could not sync login session with Flask.");
+  }
+}
+
+async function attachQueuedInvitations(user) {
+  const email = (user.email || "").toLowerCase();
+
+  if (!email) {
+    return;
+  }
+
+  const queuedInvites = query(
+    collection(db, "collaborators"),
+    where("invitee_email", "==", email),
+    where("status", "==", "queued")
+  );
+
+  const snapshot = await getDocs(queuedInvites);
+
+  await Promise.all(snapshot.docs.map(inviteDoc => updateDoc(inviteDoc.ref, {
+    invitee_user_id: user.uid,
+    status: "pending",
+    updated_at: serverTimestamp()
+  })));
+}
+
 // Google Login
 const googleLogin = document.getElementById("googleLogin");
 
@@ -59,6 +104,9 @@ if (googleLogin) {
       console.log("Name:", user.displayName);
       console.log("Email:", user.email);
       console.log("UID:", user.uid);
+
+      await syncFlaskSession(user);
+      await attachQueuedInvitations(user);
       
       const userRef = doc(db, "users", user.uid);
       const userSnap = await getDoc(userRef);
@@ -85,7 +133,7 @@ if (googleLogin) {
 
       console.log("User saved to Firestore!");
 
-      window.location.href = "/profile";
+      window.location.href = "/dashboard";
 
     } catch (error) {
       console.error("Google Login failed:", error);
@@ -108,6 +156,9 @@ if (googleSignup) {
       console.log("Email:", user.email);
       console.log("UID:", user.uid);
 
+      await syncFlaskSession(user);
+      await attachQueuedInvitations(user);
+
       await setDoc(
         doc(db, "users", user.uid),
         {
@@ -122,7 +173,7 @@ if (googleSignup) {
 
       console.log("User saved to Firestore!");
 
-      window.location.href = "/profile";
+      window.location.href = "/dashboard";
 
     } catch (error) {
       console.error("Google Sign Up failed:", error);
@@ -165,6 +216,9 @@ if (loginForm && document.getElementById("email")) {
         console.log("Email Login successful!");
         console.log("UID:", user.uid);
 
+        await syncFlaskSession(user);
+        await attachQueuedInvitations(user);
+
         await setDoc(
           doc(db, "users", user.uid),
           {
@@ -177,7 +231,7 @@ if (loginForm && document.getElementById("email")) {
           { merge: true }
         );
 
-        window.location.href = "/profile";
+        window.location.href = "/dashboard";
 
       } catch (error) {
         console.error("Email Login failed:", error);
@@ -250,6 +304,7 @@ if (registerForm) {
         },
         { merge: true }
       );
+      await attachQueuedInvitations(user);
 
       alert(
         "Account created successfully!\n\nPlease check your email and click the verification link before logging in."

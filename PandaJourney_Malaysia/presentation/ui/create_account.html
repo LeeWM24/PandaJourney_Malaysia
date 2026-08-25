@@ -256,6 +256,17 @@
   type="module"
   src="{{ url_for('static', filename='js/firebase-auth.js') }}">
 </script>
+<script>
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  const email = params.get("email");
+  const emailInput = document.getElementById("email");
+
+  if (email && emailInput) {
+    emailInput.value = email;
+  }
+})();
+</script>
 
 </body>
 </html>
