@@ -1628,7 +1628,7 @@ import {
 
   function startPolling() {
     stopPolling();
-    pollInterval = setInterval(refreshCollaborationState, 20000);
+    pollInterval = setInterval(refreshCollaborationState, 60000);
   }
 
   document.addEventListener('visibilitychange', function () {
