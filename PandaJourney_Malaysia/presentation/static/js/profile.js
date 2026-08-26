@@ -1,7 +1,6 @@
 import {
   auth,
-  db,
-  storage
+  db
 } from "./firebase-config.js";
 
 import {
@@ -117,8 +116,7 @@ let isEditing = false;
 let selectedAvatarType = "";
 let selectedAvatar = "";
 let selectedAvatarUrl = "";
-let selectedAvatarFile = null;
-let previewObjectUrl = null;
+let isAvatarProcessing = false;
 
 let originalDisplayName = "";
 let originalAvatarType = "";
@@ -194,22 +192,31 @@ function updateAvatarSelectedStyle() {
 // Restore Avatar
 
 function restoreOriginalAvatar() {
-  selectedAvatarType = originalAvatarType;
-  selectedAvatar = originalAvatar;
-  selectedAvatarUrl = originalAvatarUrl;
-  selectedAvatarFile = null;
+  selectedAvatarType =
+    originalAvatarType;
 
-  if (previewObjectUrl) {
-    URL.revokeObjectURL(previewObjectUrl);
-    previewObjectUrl = null;
-  }
+  selectedAvatar =
+    originalAvatar;
+
+  selectedAvatarUrl =
+    originalAvatarUrl;
 
   renderAvatar({
-    type: originalAvatarType,
-    emoji: originalAvatar,
-    uploadUrl: originalAvatarUrl,
-    googleUrl: auth.currentUser?.photoURL || "",
-    name: originalDisplayName
+    type:
+      originalAvatarType,
+
+    emoji:
+      originalAvatar,
+
+    uploadUrl:
+      originalAvatarUrl,
+
+    googleUrl:
+      auth.currentUser
+        ?.photoURL || "",
+
+    name:
+      originalDisplayName
   });
 
   updateAvatarSelectedStyle();
@@ -253,11 +260,6 @@ onAuthStateChanged(auth, async user => {
     editEmail.value =
       user.email || "";
   }
-
-  renderAvatar({
-    googleUrl: user.photoURL || "",
-    name: authName
-  });
 
   try {
     const userRef =
@@ -474,46 +476,62 @@ if (closeAvatarPicker) {
   );
 }
 
-
 // Google Avatar
 
 if (useGoogleAvatarBtn) {
-  useGoogleAvatarBtn.addEventListener(
-    "click",
-    () => {
-      if (!isEditing) {
-        return;
+  useGoogleAvatarBtn
+    .addEventListener(
+      "click",
+      () => {
+        if (!isEditing) {
+          return;
+        }
+
+        const user =
+          auth.currentUser;
+
+        if (!user) {
+          alert(
+            "You are not logged in."
+          );
+
+          return;
+        }
+
+        if (!user.photoURL) {
+          alert(
+            "No Google profile photo is available for this account."
+          );
+
+          return;
+        }
+
+        selectedAvatarType =
+          "google";
+
+        selectedAvatar = "";
+
+        selectedAvatarUrl = "";
+
+        renderAvatar({
+          type: "google",
+
+          googleUrl:
+            user.photoURL,
+
+          name:
+            editName?.value ||
+            originalDisplayName
+        });
+
+        updateAvatarSelectedStyle();
+
+        avatarPicker
+          ?.classList
+          .add("hidden");
       }
-
-      const user = auth.currentUser;
-
-      if (!user?.photoURL) {
-        alert(
-          "No Google profile photo is available for this account."
-        );
-        return;
-      }
-
-      selectedAvatarType = "google";
-      selectedAvatar = "";
-      selectedAvatarUrl = "";
-      selectedAvatarFile = null;
-
-      renderAvatar({
-        type: "google",
-        googleUrl: user.photoURL,
-        name: editName?.value || ""
-      });
-
-      updateAvatarSelectedStyle();
-
-      avatarPicker?.classList.add(
-        "hidden"
-      );
-    }
-  );
+    );
 }
-
 
 // Upload Button
 
@@ -533,12 +551,173 @@ if (uploadAvatarBtn) {
 
 // Upload Preview
 
+function dataUrlSizeInBytes(dataUrl) {
+  const base64 =
+    dataUrl.split(",")[1] || "";
+
+  const padding =
+    base64.match(/=*$/)?.[0].length || 0;
+
+  return (
+    Math.floor(
+      base64.length * 3 / 4
+    ) - padding
+  );
+}
+
+
+function loadImageFile(file) {
+  return new Promise(
+    (resolve, reject) => {
+      const image = new Image();
+
+      const objectUrl =
+        URL.createObjectURL(file);
+
+      image.onload = () => {
+        URL.revokeObjectURL(
+          objectUrl
+        );
+
+        resolve(image);
+      };
+
+      image.onerror = () => {
+        URL.revokeObjectURL(
+          objectUrl
+        );
+
+        reject(
+          new Error(
+            "Unable to read the selected image."
+          )
+        );
+      };
+
+      image.src = objectUrl;
+    }
+  );
+}
+
+
+async function compressAvatar(file) {
+  const image =
+    await loadImageFile(file);
+
+  const outputSize = 400;
+  const maximumBytes =
+    100 * 1024;
+
+  const canvas =
+    document.createElement(
+      "canvas"
+    );
+
+  canvas.width = outputSize;
+  canvas.height = outputSize;
+
+  const context =
+    canvas.getContext("2d");
+
+  if (!context) {
+    throw new Error(
+      "Image processing is not supported."
+    );
+  }
+
+  // Crop the centre of the image
+  // into a square.
+
+  const cropSize =
+    Math.min(
+      image.naturalWidth,
+      image.naturalHeight
+    );
+
+  const sourceX =
+    (
+      image.naturalWidth -
+      cropSize
+    ) / 2;
+
+  const sourceY =
+    (
+      image.naturalHeight -
+      cropSize
+    ) / 2;
+
+  // White background for
+  // transparent PNG images.
+
+  context.fillStyle =
+    "#ffffff";
+
+  context.fillRect(
+    0,
+    0,
+    outputSize,
+    outputSize
+  );
+
+  context.drawImage(
+    image,
+    sourceX,
+    sourceY,
+    cropSize,
+    cropSize,
+    0,
+    0,
+    outputSize,
+    outputSize
+  );
+
+  let quality = 0.85;
+
+  let dataUrl =
+    canvas.toDataURL(
+      "image/jpeg",
+      quality
+    );
+
+  // Reduce JPEG quality until
+  // the image is below 100 KB.
+
+  while (
+    dataUrlSizeInBytes(
+      dataUrl
+    ) > maximumBytes &&
+    quality > 0.45
+  ) {
+    quality -= 0.1;
+
+    dataUrl =
+      canvas.toDataURL(
+        "image/jpeg",
+        quality
+      );
+  }
+
+  if (
+    dataUrlSizeInBytes(
+      dataUrl
+    ) > maximumBytes
+  ) {
+    throw new Error(
+      "The compressed image is still larger than 100 KB."
+    );
+  }
+
+  return dataUrl;
+}
+
+
 if (avatarFileInput) {
   avatarFileInput.addEventListener(
     "change",
-    () => {
+    async () => {
       const file =
-        avatarFileInput.files?.[0];
+        avatarFileInput
+          .files?.[0];
 
       if (!file) {
         return;
@@ -550,52 +729,96 @@ if (avatarFileInput) {
         "image/webp"
       ];
 
-      if (!allowedTypes.includes(file.type)) {
+      if (
+        !allowedTypes.includes(
+          file.type
+        )
+      ) {
         alert(
           "Please choose a JPG, PNG, or WebP image."
         );
 
-        avatarFileInput.value = "";
+        avatarFileInput.value =
+          "";
+
         return;
       }
 
-      if (file.size > 2 * 1024 * 1024) {
+      if (
+        file.size >
+        10 * 1024 * 1024
+      ) {
         alert(
-          "Profile picture must be smaller than 2 MB."
+          "Profile picture must be smaller than 10 MB."
         );
 
-        avatarFileInput.value = "";
+        avatarFileInput.value =
+          "";
+
         return;
       }
 
-      selectedAvatarFile = file;
-      selectedAvatarType = "upload";
-      selectedAvatar = "";
+      isAvatarProcessing = true;
 
-      if (previewObjectUrl) {
-        URL.revokeObjectURL(
-          previewObjectUrl
+      try {
+        const compressedDataUrl =
+          await compressAvatar(
+            file
+          );
+
+        selectedAvatarType =
+          "upload";
+
+        selectedAvatar = "";
+
+        selectedAvatarUrl =
+          compressedDataUrl;
+
+        renderAvatar({
+          type: "upload",
+          uploadUrl:
+            compressedDataUrl,
+          name:
+            editName?.value || ""
+        });
+
+        updateAvatarSelectedStyle();
+
+        avatarPicker
+          ?.classList
+          .add("hidden");
+
+        const compressedSize =
+          Math.ceil(
+            dataUrlSizeInBytes(
+              compressedDataUrl
+            ) / 1024
+          );
+
+        console.log(
+          "Compressed avatar size:",
+          `${compressedSize} KB`
         );
+      } catch (error) {
+        console.error(
+          "Failed to process avatar:",
+          error
+        );
+
+        avatarFileInput.value =
+          "";
+
+        alert(
+          error.message ||
+          "Unable to process this image."
+        );
+      } finally {
+        isAvatarProcessing =
+          false;
       }
-
-      previewObjectUrl =
-        URL.createObjectURL(file);
-
-      renderAvatar({
-        type: "upload",
-        uploadUrl: previewObjectUrl,
-        name: editName?.value || ""
-      });
-
-      updateAvatarSelectedStyle();
-
-      avatarPicker?.classList.add(
-        "hidden"
-      );
     }
   );
 }
-
 
 // Emoji Avatar
 
@@ -736,23 +959,36 @@ window.cancelEdit = function () {
 };
 
 
-// Save Profile
-
-window.saveProfile = async function () {
-  const user = auth.currentUser;
+window.saveProfile =
+async function () {
+  const user =
+    auth.currentUser;
 
   if (!user) {
-    alert("You are not logged in.");
+    alert(
+      "You are not logged in."
+    );
+
     return;
   }
 
   const newDisplayName =
-    editName?.value.trim() || "";
+    editName?.value.trim() ||
+    "";
 
   if (!newDisplayName) {
     alert(
       "Display name cannot be empty."
     );
+
+    return;
+  }
+
+  if (isAvatarProcessing) {
+    alert(
+      "Please wait for the profile picture to finish processing."
+    );
+
     return;
   }
 
@@ -762,62 +998,55 @@ window.saveProfile = async function () {
         ".interest-chip.active"
       )
     ).map(
-      chip => chip.dataset.interest
+      chip =>
+        chip.dataset.interest
     );
 
   try {
-    let finalAvatarUrl =
-      selectedAvatarUrl;
+    // Update Firebase Auth name.
 
-    // Upload Avatar
+    await updateProfile(
+      user,
+      {
+        displayName:
+          newDisplayName
+      }
+    );
 
-    if (
-      selectedAvatarType === "upload" &&
-      selectedAvatarFile
-    ) {
-      const storageRef = ref(
-        storage,
-        `profilePictures/${user.uid}/avatar`
-      );
-
-      await uploadBytes(
-        storageRef,
-        selectedAvatarFile,
-        {
-          contentType:
-            selectedAvatarFile.type
-        }
-      );
-
-      finalAvatarUrl =
-        await getDownloadURL(
-          storageRef
-        );
-
-      selectedAvatarUrl =
-        finalAvatarUrl;
-    }
-
-    // Firebase Auth Name
-
-    await updateProfile(user, {
-      displayName: newDisplayName
-    });
-
-    // Firestore Profile
+    // avatarUrl now contains either:
+    // 1. Base64 uploaded photo,
+    // 2. An empty string for emoji,
+    // 3. An empty string for Google photo.
 
     const userData = {
-      displayName: newDisplayName,
-      email: user.email || "",
-      avatarType: selectedAvatarType,
-      avatar: selectedAvatar,
-      avatarUrl: finalAvatarUrl || "",
-      interests: selectedInterests,
-      updatedAt: serverTimestamp()
+      displayName:
+        newDisplayName,
+
+      email:
+        user.email || "",
+
+      avatarType:
+        selectedAvatarType,
+
+      avatar:
+        selectedAvatar,
+
+      avatarUrl:
+        selectedAvatarUrl || "",
+
+      interests:
+        selectedInterests,
+
+      updatedAt:
+        serverTimestamp()
     };
 
     await setDoc(
-      doc(db, "users", user.uid),
+      doc(
+        db,
+        "users",
+        user.uid
+      ),
       userData,
       {
         merge: true
@@ -839,27 +1068,26 @@ window.saveProfile = async function () {
       selectedAvatar;
 
     originalAvatarUrl =
-      finalAvatarUrl || "";
+      selectedAvatarUrl || "";
 
     originalInterests =
       [...selectedInterests];
 
-    selectedAvatarFile = null;
-
-    if (previewObjectUrl) {
-      URL.revokeObjectURL(
-        previewObjectUrl
-      );
-
-      previewObjectUrl = null;
-    }
-
     renderAvatar({
-      type: originalAvatarType,
-      emoji: originalAvatar,
-      uploadUrl: originalAvatarUrl,
-      googleUrl: user.photoURL || "",
-      name: newDisplayName
+      type:
+        originalAvatarType,
+
+      emoji:
+        originalAvatar,
+
+      uploadUrl:
+        originalAvatarUrl,
+
+      googleUrl:
+        user.photoURL || "",
+
+      name:
+        newDisplayName
     });
 
     if (identityName) {
@@ -867,12 +1095,12 @@ window.saveProfile = async function () {
         newDisplayName;
     }
 
-    // Exit Edit Mode
-
     isEditing = false;
 
     document
-      .querySelectorAll(".interest-chip")
+      .querySelectorAll(
+        ".interest-chip"
+      )
       .forEach(chip => {
         chip.classList.remove(
           "editable"
@@ -914,24 +1142,22 @@ window.saveProfile = async function () {
         "none";
     }
 
-    editActions?.classList.add(
-      "hidden"
-    );
+    editActions
+      ?.classList
+      .add("hidden");
 
     if (editButton) {
       editButton.style.display =
         "inline-flex";
     }
 
-    avatarEditBtn?.classList.add(
-      "hidden"
-    );
+    avatarEditBtn
+      ?.classList
+      .add("hidden");
 
-    avatarPicker?.classList.add(
-      "hidden"
-    );
-
-    // Success Toast
+    avatarPicker
+      ?.classList
+      .add("hidden");
 
     const toast =
       document.getElementById(
@@ -939,11 +1165,18 @@ window.saveProfile = async function () {
       );
 
     if (toast) {
-      toast.classList.add("show");
+      toast.classList.add(
+        "show"
+      );
 
-      setTimeout(() => {
-        toast.classList.remove("show");
-      }, 2500);
+      setTimeout(
+        () => {
+          toast.classList.remove(
+            "show"
+          );
+        },
+        2500
+      );
     }
   } catch (error) {
     console.error(
@@ -951,12 +1184,20 @@ window.saveProfile = async function () {
       error
     );
 
-    alert(
-      "Failed to save profile. Check the browser console for details."
-    );
+    let message =
+      "Failed to save profile.";
+
+    if (
+      error.code ===
+      "permission-denied"
+    ) {
+      message =
+        "Firestore permission denied. Please check your Firestore rules.";
+    }
+
+    alert(message);
   }
 };
-
 
 // Escape HTML
 
