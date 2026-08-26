@@ -107,6 +107,25 @@ You can copy from .env.example:
 SERPAPI_KEY=your_serpapi_key_here
 NOMINATIM_EMAIL=your_email@example.com
 NOMINATIM_USER_AGENT=PandaJourneyMalaysia/1.0 (your_email@example.com)
+
+USE_FIREBASE=false
+FLASK_RUN_PORT=5001
+
+# Firebase setup
+# Set USE_FIREBASE=true if you want to use Firebase instead of local JSON storage.
+FIREBASE_PROJECT_ID=your-firebase-project-id
+GOOGLE_APPLICATION_CREDENTIALS=./firebase_key.json
+FIREBASE_USE_REST=true
+
+# Email invite setup
+# Only needed if you want invitation emails to actually send.
+PANDAJOURNEY_REGISTER_URL=http://localhost:5001/create-account
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-gmail-app-password
+SMTP_USE_TLS=true
+MAIL_FROM=your-email@gmail.com
 ```
 ## 5. Run the Flask Application
 
