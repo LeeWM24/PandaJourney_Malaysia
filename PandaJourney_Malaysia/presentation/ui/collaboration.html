@@ -1,0 +1,1657 @@
+﻿{% extends "base.html" %}
+
+{% block title %}Collaborative Planning - PandaJourney Malaysia{% endblock %}
+{% block page_title %}Collaborative Planning{% endblock %}
+{% block page_subtitle %}Plan trips together with friends and family in real-time{% endblock %}
+
+{% block topbar_actions %}
+  <button class="bell-button" type="button" id="bellButton" aria-label="Notifications">
+    <span aria-hidden="true">&#128276;</span>
+    <span class="bell-badge" id="bellBadge" style="display:none;">0</span>
+  </button>
+{% endblock %}
+
+{% block content %}
+<div
+  class="page-inner page-inner-flush"
+  id="collabRoot"
+  data-itinerary-id="{{ itinerary_id }}"
+  data-user-uid="{{ current_user.uid if current_user else '' }}"
+  data-user-name="{{ current_user.display_name if current_user else '' }}"
+  data-user-role="{{ itinerary_data.collaborators.get(current_user.uid, {}).get('role', 'Viewer') if itinerary_data and itinerary_data.collaborators and current_user else 'Viewer' }}"
+>
+  <div class="collab-layout">
+
+    <!-- MAIN COLUMN -->
+    <div class="collab-main">
+
+      <!-- ITINERARY CARD -->
+      <section class="card card-p resizable-section itinerary-resize-section">
+        <div class="collab-title-row" id="collabTitleRow">
+          <h2
+            class="card-title collab-editable"
+            id="collabTitleText"
+            contenteditable="true"
+            spellcheck="false"
+            aria-label="Trip title, click to rename"
+          >{{ itinerary_data.title if itinerary_data else 'Untitled Trip' }}</h2>
+          <span class="collab-title-edit-hint" aria-hidden="true">&#9998; click to rename</span>
+        </div>
+        <p class="card-subtitle" id="collabTripMeta" style="margin-top:-8px; margin-bottom:16px;">
+          <span
+            class="collab-date-editable"
+            id="collabDateText"
+            contenteditable="true"
+            spellcheck="false"
+            aria-label="Trip date, click to edit"
+          >{{ itinerary_data.date if itinerary_data else '' }}</span> &middot;
+          <span id="collabStopCount">{{ itinerary_data.stops|length if itinerary_data and itinerary_data.stops else 0 }}</span> stops &middot;
+          <span id="collabTotalHours">0 hrs</span>
+        </p>
+
+        <!-- Timeline -->
+        <div class="timetable" id="stopTimeline" role="list" aria-label="Itinerary stops">
+          {% set stops = itinerary_data.stops if itinerary_data and itinerary_data.stops else [] %}
+          {% for stop in stops %}
+          {% set stop_number = stop.stopNumber if stop.stopNumber else loop.index %}
+          <div class="timetable-row" role="listitem" draggable="true" data-stop-index="{{ loop.index0 }}" data-stop-number="{{ stop_number }}">
+            <div class="timeline-col">
+              <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}">{{ stop_number }}</div>
+              {% if not loop.last %}<div class="timeline-line"></div>{% endif %}
+            </div>
+            <div class="timetable-content">
+              <div class="stop-edit-row">
+                <div class="stop-edit-fields">
+                  {% set stop_icon = '&#128205;' if not stop.icon or stop.icon == 'pin' else stop.icon %}
+                  <p class="timetable-name stop-name">{{ stop.name }}</p>
+                  <p class="timetable-time"><span class="stop-icon">{{ stop_icon|safe }}</span> <span class="stop-time">{{ stop.time }} &middot; {{ stop.duration }}</span></p>
+                </div>
+                <div class="stop-actions-group">
+                  <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit {{ stop.name }}">&#9998;</button>
+                  <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete {{ stop.name }}">&#128465;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div><!-- /stopTimeline -->
+
+        <button class="add-stop-btn" type="button" id="addStopBtn">+ Add a stop</button>
+
+        <div class="sync-indicator" aria-live="polite">
+          <span class="sync-dot" aria-hidden="true"></span>
+          <p class="sync-text">Synced live - everyone sees changes instantly</p>
+        </div>
+
+        <div class="view-only-banner" id="viewOnlyBanner" style="display:none;">
+          &#128274; You have view-only access. Ask the owner to make you an Editor to make changes.
+          <button type="button" id="viewOnlyDismiss" style="margin-left:auto;background:none;border:0;cursor:pointer;color:inherit;font-weight:800;">&times;</button>
+        </div>
+      </section>
+
+      <!-- COMMENTS CARD -->
+      <section class="card card-p resizable-section comments-resize-section">
+        <h2 class="card-title" style="margin-bottom:16px;">Comments</h2>
+
+        <div class="comments-list" id="commentsList" role="log" aria-label="Comments thread" aria-live="polite">
+          {% for c in comments %}
+          <article class="comment-item" data-comment-id="{{ c.id }}" data-author-uid="{{ c.authorUid }}">
+            <div class="avatar avatar-sm" style="--avatar-bg: #0f8a67; background-color: var(--avatar-bg);">{{ (c.authorName or c.name or '??')[:2]|upper }}</div>
+            <div class="comment-bubble">
+              <div class="comment-meta-row">
+                <div>
+                  <span class="comment-author">{{ c.authorName or c.name }}</span>
+                  <span class="comment-time" data-created-at="{{ c.updatedAt or c.createdAt or '' }}">{{ c.timeAgo or 'just now' }}</span>
+                </div>
+                {% if c.authorUid == current_user.uid %}
+                <button class="comment-edit-btn" type="button" aria-label="Edit comment">Edit</button>
+                {% endif %}
+              </div>
+              <p class="comment-text">{{ c.text|e }}</p>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+
+        <form class="comment-input-row" id="commentForm" aria-label="Add a comment" style="margin-top:16px;">
+          <div style="flex:1;display:flex;flex-direction:column;">
+            <input
+              class="comment-input"
+              id="commentInput"
+              type="text"
+              placeholder="Write a comment for the group..."
+              aria-label="Comment text"
+              maxlength="500"
+            />
+            <p class="comment-error-msg" id="commentErrorMsg" style="display:none;">Comment can't be empty.</p>
+          </div>
+          <button class="comment-send-btn" type="submit" aria-label="Send comment">&#10148;</button>
+        </form>
+      </section>
+
+    </div><!-- /collab-main -->
+
+    <!-- SIDE COLUMN -->
+    <div class="collab-side">
+
+      <!-- COLLABORATORS CARD -->
+      <section class="card card-p resizable-section collaborators-resize-section">
+        <h2 class="card-title" style="margin-bottom:16px;">Collaborators</h2>
+
+        <form class="invite-row" id="inviteForm" aria-label="Invite collaborator" style="margin-bottom:16px;">
+          <div style="flex:1;display:flex;flex-direction:column;">
+            <input class="invite-input" id="inviteEmailInput" type="email" placeholder="Search by email..." aria-label="Collaborator email address" />
+            <p class="invite-error-msg" id="inviteErrorMsg" style="display:none;">Enter a valid email address.</p>
+          </div>
+          <button class="invite-btn" type="submit">Invite</button>
+        </form>
+
+        <ul style="list-style:none; padding:0; margin:0;" id="collaboratorList" aria-label="Current collaborators">
+          {% set demo_collabs = itinerary_data.collaborators if itinerary_data and itinerary_data.collaborators else {} %}
+          {% for uid, c in demo_collabs.items() %}
+          <li class="collaborator-row {% if c.status == 'pending' %}is-pending{% endif %}" data-collaborator-uid="{{ uid }}">
+            <div class="avatar avatar-sm" style="--avatar-bg: {{ c.color if c.color else '#0f8a67' }}; background-color: var(--avatar-bg);">
+              {{ c.name[:2]|upper if c.name else '??' }}
+            </div>
+            <div class="collab-info">
+              <p class="collab-name">{{ c.name }}</p>
+              <p class="collab-email">{{ c.email }}</p>
+            </div>
+            <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">
+              {% if c.status == 'pending' %}
+                <span class="pending-pill">Pending</span>
+              {% elif c.role == 'Owner' %}
+                <button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>
+              {% else %}
+                <button class="role-pill role-{{ c.role|lower }}" type="button" aria-haspopup="true" aria-label="Role: {{ c.role }}. Click to change">
+                  {{ c.role }} <span class="chevron" aria-hidden="true">&#9662;</span>
+                </button>
+              {% endif %}
+            </div>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <!-- RECENT UPDATES CARD -->
+      <section class="card card-p">
+        <h2 class="card-title" style="margin-bottom:16px;">Recent Updates</h2>
+        <ul style="list-style:none; padding:0; margin:0;" id="updateList" aria-live="polite">
+          {% for activity in activities %}
+          <li
+            class="notif-row"
+            data-activity-id="{{ activity.id }}"
+            data-source-type="{{ activity.sourceType }}"
+            data-source-id="{{ activity.sourceId }}"
+          >
+            <div class="notif-icon" aria-hidden="true">{{ activity.iconLabel or 'N' }}</div>
+            <div><p class="notif-text">{{ activity.message }}</p><p class="notif-time">{{ activity.timeAgo }}</p></div>
+          </li>
+          {% else %}
+          <li class="notif-row" data-empty-activity="true">
+            <div class="notif-icon" aria-hidden="true">N</div>
+            <div><p class="notif-text">No activity yet</p><p class="notif-time">Start collaborating to see updates here</p></div>
+          </li>
+          {% endfor %}
+        </ul>
+        <a class="view-all-link" href="#" id="viewAllActivity">View all activity -&gt;</a>
+      </section>
+
+    </div><!-- /collab-side -->
+  </div><!-- /collab-layout -->
+</div>
+
+<!-- Toast -->
+<div class="app-toast" id="appToast"></div>
+
+<!-- Edit Stop Modal -->
+<div class="modal-backdrop" id="edit-stop-modal" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-icon">&#9998;</div>
+    <div class="modal-title">Edit Stop</div>
+    <div class="modal-desc">Update the name, time and duration for this stop.</div>
+    <form id="editStopForm" class="modal-fields">
+      <input type="hidden" id="editStopIndex" />
+      <div class="form-group">
+        <label class="form-label" for="editStopName">Stop Name</label>
+        <input type="text" id="editStopName" class="form-input" placeholder="Enter stop name" />
+      </div>
+      <div class="modal-fields-row">
+        <div class="form-group">
+          <label class="form-label" for="editStopTime">Time</label>
+          <input type="text" id="editStopTime" class="form-input" placeholder="e.g. 09:30" />
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="editStopDuration">Duration</label>
+          <input type="text" id="editStopDuration" class="form-input" placeholder="e.g. 1.5 hrs" />
+        </div>
+      </div>
+    </form>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-md" id="edit-stop-cancel" type="button">Cancel</button>
+      <button class="btn btn-primary btn-md btn-full" id="edit-stop-save" type="button">Save Changes</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module">
+import { auth, db } from "{{ url_for('static', filename='js/firebase-config.js') }}";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
+import {
+  collection,
+  onSnapshot,
+  query,
+  where
+} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
+
+(function () {
+  const root          = document.getElementById('collabRoot');
+  const itineraryId   = root.dataset.itineraryId || '';
+  const currentUid    = root.dataset.userUid || 'guest';
+  const currentName   = root.dataset.userName || 'You';
+  const currentRole   = root.dataset.userRole || 'Viewer';
+  const canEdit       = currentRole === 'Owner' || currentRole === 'Editor';
+  const isOwner       = currentRole === 'Owner';
+
+  const toast         = document.getElementById('appToast');
+  const bellButton    = document.getElementById('bellButton');
+  const bellBadge     = document.getElementById('bellBadge');
+  const updateList    = document.getElementById('updateList');
+  const viewAllActivity = document.getElementById('viewAllActivity');
+  const RECENT_UPDATE_LIMIT = 4;
+  let showingAllActivity = false;
+  const seenNotificationIds = new Set();
+  const unreadNotificationIds = new Set();
+  const pendingActions = new Set();
+  let submittingComment = false;
+  let usingSnapshotListeners = false;
+  let fallbackPollingStarted = false;
+  const unsubscribeListeners = [];
+
+  function beginAction(key, controls = []) {
+    if (pendingActions.has(key)) return false;
+    pendingActions.add(key);
+    controls.forEach(control => {
+      if (!control) return;
+      control.disabled = true;
+      control.setAttribute('aria-busy', 'true');
+    });
+    return true;
+  }
+
+  function endAction(key, controls = []) {
+    pendingActions.delete(key);
+    controls.forEach(control => {
+      if (!control) return;
+      control.disabled = false;
+      control.removeAttribute('aria-busy');
+    });
+  }
+
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add('is-visible');
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(() => toast.classList.remove('is-visible'), 2600);
+  }
+
+  function setBellBadgeCount(count) {
+    bellBadge.textContent = String(count);
+    bellBadge.style.display = count > 0 ? 'flex' : 'none';
+  }
+
+  async function markNotificationsSeen() {
+    setBellBadgeCount(0);
+    unreadNotificationIds.clear();
+    document.querySelectorAll('.notif-row.is-unread').forEach(row => row.classList.remove('is-unread'));
+    try {
+      await fetch('/api/collaboration/notifications/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itineraryId })
+      });
+    } catch (err) { /* best-effort read receipt */ }
+  }
+
+  function formatCommentTime(value) {
+    if (!value) return 'just now';
+    const createdAt = value && typeof value.toDate === 'function'
+      ? value.toDate()
+      : new Date(value);
+    if (Number.isNaN(createdAt.getTime())) return value;
+
+    const seconds = Math.max(0, Math.floor((Date.now() - createdAt.getTime()) / 1000));
+    if (seconds < 60) return 'just now';
+
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+
+    const days = Math.floor(hours / 24);
+    if (days === 1) return 'Yesterday';
+    if (days < 7) return `${days}d ago`;
+
+    return createdAt.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    });
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  function timestampValue(value) {
+    if (!value) return '';
+    if (typeof value.toDate === 'function') return value.toDate().toISOString();
+    if (typeof value === 'object' && Number.isFinite(value.seconds)) {
+      return new Date(value.seconds * 1000).toISOString();
+    }
+    return value;
+  }
+
+  function parseDateValue(value) {
+    const normalized = timestampValue(value);
+    if (!normalized) return 0;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+  }
+
+  function activityIconLabel(message = '', icon = '') {
+    const text = `${message} ${icon}`.toLowerCase();
+    if (text.includes('comment')) return 'C';
+    if (text.includes('invite') || text.includes('invitation')) return 'I';
+    if (text.includes('accepted')) return 'A';
+    if (text.includes('deleted') || text.includes('removed')) return 'D';
+    if (text.includes('added') || text.includes('new stop')) return '+';
+    if (text.includes('renamed') || text.includes('updated') || text.includes('edited')) return 'E';
+    return 'N';
+  }
+
+  function cleanSeparatorText(value) {
+    return String(value || '')
+      .replace(/\u00c3\u201a/g, '')
+      .replace(/\u00c2/g, '')
+      .replace(/\s*\u00b7\s*/g, ' \u00b7 ')
+      .trim();
+  }
+
+  function parseTimeDuration(value) {
+    const parts = cleanSeparatorText(value).split(/\s*\u00b7\s*/).filter(Boolean);
+    return {
+      time: parts[0] ? parts[0].trim() : '',
+      duration: parts[1] ? parts[1].trim() : ''
+    };
+  }
+
+  function formatTimeDuration(time, duration) {
+    return `${time || '--:--'} \u00b7 ${duration || '-- hrs'}`;
+  }
+
+  function parseDurationHours(value) {
+    const text = String(value || '').toLowerCase();
+    let total = 0;
+    const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\b/);
+    const minuteMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:m|min|mins|minute|minutes)\b/);
+
+    if (hourMatch) total += parseFloat(hourMatch[1]) || 0;
+    if (minuteMatch) total += (parseFloat(minuteMatch[1]) || 0) / 60;
+    if (!hourMatch && !minuteMatch) {
+      const fallback = text.match(/\d+(?:\.\d+)?/);
+      if (fallback) total += parseFloat(fallback[0]) || 0;
+    }
+
+    return total;
+  }
+
+  function formatTotalHours(hours) {
+    if (!hours) return '0 hrs';
+    const rounded = Math.round(hours * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)} hrs`;
+  }
+
+  function updateTripDuration() {
+    const totalHoursEl = document.getElementById('collabTotalHours');
+    if (!totalHoursEl) return;
+
+    const total = Array.from(document.querySelectorAll('#stopTimeline .stop-time'))
+      .map(el => parseTimeDuration(el.textContent).duration)
+      .reduce((sum, duration) => sum + parseDurationHours(duration), 0);
+
+    totalHoursEl.textContent = formatTotalHours(total);
+  }
+
+  function prependUpdate(icon, text) {
+    const emptyRow = updateList.querySelector('[data-empty-activity="true"]');
+    if (emptyRow) emptyRow.remove();
+
+    const li = document.createElement('li');
+    li.className = 'notif-row';
+    li.innerHTML = `
+      <div class="notif-icon" aria-hidden="true">${escapeHtml(icon)}</div>
+      <div><p class="notif-text">${escapeHtml(text)}</p><p class="notif-time">just now</p></div>`;
+    updateList.insertBefore(li, updateList.firstChild);
+    syncActivityListVisibility();
+  }
+
+  function syncActivityListVisibility() {
+    const updates = Array.from(updateList.querySelectorAll('.notif-row'));
+    updates.forEach((row, index) => {
+      row.classList.toggle('is-hidden', !showingAllActivity && index >= RECENT_UPDATE_LIMIT);
+    });
+
+    if (!viewAllActivity) return;
+
+    viewAllActivity.style.display = updates.length > RECENT_UPDATE_LIMIT ? '' : 'none';
+    viewAllActivity.textContent = showingAllActivity ? 'Show recent activity' : 'View all activity ->';
+    viewAllActivity.setAttribute('aria-expanded', showingAllActivity ? 'true' : 'false');
+  }
+
+  function normalizeStopTimeDisplay() {
+    document.querySelectorAll('.stop-time').forEach(el => {
+      const parts = parseTimeDuration(el.textContent);
+      el.textContent = formatTimeDuration(parts.time, parts.duration);
+    });
+    updateTripDuration();
+  }
+
+  if (viewAllActivity) {
+    viewAllActivity.addEventListener('click', function (e) {
+      e.preventDefault();
+      showingAllActivity = !showingAllActivity;
+      syncActivityListVisibility();
+      markNotificationsSeen();
+    });
+  }
+  if (bellButton) {
+    bellButton.addEventListener('click', markNotificationsSeen);
+  }
+  setBellBadgeCount(0);
+  syncActivityListVisibility();
+  normalizeStopTimeDisplay();
+
+  const viewOnlyBanner = document.getElementById('viewOnlyBanner');
+  const viewOnlyDismiss = document.getElementById('viewOnlyDismiss');
+  const titleText = document.getElementById('collabTitleText');
+  const dateText = document.getElementById('collabDateText');
+
+  if (viewOnlyDismiss) {
+    viewOnlyDismiss.addEventListener('click', () => { viewOnlyBanner.style.display = 'none'; });
+  }
+
+  function applyAuthorityState() {
+    if (!canEdit && viewOnlyBanner) viewOnlyBanner.style.display = 'flex';
+    titleText.setAttribute('contenteditable', canEdit ? 'true' : 'false');
+    dateText.setAttribute('contenteditable', canEdit ? 'true' : 'false');
+    document.querySelectorAll('.stop-action-btn, #addStopBtn').forEach(button => {
+      button.disabled = !canEdit;
+      button.style.display = canEdit ? '' : 'none';
+    });
+    document.querySelectorAll('#stopTimeline .timetable-row').forEach(row => {
+      row.setAttribute('draggable', canEdit ? 'true' : 'false');
+    });
+    if (!isOwner) {
+      const inviteForm = document.getElementById('inviteForm');
+      if (inviteForm) inviteForm.style.display = 'none';
+      document.querySelectorAll('.role-pill:not(.role-owner)').forEach(button => {
+        button.disabled = true;
+        button.setAttribute('aria-disabled', 'true');
+      });
+    }
+  }
+
+  /* Editable trip title (plan name) */
+  let titleBeforeEdit = titleText.textContent.trim();
+
+  titleText.addEventListener('focus', function () {
+    titleBeforeEdit = this.textContent.trim();
+  });
+
+  titleText.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.blur();
+    } else if (e.key === 'Escape') {
+      this.textContent = titleBeforeEdit;
+      this.blur();
+    }
+  });
+
+  titleText.addEventListener('blur', async function () {
+    if (!canEdit) return;
+    const newTitle = this.textContent.replace(/\s+/g, ' ').trim();
+
+    if (!newTitle) {
+      this.textContent = titleBeforeEdit;
+      return;
+    }
+    if (newTitle === titleBeforeEdit) return;
+
+    try {
+      const response = await fetch('/api/collaboration/update-title', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itineraryId, title: newTitle, editorUid: currentUid })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        this.textContent = result.title || newTitle;
+        titleBeforeEdit = this.textContent;
+        refreshActivities();
+        showToast('Trip name updated');
+      } else {
+        this.textContent = titleBeforeEdit;
+        showToast(`Failed to rename: ${result.message}`);
+      }
+    } catch (err) {
+      this.textContent = titleBeforeEdit;
+      showToast('Failed to save. Please try again.');
+    }
+  });
+
+  /* Editable trip date */
+  let dateBeforeEdit = dateText.textContent.trim();
+
+  dateText.addEventListener('focus', function () {
+    dateBeforeEdit = this.textContent.trim();
+  });
+
+  dateText.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      this.blur();
+    } else if (e.key === 'Escape') {
+      this.textContent = dateBeforeEdit;
+      this.blur();
+    }
+  });
+
+  dateText.addEventListener('blur', async function () {
+    if (!canEdit) return;
+    const newDate = this.textContent.replace(/\s+/g, ' ').trim();
+
+    if (!newDate) {
+      this.textContent = dateBeforeEdit;
+      return;
+    }
+    if (newDate === dateBeforeEdit) return;
+
+    try {
+      const response = await fetch('/api/collaboration/update-date', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itineraryId, date: newDate, editorUid: currentUid })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        this.textContent = result.date || newDate;
+        dateBeforeEdit = this.textContent;
+        refreshActivities();
+        showToast('Trip date updated');
+      } else {
+        this.textContent = dateBeforeEdit;
+        showToast(`Failed to update date: ${result.message}`);
+      }
+    } catch (err) {
+      this.textContent = dateBeforeEdit;
+      showToast('Failed to save date. Please try again.');
+    }
+  });
+
+  /* Invite (client-side demo) */
+  const inviteForm  = document.getElementById('inviteForm');
+  const inviteInput = document.getElementById('inviteEmailInput');
+  const inviteError = document.getElementById('inviteErrorMsg');
+  const collabList  = document.getElementById('collaboratorList');
+  const AVATAR_COLORS = ['#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#10b981'];
+  const serverOwnerCollaborators = {};
+
+  function emailIsValid(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+  function initialsFromEmail(v) {
+    const local = v.split('@')[0];
+    const parts = local.split(/[._-]/).filter(Boolean);
+    return parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : local.slice(0, 2).toUpperCase();
+  }
+  function colorForEmail(v) {
+    let hash = 0;
+    for (let i = 0; i < v.length; i++) hash = v.charCodeAt(i) + ((hash << 5) - hash);
+    return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+  }
+  function alreadyInvited(email) {
+    return Array.from(collabList.querySelectorAll('.collab-email'))
+      .some(el => el.textContent.trim().toLowerCase() === email.toLowerCase());
+  }
+
+  function buildCollaboratorRow(uid, collaborator) {
+    const name = collaborator.name || collaborator.email || 'Collaborator';
+    const email = collaborator.email || '';
+    const role = collaborator.role || 'Viewer';
+    const status = collaborator.status || 'active';
+    const isPending = status === 'pending' || status === 'queued';
+    const color = collaborator.color || colorForEmail(email || uid || name);
+    const initials = name.split(/\s+/).filter(Boolean).map(part => part[0]).join('').slice(0, 2).toUpperCase() || initialsFromEmail(email || name);
+    const li = document.createElement('li');
+    li.className = `collaborator-row ${isPending ? 'is-pending' : ''}`;
+    li.dataset.collaboratorUid = uid || '';
+
+    let roleMarkup = '<span class="pending-pill">Pending</span>';
+    if (!isPending && role === 'Owner') {
+      roleMarkup = '<button class="role-pill role-owner" type="button" disabled aria-label="Role: Owner">Owner</button>';
+    } else if (!isPending) {
+      const disabledAttrs = isOwner ? '' : ' disabled aria-disabled="true"';
+      roleMarkup = `
+        <button class="role-pill role-${escapeHtml(role.toLowerCase())}" type="button" aria-haspopup="true" aria-label="Role: ${escapeHtml(role)}. Click to change"${disabledAttrs}>
+          ${escapeHtml(role)} <span class="chevron" aria-hidden="true">&#9662;</span>
+        </button>`;
+    }
+
+    li.innerHTML = `
+      <div class="avatar avatar-sm" style="--avatar-bg: ${escapeHtml(color)}; background-color: var(--avatar-bg);">${escapeHtml(initials)}</div>
+      <div class="collab-info"><p class="collab-name">${escapeHtml(name)}</p><p class="collab-email">${escapeHtml(email)}</p></div>
+      <div class="collaborator-role-wrap" style="position:relative;flex-shrink:0;">${roleMarkup}</div>`;
+    return li;
+  }
+
+  function renderCollaborators(collaborators) {
+    if (!collabList) return;
+    collabList.innerHTML = '';
+    Object.entries({ ...serverOwnerCollaborators, ...(collaborators || {}) }).forEach(([uid, collaborator]) => {
+      collabList.appendChild(buildCollaboratorRow(uid, collaborator || {}));
+    });
+    applyAuthorityState();
+  }
+
+  if (collabList) {
+    collabList.querySelectorAll('.collaborator-row').forEach(row => {
+      const role = row.querySelector('.role-owner') ? 'Owner' : '';
+      if (!role) return;
+      const uid = row.dataset.collaboratorUid || '';
+      if (!uid) return;
+      serverOwnerCollaborators[uid] = {
+        role,
+        status: 'active',
+        name: row.querySelector('.collab-name')?.textContent.trim() || 'Owner',
+        email: row.querySelector('.collab-email')?.textContent.trim() || ''
+      };
+    });
+  }
+
+  async function refreshCollaborators() {
+    if (usingSnapshotListeners) return;
+    const response = await fetch(`/api/collaboration/collaborators/${encodeURIComponent(itineraryId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.success) renderCollaborators(data.collaborators || {});
+  }
+
+  if (inviteForm) {
+    inviteForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const email = inviteInput.value.trim();
+
+      if (!emailIsValid(email)) {
+        inviteError.textContent = 'Enter a valid email address.';
+        inviteError.style.display = 'block';
+        inviteInput.classList.add('is-error');
+        return;
+      }
+      if (alreadyInvited(email)) {
+        inviteError.textContent = 'This person is already invited or on the plan.';
+        inviteError.style.display = 'block';
+        inviteInput.classList.add('is-error');
+        return;
+      }
+      inviteError.style.display = 'none';
+      inviteInput.classList.remove('is-error');
+
+      const inviteBtn = inviteForm.querySelector('.invite-btn');
+      const actionKey = `invite:${email.toLowerCase()}`;
+      if (!beginAction(actionKey, [inviteBtn, inviteInput])) return;
+      inviteBtn.textContent = 'Sending...';
+      let successMessage = `Invitation sent to ${email}`;
+
+      try {
+        const response = await fetch('/api/collaboration/invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itineraryId, email, ownerId: currentUid })
+        });
+        const result = await response.json();
+
+        if (!result.success) {
+          inviteError.textContent = result.message || 'Could not send invitation.';
+          inviteError.style.display = 'block';
+          inviteInput.classList.add('is-error');
+          return;
+        }
+        successMessage = result.message || successMessage;
+      } catch (err) {
+        showToast('Failed to send invitation. Please try again.');
+        return;
+      } finally {
+        endAction(actionKey, [inviteBtn, inviteInput]);
+        inviteBtn.textContent = 'Invite';
+      }
+
+      await refreshCollaborators();
+      await refreshActivities();
+      showToast(successMessage);
+      inviteInput.value = '';
+    });
+
+    inviteInput.addEventListener('input', function () {
+      if (inviteError.style.display !== 'none') {
+        inviteError.style.display = 'none';
+        inviteInput.classList.remove('is-error');
+      }
+    });
+  }
+
+  /* Comments */
+  const commentForm  = document.getElementById('commentForm');
+  const commentInput = document.getElementById('commentInput');
+  const commentError = document.getElementById('commentErrorMsg');
+  const commentsList = document.getElementById('commentsList');
+
+  function buildCommentArticle({ id, authorUid, authorName, text, createdAt }) {
+    const article = document.createElement('article');
+    article.className = 'comment-item';
+    article.dataset.commentId = id || '';
+    article.dataset.authorUid = authorUid || '';
+    const initials = authorName.split(' ').map(p => p[0]).join('').slice(0,2).toUpperCase();
+    const editAction = authorUid === currentUid
+      ? '<button class="comment-edit-btn" type="button" aria-label="Edit comment">Edit</button>'
+      : '';
+
+    article.innerHTML = `
+      <div class="avatar avatar-sm" style="--avatar-bg: #0f8a67; background-color: var(--avatar-bg);">${escapeHtml(initials)}</div>
+      <div class="comment-bubble">
+        <div class="comment-meta-row">
+          <div>
+            <span class="comment-author">${escapeHtml(authorName)}</span>
+            <span class="comment-time" data-created-at="${escapeHtml(createdAt || '')}">${escapeHtml(formatCommentTime(createdAt))}</span>
+          </div>
+          ${editAction}
+        </div>
+        <p class="comment-text">${escapeHtml(text)}</p>
+      </div>`;
+    return article;
+  }
+
+  function renderComments(comments) {
+    if (!commentsList) return;
+    commentsList.innerHTML = '';
+    comments.forEach(comment => {
+      commentsList.appendChild(buildCommentArticle({
+        id: comment.id || comment.comment_id,
+        authorUid: comment.authorUid || comment.user_id,
+        authorName: comment.authorName || comment.name || 'Someone',
+        text: comment.text || comment.comment_text || '',
+        createdAt: comment.updatedAt || comment.updated_at || comment.createdAt || comment.created_at || ''
+      }));
+    });
+  }
+
+  function renderActivities(activities) {
+    if (!updateList) return;
+    updateList.innerHTML = '';
+    if (!activities.length) {
+      updateList.innerHTML = `
+        <li class="notif-row" data-empty-activity="true">
+          <div class="notif-icon" aria-hidden="true">N</div>
+          <div><p class="notif-text">No activity yet</p><p class="notif-time">Start collaborating to see updates here</p></div>
+        </li>`;
+      syncActivityListVisibility();
+      return;
+    }
+    activities.forEach(activity => {
+      const li = document.createElement('li');
+      const sourceId = activity.sourceId || activity.id || '';
+      li.className = `notif-row ${unreadNotificationIds.has(sourceId) ? 'is-unread' : ''}`;
+      li.dataset.sourceType = activity.sourceType || 'activity';
+      li.dataset.sourceId = sourceId;
+      li.innerHTML = `
+        <div class="notif-icon" aria-hidden="true">${escapeHtml(activity.iconLabel || 'N')}</div>
+        <div><p class="notif-text">${escapeHtml(activity.message || 'Updated')}</p><p class="notif-time">${escapeHtml(activity.timeAgo || formatCommentTime(activity.createdAt))}</p></div>`;
+      updateList.appendChild(li);
+    });
+    syncActivityListVisibility();
+  }
+
+  function prependNotification(notification) {
+    if (!updateList || !notification || !notification.id) return;
+    if (updateList.querySelector(`[data-source-id="${CSS.escape(notification.id)}"]`)) return;
+
+    const emptyRow = updateList.querySelector('[data-empty-activity="true"]');
+    if (emptyRow) emptyRow.remove();
+
+    const li = document.createElement('li');
+    li.className = 'notif-row is-unread';
+    li.dataset.sourceType = 'notification';
+    li.dataset.sourceId = notification.id;
+    unreadNotificationIds.add(notification.id);
+    li.innerHTML = `
+      <div class="notif-icon" aria-hidden="true">${escapeHtml(notification.iconLabel || 'N')}</div>
+      <div><p class="notif-text">${escapeHtml(notification.message || 'New update')}</p><p class="notif-time">${escapeHtml(notification.timeAgo || formatCommentTime(notification.createdAt || notification.created_at))}</p></div>`;
+    updateList.prepend(li);
+    syncActivityListVisibility();
+  }
+
+  async function refreshComments() {
+    if (usingSnapshotListeners) return;
+    const response = await fetch(`/api/collaboration/comments/${encodeURIComponent(itineraryId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.success) renderComments(data.comments || []);
+  }
+
+  async function refreshActivities() {
+    if (usingSnapshotListeners) return;
+    const response = await fetch(`/api/collaboration/activity/${encodeURIComponent(itineraryId)}`);
+    if (!response.ok) return;
+    const data = await response.json();
+    if (data.success) renderActivities(data.activities || []);
+  }
+
+  function startCommentEdit(article) {
+    if (article.classList.contains('is-editing')) return;
+
+    const textEl = article.querySelector('.comment-text');
+    const editBtn = article.querySelector('.comment-edit-btn');
+    const originalText = textEl.textContent.trim();
+
+    article.classList.add('is-editing');
+    if (editBtn) editBtn.style.display = 'none';
+    textEl.style.display = 'none';
+
+    const editor = document.createElement('div');
+    editor.className = 'comment-editor';
+    editor.innerHTML = `
+      <input class="comment-edit-input" type="text" maxlength="500" value="${escapeHtml(originalText)}" aria-label="Edit comment text" />
+      <div class="comment-edit-actions">
+        <button class="comment-save-btn" type="button">Save</button>
+        <button class="comment-cancel-btn" type="button">Cancel</button>
+      </div>`;
+    textEl.insertAdjacentElement('afterend', editor);
+    editor.querySelector('.comment-edit-input').focus();
+  }
+
+  function finishCommentEdit(article) {
+    article.classList.remove('is-editing');
+    const editor = article.querySelector('.comment-editor');
+    const editBtn = article.querySelector('.comment-edit-btn');
+    const textEl = article.querySelector('.comment-text');
+    if (editor) editor.remove();
+    if (editBtn) editBtn.style.display = '';
+    if (textEl) textEl.style.display = '';
+  }
+
+  if (commentsList) {
+    commentsList.addEventListener('click', async function (e) {
+      const editBtn = e.target.closest('.comment-edit-btn');
+      if (editBtn) {
+        startCommentEdit(editBtn.closest('.comment-item'));
+        return;
+      }
+
+      const cancelBtn = e.target.closest('.comment-cancel-btn');
+      if (cancelBtn) {
+        finishCommentEdit(cancelBtn.closest('.comment-item'));
+        return;
+      }
+
+      const saveBtn = e.target.closest('.comment-save-btn');
+      if (!saveBtn) return;
+
+      const article = saveBtn.closest('.comment-item');
+      const input = article.querySelector('.comment-edit-input');
+      const textEl = article.querySelector('.comment-text');
+      const newText = input.value.trim();
+      const oldText = textEl.textContent.trim();
+
+      if (!newText) {
+        input.classList.add('is-error');
+        showToast("Comment can't be empty");
+        return;
+      }
+      if (newText === oldText) {
+        finishCommentEdit(article);
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      try {
+        const response = await fetch('/api/collaboration/comment/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itineraryId,
+            commentId: article.dataset.commentId,
+            authorUid: currentUid,
+            text: newText
+          })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          textEl.textContent = result.comment && result.comment.text ? result.comment.text : newText;
+          finishCommentEdit(article);
+          refreshComments();
+          refreshActivities();
+          showToast('Comment updated');
+        } else {
+          showToast(`Failed to update comment: ${result.message}`);
+        }
+      } catch (err) {
+        showToast('Failed to update comment. Please try again.');
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+      }
+    });
+  }
+
+  if (commentForm) {
+    commentForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      if (submittingComment) return;
+      const text = commentInput.value.trim();
+
+      if (!text) {
+        commentError.style.display = 'block';
+        commentInput.classList.add('is-error');
+        return;
+      }
+      commentError.style.display = 'none';
+      commentInput.classList.remove('is-error');
+
+      const sendBtn = commentForm.querySelector('.comment-send-btn');
+      submittingComment = true;
+      if (!beginAction('comment:add', [sendBtn, commentInput])) return;
+      sendBtn.textContent = '...';
+
+      try {
+        const response = await fetch('/api/collaboration/comment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itineraryId, authorUid: currentUid, authorName: currentName, text })
+        });
+        const result = await response.json();
+
+        if (result.success) {
+          commentInput.value = '';
+          await refreshComments();
+          await refreshActivities();
+          showToast(`Comment added: "${text.slice(0, 60)}"`);
+        } else {
+          showToast(`Failed to add comment: ${result.message}`);
+        }
+      } catch (err) {
+        showToast('Failed to add comment. Please try again.');
+      } finally {
+        submittingComment = false;
+        endAction('comment:add', [sendBtn, commentInput]);
+        sendBtn.innerHTML = '&#10148;';
+      }
+    });
+
+    commentInput.addEventListener('input', function () {
+      if (commentError.style.display !== 'none') {
+        commentError.style.display = 'none';
+        commentInput.classList.remove('is-error');
+      }
+    });
+  }
+
+  /* Edit / delete / add stop */
+  const editModal = document.getElementById('edit-stop-modal');
+  const editForm = document.getElementById('editStopForm');
+  const editStopIndex = document.getElementById('editStopIndex');
+  const editStopName = document.getElementById('editStopName');
+  const editStopTime = document.getElementById('editStopTime');
+  const editStopDuration = document.getElementById('editStopDuration');
+  const cancelBtn = document.getElementById('edit-stop-cancel');
+  const saveBtn = document.getElementById('edit-stop-save');
+  const stopTimeline = document.getElementById('stopTimeline');
+  const stopCountEl = document.getElementById('collabStopCount');
+
+  applyAuthorityState();
+
+  let currentStopRow = null;
+  let draggedStopRow = null;
+  let dragStartOrder = [];
+
+  function updateStopIndexes() {
+    const rows = Array.from(stopTimeline.querySelectorAll('.timetable-row'));
+    rows.forEach((row, index) => {
+      const stopNumber = index + 1;
+      row.setAttribute('data-stop-index', index);
+      row.setAttribute('data-stop-number', stopNumber);
+
+      const dot = row.querySelector('.timeline-dot');
+      if (dot) {
+        dot.textContent = stopNumber;
+        dot.classList.toggle('start', index === 0);
+        dot.classList.toggle('end', index === rows.length - 1);
+      }
+
+      const line = row.querySelector('.timeline-line');
+      if (line) line.remove();
+      if (index < rows.length - 1) {
+        const timelineCol = row.querySelector('.timeline-col');
+        if (timelineCol) {
+          const newLine = document.createElement('div');
+          newLine.className = 'timeline-line';
+          timelineCol.appendChild(newLine);
+        }
+      }
+    });
+    stopCountEl.textContent = rows.length;
+    updateTripDuration();
+  }
+
+  function snapshotStopOrder() {
+    return Array.from(stopTimeline.querySelectorAll('.timetable-row'));
+  }
+
+  function restoreStopOrder(rows) {
+    rows.forEach(row => stopTimeline.appendChild(row));
+    updateStopIndexes();
+  }
+
+  function getDragAfterElement(container, y) {
+    const rows = Array.from(container.querySelectorAll('.timetable-row:not(.is-dragging)'));
+
+    return rows.reduce((closest, row) => {
+      const box = row.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: row };
+      }
+      return closest;
+    }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+  }
+
+  function enableStopDragging(row) {
+    row.setAttribute('draggable', canEdit ? 'true' : 'false');
+  }
+
+  function splitTimeDuration(value) {
+    return parseTimeDuration(value);
+  }
+
+  function collectStops() {
+    return Array.from(stopTimeline.querySelectorAll('.timetable-row')).map((row, index) => {
+      const timeDuration = splitTimeDuration(row.querySelector('.stop-time').textContent.trim());
+      return {
+        name: row.querySelector('.stop-name').textContent.trim(),
+        time: timeDuration.time,
+        duration: timeDuration.duration,
+        icon: 'pin',
+        stopNumber: parseInt(row.getAttribute('data-stop-number'), 10) || index + 1
+      };
+    });
+  }
+
+  async function persistStops() {
+    if (pendingActions.has('stops:persist')) {
+      return { success: false, message: 'Please wait for the current stop update to finish.' };
+    }
+    pendingActions.add('stops:persist');
+    try {
+      const response = await fetch('/api/collaboration/update-itinerary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itineraryId,
+          editorUid: currentUid,
+          stops: collectStops()
+        })
+      });
+      return await response.json();
+    } finally {
+      pendingActions.delete('stops:persist');
+    }
+  }
+
+  function openEditModal(stopRow) {
+    currentStopRow = stopRow;
+    const stopName = stopRow.querySelector('.stop-name').textContent.trim();
+    const stopTimeText = stopRow.querySelector('.stop-time').textContent.trim();
+    const timeParts = parseTimeDuration(stopTimeText);
+
+    editStopIndex.value = stopRow.getAttribute('data-stop-index');
+    editStopName.value = stopName;
+    editStopTime.value = timeParts.time;
+    editStopDuration.value = timeParts.duration;
+
+    editModal.classList.add('active');
+    editStopName.focus();
+  }
+
+  function closeEditModal() {
+    editModal.classList.remove('active');
+    currentStopRow = null;
+    editForm.reset();
+  }
+
+  async function saveStopChanges() {
+    if (!currentStopRow) return;
+    const newName = editStopName.value.trim();
+    const newTime = editStopTime.value.trim();
+    const newDuration = editStopDuration.value.trim();
+
+    if (!newName) {
+      showToast('Please enter a stop name');
+      return;
+    }
+
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+      const response = await fetch('/api/collaboration/update-stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itineraryId,
+          stopIndex: parseInt(editStopIndex.value, 10),
+          stopData: {
+            name: newName,
+            time: newTime,
+            duration: newDuration,
+            stopNumber: parseInt(currentStopRow.getAttribute('data-stop-number'), 10) || parseInt(editStopIndex.value, 10) + 1
+          },
+          editorUid: currentUid
+        })
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        currentStopRow.querySelector('.stop-name').textContent = newName;
+        currentStopRow.querySelector('.stop-time').textContent = formatTimeDuration(newTime, newDuration);
+        updateTripDuration();
+
+        refreshActivities();
+        showToast(`"${newName}" updated`);
+        closeEditModal();
+      } else {
+        showToast(`Failed to save: ${result.message}`);
+      }
+    } catch (err) {
+      showToast('Failed to save changes. Please try again.');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Changes';
+    }
+  }
+
+  document.addEventListener('click', function (e) {
+    const editBtn = e.target.closest('.stop-action-btn:not(.is-delete)');
+    if (editBtn) {
+      e.preventDefault();
+      if (!canEdit) {
+        showToast('You have view-only access.');
+        return;
+      }
+      const row = editBtn.closest('.timetable-row');
+      if (row) openEditModal(row);
+      return;
+    }
+
+    const deleteBtn = e.target.closest('.stop-action-btn.is-delete');
+    if (deleteBtn) {
+      e.preventDefault();
+      if (!canEdit) {
+        showToast('You have view-only access.');
+        return;
+      }
+      const row = deleteBtn.closest('.timetable-row');
+      const name = row.querySelector('.stop-name').textContent.trim();
+      if (confirm(`Are you sure you want to delete "${name}"?`)) {
+        row.remove();
+        updateStopIndexes();
+        showToast(`"${name}" deleted`);
+        persistStops().then(result => {
+          if (result.success) refreshActivities();
+          else showToast(`Delete was not saved: ${result.message}`);
+        }).catch(() => showToast('Delete was not saved. Please refresh and try again.'));
+      }
+    }
+  });
+
+  const addStopBtn = document.getElementById('addStopBtn');
+  if (addStopBtn) {
+    addStopBtn.addEventListener('click', async function () {
+      if (!canEdit) {
+        showToast('You have view-only access.');
+        return;
+      }
+      const count = stopTimeline.querySelectorAll('.timetable-row').length;
+      const row = document.createElement('div');
+      row.className = 'timetable-row';
+      row.setAttribute('role', 'listitem');
+      row.setAttribute('draggable', 'true');
+      row.setAttribute('data-stop-index', count);
+      row.setAttribute('data-stop-number', count + 1);
+      row.innerHTML = `
+        <div class="timeline-col"><div class="timeline-dot end">${count + 1}</div></div>
+        <div class="timetable-content">
+          <div class="stop-edit-row">
+            <div class="stop-edit-fields">
+              <p class="timetable-name stop-name">New Stop</p>
+              <p class="timetable-time"><span class="stop-icon">&#128205;</span> <span class="stop-time">--:-- &middot; -- hrs</span></p>
+            </div>
+            <div class="stop-actions-group">
+              <button class="stop-action-btn" type="button" title="Edit stop" aria-label="Edit New Stop">&#9998;</button>
+              <button class="stop-action-btn is-delete" type="button" title="Delete stop" aria-label="Delete New Stop">&#128465;</button>
+            </div>
+          </div>
+        </div>`;
+      stopTimeline.appendChild(row);
+      updateStopIndexes();
+      addStopBtn.disabled = true;
+      try {
+        const result = await persistStops();
+        if (!result.success) {
+          row.remove();
+          updateStopIndexes();
+          showToast(`Could not add stop: ${result.message}`);
+          return;
+        }
+      } catch (err) {
+        row.remove();
+        updateStopIndexes();
+        showToast('Could not add stop. Please try again.');
+        return;
+      } finally {
+        addStopBtn.disabled = false;
+      }
+      updateStopIndexes();
+
+      refreshActivities();
+      showToast('New stop added - click edit to customize');
+      setTimeout(() => openEditModal(row), 250);
+    });
+  }
+
+  stopTimeline.querySelectorAll('.timetable-row').forEach(enableStopDragging);
+
+  stopTimeline.addEventListener('dragstart', function (e) {
+    const row = e.target.closest('.timetable-row');
+    if (!row) return;
+    if (!canEdit) return;
+
+    draggedStopRow = row;
+    dragStartOrder = snapshotStopOrder();
+    row.classList.add('is-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.getAttribute('data-stop-index') || '');
+  });
+
+  stopTimeline.addEventListener('dragover', function (e) {
+    if (!draggedStopRow) return;
+    e.preventDefault();
+
+    const afterElement = getDragAfterElement(stopTimeline, e.clientY);
+    if (afterElement) {
+      stopTimeline.insertBefore(draggedStopRow, afterElement);
+    } else {
+      stopTimeline.appendChild(draggedStopRow);
+    }
+    updateStopIndexes();
+  });
+
+  stopTimeline.addEventListener('drop', async function (e) {
+    if (!draggedStopRow) return;
+    e.preventDefault();
+
+    const movedName = draggedStopRow.querySelector('.stop-name').textContent.trim();
+    const newStopNumber = parseInt(draggedStopRow.getAttribute('data-stop-number'), 10) || 1;
+    draggedStopRow.classList.remove('is-dragging');
+    draggedStopRow = null;
+    updateStopIndexes();
+
+    try {
+      const result = await persistStops();
+      if (result.success) {
+        refreshActivities();
+        showToast(`"${movedName}" moved to stop ${newStopNumber}`);
+      } else {
+        restoreStopOrder(dragStartOrder);
+        showToast(`Move was not saved: ${result.message}`);
+      }
+    } catch (err) {
+      restoreStopOrder(dragStartOrder);
+      showToast('Move was not saved. Please try again.');
+    } finally {
+      dragStartOrder = [];
+    }
+  });
+
+  stopTimeline.addEventListener('dragend', function () {
+    if (draggedStopRow) {
+      draggedStopRow.classList.remove('is-dragging');
+      draggedStopRow = null;
+    }
+    dragStartOrder = [];
+    updateStopIndexes();
+  });
+
+  cancelBtn.addEventListener('click', closeEditModal);
+  saveBtn.addEventListener('click', saveStopChanges);
+  editModal.addEventListener('click', function (e) { if (e.target === editModal) closeEditModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && editModal.classList.contains('active')) closeEditModal();
+  });
+  editForm.addEventListener('submit', function (e) { e.preventDefault(); saveStopChanges(); });
+
+  /* Role dropdown (client-side demo) */
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.role-dropdown')) return;
+
+    document.querySelectorAll('.role-dropdown').forEach(d => d.remove());
+
+    const pill = e.target.closest('.role-pill:not(.role-owner)');
+    if (!pill) return;
+    if (!isOwner) {
+      showToast('Only the owner can change collaborator roles.');
+      return;
+    }
+    if (pill.closest('.is-pending')) return;
+
+    const wrap = pill.closest('.collaborator-role-wrap');
+    const dropdown = document.createElement('div');
+    dropdown.className = 'role-dropdown';
+    dropdown.innerHTML = `
+      <button type="button" class="role-dropdown-item" data-set-role="Editor">Make Editor</button>
+      <button type="button" class="role-dropdown-item" data-set-role="Viewer">Make Viewer</button>
+      <div class="role-dropdown-divider"></div>
+      <button type="button" class="role-dropdown-item is-danger" data-remove-collab>Remove</button>`;
+    wrap.appendChild(dropdown);
+  });
+
+  document.addEventListener('click', function (e) {
+    const setRoleBtn = e.target.closest('[data-set-role]');
+    if (setRoleBtn) {
+      e.preventDefault();
+      if (!isOwner) {
+        showToast('Only the owner can change collaborator roles.');
+        return;
+      }
+      const row = setRoleBtn.closest('.collaborator-row');
+      const name = row.querySelector('.collab-name').textContent.trim();
+      const role = setRoleBtn.dataset.setRole;
+      const collaboratorUid = row.dataset.collaboratorUid || '';
+      const pill = row.querySelector('.role-pill');
+      const dropdown = setRoleBtn.closest('.role-dropdown');
+
+      if (!collaboratorUid) {
+        showToast('Could not identify collaborator.');
+        if (dropdown) dropdown.remove();
+        return;
+      }
+
+      setRoleBtn.disabled = true;
+
+      fetch('/api/collaboration/update-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itineraryId,
+          ownerUid: currentUid,
+          collaboratorUid,
+          role
+        })
+      })
+        .then(response => response.json())
+        .then(result => {
+          if (!result.success) {
+            showToast(result.message || 'Could not update role.');
+            return;
+          }
+
+          const nextRole = result.role || role;
+          pill.className = `role-pill role-${nextRole.toLowerCase()}`;
+          pill.innerHTML = `${nextRole} <span class="chevron" aria-hidden="true">&#9662;</span>`;
+          pill.setAttribute('aria-label', `Role: ${nextRole}. Click to change`);
+          refreshActivities();
+          showToast(`${name} is now ${nextRole}`);
+        })
+        .catch(() => showToast('Could not update role. Please try again.'))
+        .finally(() => {
+          if (dropdown) dropdown.remove();
+        });
+    }
+
+    const removeBtn = e.target.closest('[data-remove-collab]');
+    if (removeBtn) {
+      e.preventDefault();
+      if (!isOwner) {
+        showToast('Only the owner can remove collaborators.');
+        return;
+      }
+      const row = removeBtn.closest('.collaborator-row');
+      const name = row.querySelector('.collab-name').textContent.trim();
+      const collaboratorUid = row.dataset.collaboratorUid || '';
+      const dropdown = removeBtn.closest('.role-dropdown');
+
+      if (!collaboratorUid) {
+        showToast('Could not identify collaborator.');
+        if (dropdown) dropdown.remove();
+        return;
+      }
+
+      if (confirm(`Remove ${name}? They will lose access immediately.`)) {
+        removeBtn.disabled = true;
+
+        fetch('/api/collaboration/remove-collaborator', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            itineraryId,
+            ownerUid: currentUid,
+            collaboratorUid
+          })
+        })
+          .then(response => response.json())
+          .then(result => {
+            if (!result.success) {
+              showToast(result.message || 'Could not remove collaborator.');
+              return;
+            }
+
+            row.remove();
+            refreshActivities();
+            refreshCollaborators();
+            showToast(`${name} removed`);
+          })
+          .catch(() => showToast('Could not remove collaborator. Please try again.'))
+          .finally(() => {
+            if (dropdown) dropdown.remove();
+          });
+      }
+    }
+  });
+
+  /* Poll for notifications */
+  async function checkForUpdates() {
+    if (usingSnapshotListeners) return;
+    try {
+      const response = await fetch(`/api/collaboration/notifications?itineraryId=${itineraryId}`);
+      if (!response.ok) return;
+      const data = await response.json();
+      const newNotifications = data.notifications || [];
+      let unreadCount = 0;
+      newNotifications.forEach(n => {
+        if (!n.isRead && !n.is_read) unreadCount += 1;
+        if (n.id && seenNotificationIds.has(n.id)) return;
+        if (n.id) seenNotificationIds.add(n.id);
+        if (!n.isRead && !n.is_read) {
+          unreadNotificationIds.add(n.id);
+          prependNotification(n);
+        }
+      });
+      setBellBadgeCount(unreadCount);
+    } catch (err) { /* expected during local dev without a live socket */ }
+  }
+  async function refreshCollaborationState() {
+    await Promise.allSettled([refreshComments(), refreshActivities(), refreshCollaborators()]);
+    await checkForUpdates();
+  }
+
+  function startFallbackPolling(reason) {
+    if (fallbackPollingStarted) return;
+    fallbackPollingStarted = true;
+    usingSnapshotListeners = false;
+    console.warn('Firestore live listeners unavailable; falling back to API polling.', reason || '');
+    refreshCollaborationState();
+    startPolling();
+  }
+
+  function handleSnapshotError(error) {
+    unsubscribeListeners.splice(0).forEach(unsubscribe => unsubscribe());
+    startFallbackPolling(error);
+  }
+
+  function startFirestoreListeners(user) {
+    if (!user || !itineraryId) {
+      startFallbackPolling('Missing Firebase user or itinerary id.');
+      return;
+    }
+
+    usingSnapshotListeners = true;
+    stopPolling();
+
+    const commentsQuery = query(
+      collection(db, 'comments'),
+      where('itinerary_id', '==', itineraryId)
+    );
+    unsubscribeListeners.push(onSnapshot(commentsQuery, snapshot => {
+      const comments = snapshot.docs
+        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+        .sort((a, b) => parseDateValue(a.createdAt || a.created_at) - parseDateValue(b.createdAt || b.created_at));
+      renderComments(comments);
+    }, handleSnapshotError));
+
+    const activitiesRef = collection(db, 'Itinerary', itineraryId, 'activities');
+    unsubscribeListeners.push(onSnapshot(activitiesRef, snapshot => {
+      const activities = snapshot.docs
+        .map(docSnap => {
+          const activity = { id: docSnap.id, ...docSnap.data() };
+          const createdAt = timestampValue(activity.createdAt || activity.created_at);
+          return {
+            ...activity,
+            createdAt,
+            iconLabel: activity.iconLabel || activityIconLabel(activity.message || '', activity.icon || ''),
+            timeAgo: activity.timeAgo || formatCommentTime(createdAt),
+            sourceType: activity.sourceType || 'activity',
+            sourceId: activity.sourceId || activity.id || docSnap.id
+          };
+        })
+        .sort((a, b) => parseDateValue(b.createdAt) - parseDateValue(a.createdAt));
+      renderActivities(activities);
+    }, handleSnapshotError));
+
+    const collaboratorsQuery = query(
+      collection(db, 'collaborators'),
+      where('itinerary_id', '==', itineraryId)
+    );
+    unsubscribeListeners.push(onSnapshot(collaboratorsQuery, snapshot => {
+      const collaborators = {};
+      snapshot.docs.forEach(docSnap => {
+        const row = { id: docSnap.id, ...docSnap.data() };
+        const uid = row.invitee_user_id || row.user_id || row.owner_user_id || '';
+        if (!uid) return;
+        const rawStatus = row.status || 'pending';
+        collaborators[uid] = {
+          role: row.role || row.permission || 'Viewer',
+          status: rawStatus === 'accepted' ? 'active' : rawStatus === 'queued' ? 'pending' : rawStatus,
+          name: row.name || row.invitee_name || row.invitee_email || uid,
+          email: row.invitee_email || row.email || '',
+          collaborator_id: row.collaborator_id || docSnap.id
+        };
+      });
+      renderCollaborators(collaborators);
+    }, handleSnapshotError));
+
+    const notificationsQuery = query(
+      collection(db, 'notifications'),
+      where('user_id', '==', user.uid)
+    );
+    unsubscribeListeners.push(onSnapshot(notificationsQuery, snapshot => {
+      const notifications = snapshot.docs
+        .map(docSnap => ({ id: docSnap.id, ...docSnap.data() }))
+        .filter(notification => notification.itineraryId === itineraryId || notification.reference_id === itineraryId);
+      let unreadCount = 0;
+      notifications.forEach(notification => {
+        if (!notification.isRead && !notification.is_read) unreadCount += 1;
+        if (notification.id && seenNotificationIds.has(notification.id)) return;
+        if (notification.id) seenNotificationIds.add(notification.id);
+        if (!notification.isRead && !notification.is_read) {
+          const createdAt = timestampValue(notification.createdAt || notification.created_at);
+          unreadNotificationIds.add(notification.id);
+          prependNotification({
+            ...notification,
+            createdAt,
+            iconLabel: notification.iconLabel || activityIconLabel(notification.message || '', notification.icon || notification.type || ''),
+            timeAgo: notification.timeAgo || formatCommentTime(createdAt)
+          });
+        }
+      });
+      setBellBadgeCount(unreadCount);
+    }, handleSnapshotError));
+  }
+
+  let pollInterval = null;
+
+  function stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollInterval = setInterval(refreshCollaborationState, 60000);
+  }
+
+  document.addEventListener('visibilitychange', function () {
+    if (usingSnapshotListeners) return;
+
+    if (document.visibilityState === 'visible') {
+      refreshCollaborationState();
+      startPolling();
+    } else {
+      stopPolling();
+    }
+  });
+
+  window.addEventListener('pagehide', stopPolling);
+
+  window.addEventListener('pagehide', function () {
+    unsubscribeListeners.splice(0).forEach(unsubscribe => unsubscribe());
+  });
+
+  onAuthStateChanged(auth, function (user) {
+    if (usingSnapshotListeners || fallbackPollingStarted) return;
+    startFirestoreListeners(user);
+  });
+})();
+</script>
+{% endblock %}

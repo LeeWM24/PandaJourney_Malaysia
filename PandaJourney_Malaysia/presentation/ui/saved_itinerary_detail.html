@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}Saved Itinerary Details — PandaJourney Malaysia{% endblock %}
+{% block page_title %}Saved Itinerary Details{% endblock %}
+{% block page_subtitle %}View your saved trip plan, stops and route map{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
+<style>
+  #detailRouteMap {
+    width: 100%;
+    height: 320px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .detail-item {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+  }
+
+  .detail-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .detail-value {
+    font-weight: 700;
+    color: var(--text);
+  }
+
+  .detail-stop-row {
+    display: flex;
+    gap: 14px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .detail-stop-row:last-child {
+    border-bottom: none;
+  }
+
+  .detail-stop-number {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .detail-stop-content {
+    flex: 1;
+  }
+
+  .detail-stop-title {
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+
+  .detail-stop-meta {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .detail-stop-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .detail-route-action {
+    display: none;
+    margin-top: 12px;
+  }
+
+  @media (max-width: 768px) {
+    .detail-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .detail-stop-row {
+      flex-direction: column;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{{ url_for('saved_itineraries') }}" class="btn btn-secondary btn-md">
+    ← Back
+  </a>
+{% endblock %}
+
+{% block content %}
+<div
+  class="page-inner"
+  id="saved-detail-page"
+  data-itinerary-id="{{ itinerary_id }}"
+  style="padding-top:24px;"
+>
+
+  <div id="detail-loading" class="card" style="padding:24px;">
+    Loading itinerary details...
+  </div>
+
+  <div id="detail-error" class="card" style="padding:24px; display:none;">
+    <div class="empty-state">
+      <div class="empty-icon">⚠️</div>
+
+      <div class="empty-title">
+        Itinerary not found
+      </div>
+
+      <div class="empty-sub">
+        This itinerary may have been deleted or you may not have permission to view it.
+      </div>
+
+      <a href="{{ url_for('saved_itineraries') }}" class="btn btn-primary btn-md" style="margin-top:16px;">
+        Back to Saved Itineraries
+      </a>
+    </div>
+  </div>
+
+  <div id="detail-content" style="display:none;">
+
+    <div class="card card-p" style="margin-bottom:16px;">
+      <div class="card-header">
+        <div>
+          <div class="card-title" id="detail-title">
+            Trip Title
+          </div>
+
+          <div style="margin-top:8px;">
+            <span class="badge badge-warning" id="detail-status">
+              Draft
+            </span>
+          </div>
+
+          <div id="detail-full-route-action" class="detail-route-action">
+            <a
+              href="#"
+              id="detail-google-full-route-link"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-secondary btn-sm"
+            >
+              🗺️ View Full Route in Google Maps
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Destination</div>
+          <div class="detail-value" id="detail-destination">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Travel Date</div>
+          <div class="detail-value" id="detail-date">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Start Location</div>
+          <div class="detail-value" id="detail-start">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">End Location</div>
+          <div class="detail-value" id="detail-end">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Available Hours</div>
+          <div class="detail-value" id="detail-hours">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Interest</div>
+          <div class="detail-value" id="detail-interest">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Stop Count</div>
+          <div class="detail-value" id="detail-stop-count">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Estimated Travel Time</div>
+          <div class="detail-value" id="detail-travel-duration">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-p" style="margin-bottom:16px;">
+      <div class="card-title mb-4">
+        Saved Stops
+      </div>
+
+      <div id="detail-stop-list"></div>
+    </div>
+
+    <div class="card card-p">
+      <div class="card-title mb-4">
+        Route Map
+      </div>
+
+      <div id="detailRouteMap"></div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/saved_itinerary_detail.js') }}"></script>
+{% endblock %}

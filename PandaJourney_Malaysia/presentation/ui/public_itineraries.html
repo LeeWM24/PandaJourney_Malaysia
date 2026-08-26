@@ -1,0 +1,643 @@
+{% extends "base.html" %}
+{% set active_page = "public" %}
+
+{% block title %}Public Itineraries | PandaJourney Malaysia{% endblock %}
+
+{% block page_title %}Public Itineraries{% endblock %}
+
+{% block page_subtitle %}
+Explore community favorites, search destinations, and save routes in a tap.
+{% endblock %}
+
+  {% block content %}
+
+  <div class="page-inner">
+    <div class="page-shell">
+      <!-- Search and Filter -->
+          <section class="card search-card">
+            <div class="search-row">
+              <div class="search-input-wrap">
+                <input id="searchInput" type="text" placeholder="Search itinerary title, city, stop, or vibe" />
+                <button id="clearSearch" class="clear-btn" type="button" aria-label="Clear search">✕</button>
+              </div>
+              <div style="position: relative;">
+                <button id="filterToggle" class="filter-btn" type="button">Filters ▾</button>
+                <div id="filterPopover" class="filter-popover" role="dialog" aria-label="Filter itineraries">
+                  <div class="popover-section">
+                    <div class="popover-title">Interest</div>
+                    <div class="chip-row" data-group="interest">
+                      <button class="chip" type="button" data-value="Culture">Culture</button>
+                      <button class="chip" type="button" data-value="Museum">Museum</button>
+                      <button class="chip" type="button" data-value="Nature">Nature</button>
+                      <button class="chip" type="button" data-value="Shopping">Shopping</button>
+                      <button class="chip" type="button" data-value="Food">Food</button>
+                    </div>
+                  </div>
+                  <div class="popover-section">
+                    <div class="popover-title">Travel duration</div>
+                    <div class="chip-row" data-group="duration">
+                      <button class="chip" type="button" data-value="under4">Under 4 hours</button>
+                      <button class="chip" type="button" data-value="4to8">4-8 hours</button>
+                      <button class="chip" type="button" data-value="8plus">8+ hours</button>
+                    </div>
+                  </div>
+                  <div class="popover-section">
+                    <div class="popover-title">Number of stops</div>
+                    <div class="chip-row" data-group="stops">
+                      <button class="chip" type="button" data-value="1to3">1-3 stops</button>
+                      <button class="chip" type="button" data-value="4to5">4-5 stops</button>
+                      <button class="chip" type="button" data-value="6plus">6+ stops</button>
+                    </div>
+                  </div>
+                  <div class="popover-actions">
+                    <button id="resetFilters" class="btn btn-ghost" type="button">Reset</button>
+                    <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="activeFilters" class="pill-row"></div>
+            <div id="resultSummary" class="results-bar" style="margin-top: 14px;"></div>
+          </section>
+
+          <section id="contentArea"></section>
+        </div>
+      </div>
+
+   <!-- Open Itinerary Detail Drawer: Display Overlay -->
+  <div id="detailOverlay" class="detail-overlay"></div>
+
+  <!-- Side Drawer: Display Itinerary Details -->
+  <aside
+    id="detailDrawer"
+    class="detail-drawer"
+    aria-label="Itinerary details">
+  </aside>
+
+  <div id="copyToast" class="toast">
+    Itinerary copied to your saved list
+  </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+  <script type="module" src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/public_itineraries.js') }}"></script>
+  
+  <!-- Initial Itinerary Data (Supplied by Flask) - Firestore Data Replaces After Load -->
+  <script id="itinerary-data" type="application/json">
+    {{ itineraries | tojson }}
+  </script>
+
+  <script>
+    let itineraries = JSON.parse(
+      document.getElementById('itinerary-data').textContent
+    );
+
+    // Stores Current UI Status
+    const state = {
+      search: '',
+      filters: { interest: [], duration: [], stops: [] },
+      mode: 'browse',
+      sort: 'popular',
+      selectedId: null,
+      popoverOpen: false,
+
+      likedIds: new Set(
+        itineraries
+        .filter((item) => item.isLiked)
+        .map((item) => item.id)
+      ),
+
+      savedIds: new Set(
+        itineraries
+        .filter((item) => item.isSaved)
+        .map((item) => item.id)
+      )
+    };
+
+    const searchInput = document.getElementById('searchInput');
+    const clearSearch = document.getElementById('clearSearch');
+    const filterToggle = document.getElementById('filterToggle');
+    const filterPopover = document.getElementById('filterPopover');
+    const activeFilters = document.getElementById('activeFilters');
+    const resultSummary = document.getElementById('resultSummary');
+    const contentArea = document.getElementById('contentArea');
+    const detailOverlay = document.getElementById('detailOverlay');
+    const detailDrawer = document.getElementById('detailDrawer');
+    const copyToast = document.getElementById('copyToast');
+
+    // Receive Latest Published Itineraries (Loaded from Firestore)
+    window.addEventListener("publicItinerariesLoaded", () => {
+      itineraries = window.publicItineraries || [];
+
+      state.savedIds = new Set(
+        itineraries
+          .filter((item) => item.isSaved)
+          .map((item) => item.id)
+      );
+
+      state.likedIds = new Set(
+        itineraries
+          .filter((item) => item.isLiked)
+          .map((item) => item.id)
+      );
+
+      render();
+    });
+
+    // Initialisation for Search, Filter, Overlay and page-event Listeners
+    function init() {
+      searchInput.addEventListener('input', (event) => {
+        state.search = event.target.value.trim().toLowerCase();
+        updateMode();
+        render();
+      });
+
+      clearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        state.search = '';
+        updateMode();
+        render();
+      });
+
+      filterToggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        state.popoverOpen = !state.popoverOpen;
+        filterPopover.classList.toggle('open', state.popoverOpen);
+        filterToggle.classList.toggle('active', state.popoverOpen);
+      });
+
+      document.addEventListener('click', (event) => {
+        if (!filterPopover.contains(event.target) && !filterToggle.contains(event.target)) {
+          state.popoverOpen = false;
+          filterPopover.classList.remove('open');
+          filterToggle.classList.remove('active');
+        }
+      });
+
+      document.querySelectorAll('[data-group]').forEach((group) => {
+        group.querySelectorAll('.chip').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            const groupName = group.dataset.group;
+            const value = chip.dataset.value;
+            const list = state.filters[groupName];
+            const index = list.indexOf(value);
+            if (index >= 0) list.splice(index, 1);
+            else list.push(value);
+            chip.classList.toggle('active');
+          });
+        });
+      });
+
+      document.getElementById('applyFilters').addEventListener('click', () => {
+        state.popoverOpen = false;
+        filterPopover.classList.remove('open');
+        filterToggle.classList.remove('active');
+        updateMode();
+        render();
+      });
+
+      document.getElementById('resetFilters').addEventListener('click', () => {
+        state.filters = { interest: [], duration: [], stops: [] };
+        updateMode();
+        render();
+      });
+
+      detailOverlay.addEventListener('click', closeDetail);
+      render();
+    }
+
+    // Switch: Default Browse Mode <=> Filtered Result Mode
+    function updateMode() {
+      const hasQuery = state.search.length > 0;
+      const hasFilters = Object.values(state.filters).some((items) => items.length > 0);
+      state.mode = hasQuery || hasFilters ? 'results' : 'browse';
+    }
+
+    // Filter Itineraries
+    function getFilteredItineraries() {
+      return itineraries.filter((item) => {
+
+        const matchesSearch =
+          !state.search ||
+          [
+            item.title,
+            item.destination,
+            item.author,
+            item.interest,
+            item.stopList.map((s) => s.place).join(' ')
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(state.search);
+
+        const durationMinutes = Number(item.total_duration_minutes ?? 0);
+        const matchesDuration =
+          state.filters.duration.length === 0 ||
+          state.filters.duration.some((range) => {
+            if (range === 'under4') {
+              return durationMinutes < 240;
+            } else if (range === '4to8') {
+              return durationMinutes >= 240 && durationMinutes < 480;
+            } else if (range === '8plus') {
+              return durationMinutes >= 480;
+            }else {
+              return false;
+            }
+          });
+
+        const stopCount = Number(item.stops ?? 0);
+        const matchesStops =
+          state.filters.stops.length === 0 ||
+          state.filters.stops.some((range) => {
+            if (range === '1to3') {
+              return stopCount >= 1 && stopCount <= 3;
+            } else if (range === '4to5') {
+              return stopCount >= 4 && stopCount <= 5;
+            } else if (range === '6plus') {
+              return stopCount >= 6;
+            } else {
+            return false;
+            }
+          });
+
+        const itemInterest = String(item.interest ?? '').toLowerCase();
+        const matchesInterest = state.filters.interest.length === 0 || state.filters.interest.some(
+          (interest) => itemInterest === interest.toLowerCase()
+          );
+
+        return (matchesSearch && matchesDuration && matchesStops && matchesInterest);
+      });
+    }
+
+    // Sort Itineraries
+    function getSortedItineraries(list) {
+      const clone = [...list];
+      if (state.sort === 'popular') return clone.sort((a, b) => b.views - a.views);
+      if (state.sort === 'newest') return clone.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return clone.sort((a, b) => b.likes - a.likes);
+    }
+
+    // Rendering Current View
+    function render() {
+      const visible = getFilteredItineraries();
+      const sorted = getSortedItineraries(visible);
+      renderFilters();
+      renderSummary(sorted.length);
+      if (state.mode === 'browse') {
+        contentArea.innerHTML = renderBrowse(sorted);
+      } else {
+        contentArea.innerHTML = renderResults(sorted);
+      }
+      bindCards();
+    }
+
+    // Display Active Filtering
+    function renderFilters() {
+      syncFilterChips();
+      const counts = [];
+      const addFilter = (label, values) => values.forEach((value) => counts.push({ label, value }));
+      addFilter('Interest', state.filters.interest);
+      addFilter('Duration', state.filters.duration);
+      addFilter('Stops', state.filters.stops);
+
+      if (counts.length === 0) {
+        activeFilters.innerHTML = '';
+        return;
+      }
+
+      activeFilters.innerHTML = counts.map((item) => `
+        <span class="filter-pill">
+          <span>${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>
+          <button type="button" data-remove="${item.label}:${item.value}">×</button>
+        </span>
+      `).join('');
+
+      activeFilters.querySelectorAll('button[data-remove]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const [label, value] = btn.dataset.remove.split(':');
+          if (label === 'Interest') state.filters.interest = state.filters.interest.filter((item) => item !== value);
+          if (label === 'Duration') state.filters.duration = state.filters.duration.filter((item) => item !== value);
+          if (label === 'Stops') state.filters.stops = state.filters.stops.filter((item) => item !== value);
+          updateMode();
+          render();
+        });
+      });
+    }
+
+    // Keep Filter Button Appearance (Synchronised with Selected State)
+    function syncFilterChips() {
+      document.querySelectorAll('[data-group]').forEach((group) => {
+        const selectedValues = state.filters[group.dataset.group];
+        group.querySelectorAll('.chip').forEach((chip) => {
+          chip.classList.toggle('active', selectedValues.includes(chip.dataset.value));
+        });
+      });
+    }
+
+    // Show Number of Itineraries Matching Current Criteria
+    function renderSummary(count) {
+      const total = itineraries.length;
+      const hasAny = state.search || Object.values(state.filters).some((items) => items.length > 0); 
+      resultSummary.innerHTML = `
+        <div><strong>${count}</strong> of <strong>${total}</strong> itineraries</div>
+        <div style="color: var(--muted-fg); font-size: 13px;">${hasAny ? 'Filtered to your vibe.' : 'Browse the community favorites.'}</div>
+      `;
+    }
+
+    // Render Popular Picks and Community List
+    function renderBrowse(list) {
+      const popular = list.slice(0, 3);
+      const community = list.slice(3);
+      const sectionHeading = state.sort === 'newest'
+        ? 'Newest itineraries'
+        : state.sort === 'likes'
+          ? 'Most liked itineraries'
+          : 'Popular picks';
+      const sectionDescription = state.sort === 'newest'
+        ? 'Recently published routes from the community.'
+        : state.sort === 'likes'
+          ? 'Community routes ranked by their total likes.'
+          : 'The community itineraries with the highest view counts.';
+      return `
+        <section class="card" style="padding: 18px;">
+          <div class="results-bar">
+            <div>
+              <div class="card-title">${sectionHeading}</div>
+              <div class="meta-line">${sectionDescription}</div>
+            </div>
+            <div class="mode-tabs">
+              <button class="tab-btn ${state.sort === 'popular' ? 'active' : ''}" data-sort="popular">Popular</button>
+              <button class="tab-btn ${state.sort === 'newest' ? 'active' : ''}" data-sort="newest">Newest</button>
+              <button class="tab-btn ${state.sort === 'likes' ? 'active' : ''}" data-sort="likes">Most Liked</button>
+            </div>
+          </div>
+          <div class="popular-grid" style="margin-top: 14px;">
+            ${popular.map((item, index) => `
+              <article class="popular-card card">
+                <div class="medal">${index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
+                <div class="image"><img src="${item.image}" alt="${escapeHtml(item.title)}" /></div>
+                <div class="card-content">
+                  <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="pill-stack">
+                    <span class="tag">${item.views.toLocaleString()} views</span>
+                    <span class="tag">${item.likes} likes</span>
+                  </div>
+                  <div class="card-actions">
+                    <button class="small-btn" type="button" data-open="${item.id}">Open</button>
+                    <span class="tag">by ${escapeHtml(item.author)}</span>
+                  </div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+
+        <section style="margin-top: 18px;">
+          <div class="results-bar">
+            <div>
+              <div class="card-title">Community list</div>
+              <div class="meta-line">Drop-in itineraries with stop previews for quick scanning.</div>
+            </div>
+          </div>
+          <div class="community-list">
+            ${community.map((item) => `
+              <article class="list-card card">
+                <div class="list-card-content">
+                  <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="community-stats">
+                    <span class="tag">${item.views.toLocaleString()} views</span>
+                    <span class="tag">${item.likes} likes</span>
+                  </div>
+                  <div class="card-actions">
+                    <button class="small-btn" type="button" data-open="${item.id}">Open</button>
+                    <span class="meta-line">${escapeHtml(item.author)}</span>
+                  </div>
+                </div>
+                <div class="list-card-image">
+                  <img src="${item.image}" alt="${escapeHtml(item.title)}" />
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    // Rendering Search and Filter Results
+    function renderResults(list) {
+      if (!list.length) {
+        return `<div class="empty-state">No itineraries match that search. Try a broader keyword or clear a filter.</div>`;
+      }
+      return `
+        <div class="results-grid">
+          ${list.map((item) => `
+            <article class="result-card card">
+              <div class="title-row">
+                <div class="card-title">${highlightText(item.title, state.search)}</div>
+                <span class="tag">${item.isYours ? 'Yours' : 'Community'}</span>
+              </div>
+              <div class="meta-line">${highlightText(item.description, state.search)}</div>
+              <div class="result-meta">
+                <span class="tag">${escapeHtml(item.interest || 'General')}</span>
+                <span class="tag">${escapeHtml(item.duration)}</span>
+                <span class="tag">${item.stops} stops</span>
+                <span class="tag">${escapeHtml(item.author)}</span>
+              </div>
+              <div class="result-actions">
+                <button class="small-btn" type="button" data-open="${item.id}">Open</button>
+                <span class="meta-line">${item.views.toLocaleString()} views</span>
+              </div>
+            </article>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Attaching for Dynamic Rendering Itinerary Cards
+    function bindCards() {
+      document.querySelectorAll('[data-open]').forEach((button) => {
+        button.addEventListener('click', () => openDetail(button.dataset.open));
+      });
+
+      document.querySelectorAll('.tab-btn[data-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn[data-sort]').forEach((btn) => btn.classList.remove('active'));
+          button.classList.add('active');
+          state.sort = button.dataset.sort;
+          render();
+        });
+      });
+    }
+
+    // Open Itinerary Detail Drawer + Record 1 View
+    async function openDetail(id) {
+      const item = itineraries.find((entry) => entry.id === id);
+      if (!item){
+        return;
+      } 
+        
+      try {
+        await window.addPublicItineraryView(item.id);
+        item.views += 1;
+      } catch (error) {
+        console.error("View update failed:", error);
+      }
+
+      state.selectedId = id;
+      detailDrawer.innerHTML = `
+        <div class="detail-header">
+          <img src="${item.image}" alt="${escapeHtml(item.title)}" />
+        </div>
+        <div class="detail-body">
+          <h3 class="detail-title">${escapeHtml(item.title)}</h3>
+          <div class="meta-strip">
+            <span class="tag">${escapeHtml(item.interest || 'General')}</span>
+            <span class="tag">${escapeHtml(item.duration)}</span>
+            <span class="tag">${item.stops} stops</span>
+            <span class="tag">by ${escapeHtml(item.author)}</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-box"><strong data-like-count>${item.likes}</strong><span>likes</span></div>
+            <div class="stat-box"><strong data-save-count>${item.saves}</strong><span>saves</span></div>
+            <div class="stat-box"><strong>${item.views.toLocaleString()}</strong><span>views</span></div>
+          </div>
+          <p style="margin: 14px 0 0; color: var(--fg-2); line-height: 1.7;">${escapeHtml(item.description)}</p>
+          <div class="timeline">
+            ${item.stopList.map((stop) => `
+              <div class="timeline-item">
+                <div class="timeline-time">${escapeHtml(stop.time)}</div>
+                <div class="timeline-card">
+                  <strong>${escapeHtml(stop.place)}</strong>
+                  <small>${escapeHtml(stop.note)}</small>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="detail-footer">
+          <button class="btn btn-ghost ${state.likedIds.has(item.id) ? 'active' : ''}" type="button" data-like="${item.id}" aria-pressed="${state.likedIds.has(item.id)}">${state.likedIds.has(item.id) ? 'Unlike' : 'Like'}</button>
+          ${item.isYours
+            ? `<button class="btn btn-primary" type="button" data-unpublish="${item.id}">Unpublish</button>`
+            : `<button class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}" type="button" data-save="${item.id}" aria-pressed="${state.savedIds.has(item.id)}">${state.savedIds.has(item.id) ? 'Saved' : 'Save'}</button>`}
+          <button class="btn btn-ghost" type="button" data-close="close">Close</button>
+        </div>
+      `;
+      detailOverlay.classList.add('active');
+      detailDrawer.classList.add('active');
+      detailDrawer.querySelector('[data-like]').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const isLiked = state.likedIds.has(item.id);
+
+        try {
+          const liked = await window.likePublicItinerary(item.id, isLiked);
+
+          if (liked) {
+            state.likedIds.add(item.id);
+            item.likes += 1;
+          } else {
+            state.likedIds.delete(item.id);
+            item.likes = Math.max(0, item.likes - 1);
+          }
+
+          button.textContent = liked ? 'Unlike' : 'Like';
+          button.classList.toggle('active', liked);
+          button.setAttribute('aria-pressed', String(liked));
+
+          detailDrawer.querySelector('[data-like-count]').textContent = item.likes;
+
+        } catch (error) {
+          console.error('Like update failed:', error);
+        }
+      });
+
+      const saveButton = detailDrawer.querySelector('[data-save]');
+
+      if (saveButton) {
+        saveButton.addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+
+          if (state.savedIds.has(item.id)) {
+            return;
+          }
+
+          try {
+            await window.savePublicItineraryCopy(item);
+
+            state.savedIds.add(item.id);
+            item.saves += 1;
+
+            button.textContent = 'Saved';
+            button.classList.add('active');
+            button.disabled = true;
+            button.setAttribute('aria-pressed', 'true');
+
+            detailDrawer.querySelector('[data-save-count]').textContent = item.saves;
+
+          } catch (error) {
+            console.error('Save update failed:', error);
+          }
+        });
+      }
+
+      const unpublishButton = detailDrawer.querySelector('[data-unpublish]');
+      if (unpublishButton) {
+        unpublishButton.addEventListener('click', () => {
+          const itemIndex = itineraries.findIndex((entry) => entry.id === item.id);
+          if (itemIndex >= 0) itineraries.splice(itemIndex, 1);
+          state.likedIds.delete(item.id);
+          state.savedIds.delete(item.id);
+          showToast('Itinerary unpublished and removed from the public list');
+          closeDetail();
+        });
+      }
+
+      detailDrawer.querySelector('[data-close]').addEventListener('click', closeDetail);
+    }
+
+    // Display a Temporary Feedback Message
+    function showToast(message) {
+      copyToast.textContent = message;
+      copyToast.classList.add('show');
+      clearTimeout(showToast.timeoutId);
+      showToast.timeoutId = setTimeout(() => copyToast.classList.remove('show'), 3500);
+    }
+
+    // Close + Clear Itinerary Detail Drawer
+    function closeDetail() {
+      detailOverlay.classList.remove('active');
+      detailDrawer.classList.remove('active');
+      detailDrawer.innerHTML = '';
+      state.selectedId = null;
+      render();
+    }
+
+    // Escaping Dynamic Text before Insert into HTML
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Highlight Matching Search Terms in Result
+    function highlightText(text, query) {
+      if (!query) return escapeHtml(text);
+      const safeText = escapeHtml(text);
+      const reg = new RegExp(`(${escapeRegExp(query)})`, 'ig');
+      return safeText.replace(reg, '<span class="highlight">$1</span>');
+    }
+
+    function escapeRegExp(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    init();
+  </script>
+
+{% endblock %} 

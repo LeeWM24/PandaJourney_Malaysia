@@ -1,17 +1,17 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}PandaJourney Malaysia{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v=collab-compact-3" />
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body data-server-user-uid="{{ current_user.uid if current_user else 'guest' }}">
 
 <div class="modal-backdrop" id="logout-modal" role="dialog" aria-modal="true">
   <div class="modal-box">
-    <div class="modal-icon">🚪</div>
+    <div class="modal-icon">&#128682;</div>
     <div class="modal-title">Sign out of PandaJourney?</div>
     <div class="modal-desc">
       You'll need to sign in again to access your itineraries,
@@ -44,44 +44,40 @@
 
     <nav class="sidebar-nav">
       <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
-        <span class="nav-icon">🏠</span>
+        <span class="nav-icon">&#127968;</span>
         <span>Dashboard</span>
       </a>
 
       <a href="{{ url_for('smart_attraction') }}" class="{% if active_page == 'attractions' %}active{% endif %}">
-        <span class="nav-icon">🌴</span>
+        <span class="nav-icon">&#127796;</span>
         <span>Attractions</span>
       </a>
 
       <a href="{{ url_for('smart_itinerary') }}" class="{% if active_page == 'itinerary' %}active{% endif %}">
-        <span class="nav-icon">📅</span>
+        <span class="nav-icon">&#128197;</span>
         <span>Itinerary Planner</span>
       </a>
 
       <a href="{{ url_for('saved_itineraries') }}" class="{% if active_page == 'saved' %}active{% endif %}">
-        <span class="nav-icon">💾</span>
+        <span class="nav-icon">&#128190;</span>
         <span>Saved Itineraries</span>
       </a>
 
-      <a href="{{ url_for('collaboration') }}" class="{% if active_page == 'collaboration' %}active{% endif %}">
-        <span class="nav-icon">👥</span>
-        <span>Collaboration</span>
-      </a>
 
       <a href="{{ url_for('public_itinerary') }}" class="{% if active_page == 'public' %}active{% endif %}">
-        <span class="nav-icon">🌐</span>
+        <span class="nav-icon">&#127760;</span>
         <span>Public Itineraries</span>
       </a>
     </nav>
 
     <div class="sidebar-footer">
       <a href="{{ url_for('profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
-        <span class="nav-icon">👤</span>
+        <span class="nav-icon">&#128100;</span>
         <span>Profile</span>
       </a>
 
       <button type="button" class="logout-btn js-open-logout">
-        <span class="nav-icon">🚪</span>
+        <span class="nav-icon">&#128682;</span>
         <span>Logout</span>
       </button>
     </div>
@@ -104,10 +100,10 @@
         <div style="padding: 0 32px; margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
           {% for category, message in messages %}
             <div class="alert alert-{{ category }}" role="alert">
-              {% if category == 'error' %}⛔
-              {% elif category == 'warning' %}⚠️
-              {% elif category == 'success' %}✅
-              {% else %}ℹ️{% endif %}
+              {% if category == 'error' %}&#9940;
+              {% elif category == 'warning' %}&#9888;
+              {% elif category == 'success' %}&#9989;
+              {% else %}&#8505;{% endif %}
               <span>{{ message }}</span>
             </div>
           {% endfor %}
@@ -168,6 +164,7 @@
 })();
 </script>
 
+<script type="module" src="{{ url_for('static', filename='js/auth_session.js') }}"></script>
 {% block extra_scripts %}{% endblock %}
 
 </body>
