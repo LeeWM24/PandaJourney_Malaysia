@@ -47,6 +47,70 @@ The project follows a Modular Layered Architecture consisting of four layers:
 PandaJourney Malaysia is a smart tourism planning prototype for Malaysia travel.  
 The system helps users generate a travel itinerary based on start location, end location, travel date, start time, available travelling hours, travel interests and minimum rating.
 
+## Teammate Local Setup
+
+Some files are intentionally not uploaded to GitHub because they contain private keys. Each teammate must create these files locally on their own device.
+
+Private files that must stay local:
+
+- `PandaJourney_Malaysia/.env`
+- `PandaJourney_Malaysia/firebase_key.json`
+
+Do not commit or upload those files to GitHub. The repo includes `PandaJourney_Malaysia/.env.example` as a safe template with placeholder values.
+
+Setup commands from the repository root:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\activate
+pip install -r PandaJourney_Malaysia\requirements.txt
+Copy-Item PandaJourney_Malaysia\.env.example PandaJourney_Malaysia\.env
+```
+
+After copying, open `PandaJourney_Malaysia/.env` and fill in the real values.
+
+For Firebase mode, place the Firebase service account key here:
+
+```text
+PandaJourney_Malaysia/firebase_key.json
+```
+
+Then make sure `.env` has:
+
+```env
+USE_FIREBASE=true
+FIREBASE_PROJECT_ID=pandajourney-ef50a
+GOOGLE_APPLICATION_CREDENTIALS=firebase_key.json
+FIREBASE_USE_REST=true
+```
+
+If a teammate does not have the Firebase key yet, they can still run the app with local JSON fallback:
+
+```env
+USE_FIREBASE=false
+```
+
+In fallback mode, saved itineraries and collaboration data are stored locally in `PandaJourney_Malaysia/data/`, so they will not see the shared Firebase database.
+
+Run the app:
+
+```powershell
+cd PandaJourney_Malaysia
+python app.py
+```
+
+Open:
+
+```text
+http://127.0.0.1:5001
+```
+
+Firebase health check:
+
+```text
+http://127.0.0.1:5001/health/firebase
+```
+
 The current prototype includes:
 
 - Smart Itinerary Planning
