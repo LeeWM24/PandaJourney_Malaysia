@@ -1,22 +1,22 @@
 import os
-from flask import Flask, render_template, request, redirect, url_for, session, flash
-# from services.public_itinerary_service import (get_public_itineraries, increment_view, toggle_like, toggle_save)
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+
+# from services.public_itinerary_service import (
+#     get_public_itineraries,
+#     increment_view,
+#     toggle_like,
+#     toggle_save
+# )
 
 from services.itinerary_service import (
     make_plan,
     build_map_data,
-    get_default_itinerary_form
+    get_default_itinerary_form,
+    get_location_suggestions
 )
 
 from services.smart_attraction import (
     build_attraction_results,
-)
-
-from services.saved_itinerary_service import (
-    get_saved_itineraries,
-    save_itinerary,
-    delete_itinerary,
-    toggle_publish_status
 )
 
 
@@ -27,50 +27,54 @@ app = Flask(
     static_url_path="/static"
 )
 
-app.secret_key = "panda-demo-secret"
+app.secret_key = os.getenv("SECRET_KEY", "panda-demo-secret")
 
 
 def get_current_user():
     return session.get("user", {})
 
 
-@app.route("/", methods=["GET", "POST"])  # Jiading
+@app.route("/", methods=["GET", "POST"])
 def login():
     return render_template("login.html")
 
 
-@app.route('/create-account')
+@app.route("/create-account")
 def create_account():
-    return render_template('create_account.html')
+    return render_template("create_account.html")
 
-@app.route("/dashboard") #jiading
+
+@app.route("/dashboard")
 def dashboard():
     return render_template(
         "dashboard.html",
         active_page="dashboard",
-        current_user={}
+        current_user=get_current_user()
     )
+
 
 @app.route("/profile", methods=["GET"])
 def profile():
     return render_template(
         "profile.html",
         active_page="profile",
-        current_user={},
+        current_user=get_current_user(),
         user_preferences={}
     )
 
-@app.route("/user-management")  # Jiading
+
+@app.route("/user-management")
 def user_management():
     return redirect(url_for("profile"))
 
-@app.route("/logout", methods=["GET", "POST"])  # Jiading
+
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))
 
 
-@app.route("/smart-attraction", methods=["GET", "POST"]) # Kaixi
+@app.route("/smart-attraction", methods=["GET", "POST"])
 def smart_attraction():
     filters = {
         "destination": "",
@@ -111,7 +115,6 @@ def smart_attraction():
             "score"
         )
 
-        # Validate destination
         if not filters["destination"]:
             flash(
                 "Please enter a destination to receive recommendations.",
@@ -147,7 +150,8 @@ def smart_attraction():
 
             except Exception as error:
                 print(
-                    f"[SMART ATTRACTION ERROR] {error}"
+                    f"[SMART ATTRACTION ERROR] {error}",
+                    flush=True
                 )
 
                 flash(
@@ -180,7 +184,8 @@ def smart_attraction():
 
         except Exception as error:
             print(
-                f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}"
+                f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}",
+                flush=True
             )
 
             attractions = []
@@ -206,29 +211,59 @@ def smart_attraction():
 
 
 # =========================
+# Location Autocomplete API
+# =========================
+
+@app.route("/api/location-suggestions")
+def location_suggestions():
+    query = request.args.get("q", "").strip()
+
+    if len(query) < 3:
+        return jsonify({
+            "suggestions": []
+        })
+
+    try:
+        suggestions = get_location_suggestions(query, limit=3)
+
+    except Exception as error:
+        print(
+            f"[LOCATION SUGGESTION ERROR] {error}",
+            flush=True
+        )
+
+        suggestions = []
+
+    return jsonify({
+        "suggestions": suggestions
+    })
+
+
+# =========================
 # Lee Part 1: Smart Itinerary Planning
 # =========================
-@app.route("/smart-itinerary", methods=["GET", "POST"])  # Lee
+
+@app.route("/smart-itinerary", methods=["GET", "POST"])
 def smart_itinerary():
     plan = None
     error = None
     map_data = None
 
-    print("[SMART ITINERARY ROUTE]", request.method)
+    print("[SMART ITINERARY ROUTE]", request.method, flush=True)
 
     if request.method == "POST":
-        print("[SMART FORM DATA]", request.form)
+        print("[SMART FORM DATA]", request.form, flush=True)
 
         try:
             plan = make_plan(request.form)
             map_data = build_map_data(plan)
 
-        except Exception as e:
-            print("[SMART ERROR]", e)
-            error = str(e)
+        except Exception as error_message:
+            print("[SMART ERROR]", error_message, flush=True)
+            error = str(error_message)
 
     return render_template(
-         "smart_itinerary.html",
+        "smart_itinerary.html",
         active_page="itinerary",
         current_user=get_current_user(),
         plan=plan,
@@ -240,39 +275,20 @@ def smart_itinerary():
 
 # =========================
 # Lee Part 2: Saved Itineraries
+# Firestore frontend version only
+# No local JSON / data folder
 # =========================
-@app.route("/saved-itineraries", methods=["GET", "POST"])  # Lee
+
+@app.route("/saved-itineraries", methods=["GET"])
 def saved_itineraries():
-    if request.method == "POST":
-        action = request.form.get("_action")
-        itinerary_id = request.form.get("itinerary_id")
-
-        if action == "save":
-            latest_plan = session.get("latest_plan")
-
-            if latest_plan:
-                save_itinerary(latest_plan)
-                flash("Itinerary saved successfully.", "success")
-            else:
-                flash("No generated itinerary found. Please generate a plan first.", "warning")
-
-        elif action == "delete":
-            delete_itinerary(itinerary_id)
-            flash("Itinerary deleted.", "info")
-
-        elif action == "toggle_publish":
-            toggle_publish_status(itinerary_id)
-            flash("Publish status updated.", "success")
-
-        return redirect(url_for("saved_itineraries"))
-
     return render_template(
         "saved_itineraries.html",
         active_page="saved",
-        current_user=get_current_user(),
-        itineraries=get_saved_itineraries()
+        current_user=get_current_user()
     )
 
+
+@app.route("/saved-itinerary/<itinerary_id>")
 @app.route("/saved-itineraries/<itinerary_id>")
 def saved_itinerary_detail(itinerary_id):
     return render_template(
@@ -283,7 +299,7 @@ def saved_itinerary_detail(itinerary_id):
     )
 
 
-@app.route("/collaboration", methods=["GET", "POST"])  # Manas
+@app.route("/collaboration", methods=["GET", "POST"])
 def collaboration():
     return render_template(
         "collaboration.html",
@@ -302,9 +318,6 @@ def collaboration():
         notifications=[]
     )
 
-# ==================================
-# | ZhanFoong - Public Itineraries |
-# ==================================
 
 @app.route("/public-itineraries", methods=["GET", "POST"])
 def public_itinerary():
@@ -322,6 +335,7 @@ def public_itinerary():
         current_user=get_current_user(),
         itineraries=[]
     )
+
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -157,6 +157,10 @@ function normaliseNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function isCurrentLocationName(value) {
+  return String(value || "").trim().toLowerCase() === "current location";
+}
+
 function buildCoordinateText(point) {
   if (!point) return "";
 
@@ -170,18 +174,56 @@ function buildCoordinateText(point) {
   return `${latitude.toFixed(7)},${longitude.toFixed(7)}`;
 }
 
-function buildGoogleMapsRouteUrl(origin, destination, waypoints = []) {
-  const originText = buildCoordinateText(origin);
-  const destinationText = buildCoordinateText(destination);
+function buildGoogleMapsUrl(originPoint, destinationPoint, useLiveCurrentLocation = false) {
+  const destinationText = buildCoordinateText(destinationPoint);
 
-  if (!originText || !destinationText) {
+  if (!destinationText) {
     return "";
   }
 
   const params = new URLSearchParams();
 
   params.set("api", "1");
-  params.set("origin", originText);
+
+  if (!useLiveCurrentLocation && originPoint) {
+    const originText = buildCoordinateText(originPoint);
+
+    if (originText) {
+      params.set("origin", originText);
+    }
+  }
+
+  params.set("destination", destinationText);
+  params.set("travelmode", "driving");
+
+  if (useLiveCurrentLocation) {
+    params.set("dir_action", "navigate");
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function buildGoogleMapsRouteUrl(origin, destination, waypoints = [], useLiveCurrentLocation = false) {
+  const destinationText = buildCoordinateText(destination);
+
+  if (!destinationText) {
+    return "";
+  }
+
+  const params = new URLSearchParams();
+
+  params.set("api", "1");
+
+  if (!useLiveCurrentLocation) {
+    const originText = buildCoordinateText(origin);
+
+    if (!originText) {
+      return "";
+    }
+
+    params.set("origin", originText);
+  }
+
   params.set("destination", destinationText);
   params.set("travelmode", "driving");
 
@@ -193,6 +235,10 @@ function buildGoogleMapsRouteUrl(origin, destination, waypoints = []) {
     params.set("waypoints", waypointTexts.join("|"));
   }
 
+  if (useLiveCurrentLocation) {
+    params.set("dir_action", "navigate");
+  }
+
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
@@ -202,9 +248,13 @@ function buildFallbackFullRouteUrl(itinerary, stops) {
   const endLat = normaliseNumber(itinerary.end_latitude);
   const endLng = normaliseNumber(itinerary.end_longitude);
 
-  if (startLat === null || startLng === null || endLat === null || endLng === null) {
+  if (endLat === null || endLng === null) {
     return "";
   }
+
+  const useLiveCurrentLocation = isCurrentLocationName(
+    itinerary.start_location_name
+  );
 
   const startPoint = {
     latitude: startLat,
@@ -232,7 +282,12 @@ function buildFallbackFullRouteUrl(itinerary, stops) {
     })
     .filter(Boolean);
 
-  return buildGoogleMapsRouteUrl(startPoint, endPoint, waypointPoints);
+  return buildGoogleMapsRouteUrl(
+    startPoint,
+    endPoint,
+    waypointPoints,
+    useLiveCurrentLocation
+  );
 }
 
 async function getRoadRouteGeometry(mapPoints) {
@@ -382,7 +437,7 @@ async function loadDetail(user) {
   const stops = await getItineraryStops(targetItineraryId);
 
   renderItinerary(itinerary, stops);
-  renderStops(stops);
+  renderStops(itinerary, stops);
 
   showContent();
 
@@ -415,9 +470,13 @@ function renderItinerary(itinerary, stops) {
 
   updateStatusBadge(itinerary.status || "Draft");
 
-  const fullRouteUrl =
-    itinerary.google_maps_full_route_url ||
-    buildFallbackFullRouteUrl(itinerary, stops);
+  const useLiveCurrentLocation = isCurrentLocationName(
+    itinerary.start_location_name
+  );
+
+  const fullRouteUrl = useLiveCurrentLocation
+    ? buildFallbackFullRouteUrl(itinerary, stops)
+    : itinerary.google_maps_full_route_url || buildFallbackFullRouteUrl(itinerary, stops);
 
   renderFullGoogleRouteAction(fullRouteUrl);
 }
@@ -438,7 +497,7 @@ function renderFullGoogleRouteAction(url) {
   action.style.display = "flex";
 }
 
-function renderStops(stops) {
+function renderStops(itinerary, stops) {
   const stopList = document.getElementById("detail-stop-list");
 
   if (!stopList) return;
@@ -466,16 +525,49 @@ function renderStops(stops) {
       ? `${arrivalTime} – ${departureTime}`
       : arrivalTime || "Time not available";
 
-    const googleMapsButton = stop.google_maps_url
-      ? `
-          <a href="${escapeHtml(stop.google_maps_url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
-            ${escapeHtml(stop.google_maps_label || "Google Maps")}
-          </a>
-      `
-      : "";
+    let originPoint = null;
+    let useLiveCurrentLocation = false;
 
-    const actionButtons = googleMapsButton
-      ? `<div class="detail-stop-actions">${googleMapsButton}</div>`
+    if (index === 0) {
+      originPoint = {
+        latitude: itinerary.start_latitude,
+        longitude: itinerary.start_longitude
+      };
+
+      useLiveCurrentLocation = isCurrentLocationName(
+        itinerary.start_location_name
+      );
+    } else {
+      originPoint = {
+        latitude: stops[index - 1].latitude,
+        longitude: stops[index - 1].longitude
+      };
+    }
+
+    const destinationPoint = {
+      latitude: stop.latitude,
+      longitude: stop.longitude
+    };
+
+    const googleMapsUrl = buildGoogleMapsUrl(
+      originPoint,
+      destinationPoint,
+      useLiveCurrentLocation
+    );
+
+    const googleMapsLabel =
+      index === 0 && useLiveCurrentLocation
+        ? `Google Maps: Current Location → ${stop.stop_name || "Stop"}`
+        : stop.google_maps_label || `Google Maps: Previous Stop → ${stop.stop_name || "Stop"}`;
+
+    const googleMapsButton = googleMapsUrl
+      ? `
+        <div class="detail-stop-actions">
+          <a href="${escapeHtml(googleMapsUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
+            ${escapeHtml(googleMapsLabel)}
+          </a>
+        </div>
+      `
       : "";
 
     row.innerHTML = `
@@ -498,7 +590,7 @@ function renderStops(stops) {
           ⏱ Visit: ${escapeHtml(formatMinutes(stop.visit_duration_minutes))}
         </div>
 
-        ${actionButtons}
+        ${googleMapsButton}
       </div>
     `;
 

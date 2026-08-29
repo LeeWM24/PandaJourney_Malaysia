@@ -38,6 +38,7 @@ print(
 )
 
 GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
+LOCATION_SUGGESTION_CACHE: dict[str, list[dict[str, Any]]] = {}
 
 
 def get_default_itinerary_form():
@@ -49,6 +50,7 @@ def get_default_itinerary_form():
         "available_hours": 6,
         "max_stops": 3,
         "minimum_rating": "4.0",
+        "interests": ["culture"],
         "selected_attractions": []
     }
 
@@ -127,6 +129,92 @@ BAD_CANDIDATE_KEYWORDS = [
     "walking tour",
     "guided tour",
 ]
+
+
+INTEREST_KEYWORDS = {
+    "museum": [
+        "museum", "gallery", "exhibition", "art", "artefact",
+        "history", "historical", "heritage"
+    ],
+    "nature": [
+        "park", "garden", "forest", "lake", "river", "nature",
+        "botanical", "eco", "waterfall", "trail", "wildlife", "farm"
+    ],
+    "culture": [
+        "culture", "cultural", "heritage", "temple", "mosque",
+        "church", "palace", "monument", "memorial", "market",
+        "caves", "lighthouse", "hill", "historical", "art"
+    ],
+    "shopping": [
+        "mall", "shopping", "market", "bazaar", "plaza",
+        "retail", "store", "outlet", "central market", "suria", "pavilion"
+    ],
+    "food": [
+        "food", "restaurant", "cafe", "hawker", "street food",
+        "dining", "kopitiam", "eatery", "food court", "market"
+    ],
+}
+
+ONE_SEARCH_KEYWORD_PARTS = {
+    "culture": "cultural heritage places",
+    "museum": "museums galleries art heritage",
+    "nature": "parks gardens nature attractions",
+    "shopping": "shopping malls markets",
+    "food": "restaurants cafes food courts",
+}
+
+
+def build_one_search_keyword(selected_interests: list[str]) -> str:
+    """Build one SerpAPI keyword from multiple interests.
+
+    The system still sends only one request to SerpAPI, but the keyword becomes
+    more relevant when the user selects interests such as food or shopping.
+    """
+    selected = []
+
+    for interest in selected_interests:
+        interest_key = str(interest).lower().strip()
+
+        if interest_key and interest_key not in selected:
+            selected.append(interest_key)
+
+    keyword_parts = ["tourist attractions"]
+
+    for interest_key in selected:
+        keyword_part = ONE_SEARCH_KEYWORD_PARTS.get(interest_key)
+
+        if keyword_part and keyword_part not in keyword_parts:
+            keyword_parts.append(keyword_part)
+
+    return " ".join(keyword_parts)
+
+
+def build_candidate_search_text(item: dict[str, Any]) -> str:
+    """Combine SerpAPI fields into searchable text for local matching."""
+    return " ".join(
+        [
+            str(item.get("title", "")),
+            str(item.get("type", "")),
+            str(item.get("category", "")),
+            str(item.get("description", "")),
+            str(item.get("address", "")),
+        ]
+    ).lower()
+
+
+def detect_interest_tags_from_text(text: str, selected_interests: list[str]) -> list[str]:
+    """Detect selected interests from local candidate text."""
+    candidate_text = str(text or "").lower()
+    matched_tags: list[str] = []
+
+    for interest in selected_interests:
+        interest_key = str(interest).lower().strip()
+        keywords = INTEREST_KEYWORDS.get(interest_key, [])
+
+        if any(keyword in candidate_text for keyword in keywords):
+            matched_tags.append(interest_key)
+
+    return matched_tags
 
 
 def get_transport_option(transport_mode: str | None) -> dict[str, Any]:
@@ -420,6 +508,99 @@ def _request_json(
     return response.json()
 
 
+
+def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]:
+    """Return Malaysian location suggestions for start/end autocomplete.
+
+    This uses OpenStreetMap Nominatim, not SerpAPI, to avoid consuming
+    SerpAPI quota. It is intentionally limited and cached for safer usage.
+    """
+    search_text = str(query or "").strip()
+
+    if len(search_text) < 3:
+        return []
+
+    safe_limit = max(1, min(int(limit or 3), 3))
+    cache_key = f"{search_text.lower()}:{safe_limit}"
+
+    if cache_key in LOCATION_SUGGESTION_CACHE:
+        print(f"[LOCATION SUGGESTION CACHE] {search_text}", flush=True)
+        return LOCATION_SUGGESTION_CACHE[cache_key]
+
+    params: dict[str, Any] = {
+        "q": search_text,
+        "format": "jsonv2",
+        "limit": safe_limit,
+        "addressdetails": 1,
+        "countrycodes": "my",
+    }
+
+    if NOMINATIM_EMAIL:
+        params["email"] = NOMINATIM_EMAIL
+
+    try:
+        response = requests.get(
+            NOMINATIM_URL,
+            params=params,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept-Language": "en",
+            },
+            timeout=15,
+        )
+
+        print(
+            f"[LOCATION SUGGESTION HTTP] Status {response.status_code} | Query: {search_text}",
+            flush=True,
+        )
+
+        response.raise_for_status()
+        results = response.json()
+
+    except requests.RequestException as error:
+        print(f"[LOCATION SUGGESTION ERROR] {error}", flush=True)
+        results = []
+
+    suggestions: list[dict[str, Any]] = []
+
+    for item in results:
+        display_name = item.get("display_name", "")
+        latitude = item.get("lat")
+        longitude = item.get("lon")
+
+        if not display_name or latitude is None or longitude is None:
+            continue
+
+        suggestions.append(
+            {
+                "display_name": display_name,
+                "latitude": float(latitude),
+                "longitude": float(longitude),
+                "source": "OpenStreetMap Nominatim",
+            }
+        )
+
+    if not suggestions:
+        demo_matches: list[dict[str, Any]] = []
+        key = search_text.lower()
+
+        for demo_key, value in DEMO_LOCATIONS.items():
+            if key in demo_key or demo_key in key:
+                demo_matches.append(
+                    {
+                        "display_name": value["display_name"],
+                        "latitude": value["latitude"],
+                        "longitude": value["longitude"],
+                        "source": "Local demo fallback",
+                    }
+                )
+
+        suggestions = demo_matches
+
+    LOCATION_SUGGESTION_CACHE[cache_key] = suggestions[:safe_limit]
+    return LOCATION_SUGGESTION_CACHE[cache_key]
+
+
 def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
@@ -681,9 +862,26 @@ def search_attractions_serpapi(
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
+        print("[SERPAPI ATTRACTION] Missing SERPAPI_KEY", flush=True)
         return []
 
-    keyword = get_serpapi_search_keyword(interests)
+    selected_interests = [
+        str(interest).lower().strip()
+        for interest in interests
+        if str(interest).strip()
+    ]
+
+    if not selected_interests:
+        selected_interests = ["culture"]
+
+    # Method 2:
+    # Send only one SerpAPI request, then perform local multi-interest matching.
+    search_keyword = build_one_search_keyword(selected_interests)
+
+    print(
+        f"[SERPAPI ONE SEARCH] keyword={search_keyword} | selected_interests={selected_interests}",
+        flush=True,
+    )
 
     try:
         data = _request_json(
@@ -691,7 +889,7 @@ def search_attractions_serpapi(
             params={
                 "engine": "google_maps",
                 "type": "search",
-                "q": keyword,
+                "q": search_keyword,
                 "ll": f"@{latitude},{longitude},13z",
                 "min_rating": str(minimum_rating),
                 "hl": "en",
@@ -700,46 +898,88 @@ def search_attractions_serpapi(
             },
         )
 
-    except requests.RequestException:
+    except requests.HTTPError as error:
+        status_code = error.response.status_code if error.response is not None else "unknown"
+        print(
+            f"[SERPAPI ATTRACTION ERROR] one search failed | status={status_code}",
+            flush=True,
+        )
         return []
 
-    candidates = []
+    except requests.RequestException as error:
+        print(
+            f"[SERPAPI ATTRACTION ERROR] one search failed | {type(error).__name__}",
+            flush=True,
+        )
+        return []
 
-    for item in data.get("local_results", [])[:12]:
+    candidates: list[dict[str, Any]] = []
+    seen_places: set[str] = set()
+
+    for item in data.get("local_results", [])[:20]:
         coordinates = item.get("gps_coordinates") or {}
 
         if "latitude" not in coordinates or "longitude" not in coordinates:
             continue
 
         title = item.get("title", "Unnamed attraction")
-        item_type = str(item.get("type", "")).lower()
-        description = str(item.get("description", "")).lower()
 
         if is_bad_candidate_name(title):
             continue
 
-        text = f"{title} {item_type} {description}".lower()
+        address = item.get("address", "")
+        place_key = f"{title}|{address}".lower()
 
-        tags = [
-            interest
-            for interest in interests
-            if interest.lower() in text
-        ]
+        if place_key in seen_places:
+            continue
 
-        if interests and not tags:
-            tags = [interests[0]]
+        seen_places.add(place_key)
 
-        candidates.append(
-            {
-                "name": title,
-                "latitude": float(coordinates["latitude"]),
-                "longitude": float(coordinates["longitude"]),
-                "tags": tags or [keyword],
-                "estimated_minutes": 90,
-                "rating": float(item.get("rating") or 0),
-                "source": "SerpApi",
-            }
+        rating = float(item.get("rating") or 0)
+
+        if rating and rating < minimum_rating:
+            continue
+
+        search_text = build_candidate_search_text(item)
+        matched_tags = detect_interest_tags_from_text(search_text, selected_interests)
+
+        if matched_tags:
+            tags = matched_tags
+            match_reason = "matched selected interest: " + ", ".join(matched_tags)
+        else:
+            tags = ["attraction"]
+            match_reason = "general attraction candidate"
+
+        candidate = {
+            "name": title,
+            "latitude": float(coordinates["latitude"]),
+            "longitude": float(coordinates["longitude"]),
+            "tags": tags,
+            "matched_interests": matched_tags,
+            "interest_match_count": len(matched_tags),
+            "interest_match_reason": match_reason,
+            "estimated_minutes": 90,
+            "rating": rating,
+            "source": f"SerpApi - one search: {search_keyword}",
+            "category": item.get("type") or item.get("category") or "Attraction",
+            "address": address,
+        }
+
+        candidates.append(candidate)
+
+        print(
+            f"[LOCAL INTEREST MATCH] name={title} | matched={matched_tags} | rating={rating}",
+            flush=True,
         )
+
+    # Put matched attractions first before the normal scoring step.
+    candidates.sort(
+        key=lambda place: (
+            place.get("interest_match_count", 0),
+            place.get("rating", 0),
+        ),
+        reverse=True,
+    )
 
     return candidates
 
@@ -919,6 +1159,12 @@ def choose_attractions(
     max_stops = max(1, min(int(max_stops), 6))
     ranked: list[dict[str, Any]] = []
 
+    requested_interests = {
+        str(interest).lower().strip()
+        for interest in interests
+        if str(interest).strip()
+    }
+
     for attraction in candidates:
         rating = float(attraction.get("rating") or 0)
 
@@ -927,13 +1173,33 @@ def choose_attractions(
 
         score, reasons = score_attraction(attraction, interests, weather)
 
+        tags = {
+            str(tag).lower().strip()
+            for tag in attraction.get("tags", [])
+            if str(tag).strip()
+        }
+
+        matched_interests = attraction.get("matched_interests")
+
+        if not matched_interests:
+            matched_interests = sorted(tags.intersection(requested_interests))
+
         item = dict(attraction)
         item["score"] = score
         item["reasons"] = reasons
+        item["matched_interests"] = matched_interests
+        item["interest_match_count"] = len(matched_interests)
 
         ranked.append(item)
 
-    ranked.sort(key=lambda item: item["score"], reverse=True)
+    ranked.sort(
+        key=lambda item: (
+            item.get("interest_match_count", 0),
+            item.get("score", 0),
+            item.get("rating", 0),
+        ),
+        reverse=True
+    )
 
     return ranked[:max_stops]
 
@@ -1028,7 +1294,19 @@ def get_itinerary_duration_seconds(
 
     return travel_seconds + visit_seconds
 
+def is_browser_current_location(place: dict[str, Any] | None) -> bool:
+    if not place:
+        return False
 
+    source = str(place.get("source", "")).lower()
+    display_name = str(place.get("display_name", "")).lower()
+    name = str(place.get("name", "")).lower()
+
+    return (
+        source == "browser gps"
+        or display_name == "current location"
+        or name == "current location"
+    )
 
 
 
@@ -1053,23 +1331,24 @@ def build_google_maps_route_url(
     destination: dict[str, Any] | None,
     waypoints: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Build a Google Maps directions URL with a fixed origin and destination.
-
-    This is used because Google Maps URLs support origin, destination and
-    waypoints, while Waze deep links mainly navigate to one destination from
-    the driver's current location.
-    """
-    origin_text = build_coordinate_text(origin)
     destination_text = build_coordinate_text(destination)
 
-    if not origin_text or not destination_text:
+    if not destination_text:
         return ""
+
+    use_live_current_location = is_browser_current_location(origin)
 
     params = [
         ("api", "1"),
-        ("origin", origin_text),
-        ("destination", destination_text),
     ]
+
+    if not use_live_current_location:
+        origin_text = build_coordinate_text(origin)
+
+        if origin_text:
+            params.append(("origin", origin_text))
+
+    params.append(("destination", destination_text))
 
     waypoint_texts = [
         build_coordinate_text(point)
@@ -1081,6 +1360,9 @@ def build_google_maps_route_url(
         params.append(("waypoints", "|".join(waypoint_texts)))
 
     params.append(("travelmode", "driving"))
+
+    if use_live_current_location:
+        params.append(("dir_action", "navigate"))
 
     return "https://www.google.com/maps/dir/?" + "&".join(
         f"{key}={quote_plus(value)}"
@@ -1375,6 +1657,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         interests = [raw_interests] if raw_interests else []
     else:
         interests = [interest for interest in raw_interests if interest]
+
+    print(f"[SELECTED INTERESTS] {interests}", flush=True)
 
     available_hours = int(form.get("available_hours", 6))
     minimum_rating = float(form.get("minimum_rating", 4.0))
