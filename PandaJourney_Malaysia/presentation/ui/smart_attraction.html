@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Smart Attractions â€” PandaJourney Malaysia{% endblock %}
+{% block title %}Smart Attractions PandaJourney Malaysia{% endblock %}
 {% block page_title %}Smart Attraction Recommendation{% endblock %}
 {% block page_subtitle %}Discover attractions matched to your travel interests and weather preferences{% endblock %}
 
@@ -240,6 +240,7 @@
 {% endblock %}
 
 {% block content %}
+<div class="page-inner">
 <div class="attraction-layout">
   <aside class="filter-panel">
     <div class="card card-p">
@@ -252,8 +253,11 @@
           <div class="form-input-icon">
             <span class="icon">📍</span>
             <input class="form-input" id="destination" name="destination" type="text"
+                   autocomplete="off"
                    placeholder="e.g. Bukit Bintang"
                    value="{{ filters.destination | default('') }}" />
+            <input type="hidden" id="destination_lat" name="destination_lat" value="" />
+            <input type="hidden" id="destination_lng" name="destination_lng" value="" />
           </div>
         </div>
 
@@ -320,6 +324,7 @@
       <button id="show-more-btn" type="button" class="btn btn-ghost" style="display:none;">Show 5 more</button>
     </div>
   </section>
+</div>
 </div>
 
 <div class="detail-panel-backdrop" id="detail-backdrop" aria-hidden="true">
@@ -419,4 +424,47 @@
 </script>
 
 <script src="{{ url_for('static', filename='js/smart_attraction.js') }}" type="module"></script>
+
+{% if google_maps_api_key %}
+<script>
+  // Google Places Autocomplete on the destination field. When the user
+  // picks a suggestion we capture lat/lng directly, so the backend can
+  // skip its own geocoding call for this search.
+  function initDestinationAutocomplete() {
+    const input = document.getElementById('destination');
+    const latInput = document.getElementById('destination_lat');
+    const lngInput = document.getElementById('destination_lng');
+    if (!input || !window.google || !google.maps || !google.maps.places) return;
+
+    const autocomplete = new google.maps.places.Autocomplete(input, {
+      fields: ['geometry', 'name'],
+      componentRestrictions: { country: 'my' },
+    });
+
+    autocomplete.addListener('place_changed', () => {
+      const place = autocomplete.getPlace();
+      if (place && place.geometry && place.geometry.location) {
+        latInput.value = place.geometry.location.lat();
+        lngInput.value = place.geometry.location.lng();
+      } else {
+        latInput.value = '';
+        lngInput.value = '';
+      }
+    });
+
+    // If the user edits the text after picking a suggestion, the old
+    // lat/lng no longer matches what they typed — clear it so the
+    // backend falls back to geocoding the new text instead.
+    input.addEventListener('input', () => {
+      latInput.value = '';
+      lngInput.value = '';
+    });
+  }
+</script>
+<script
+  src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=places&callback=initDestinationAutocomplete"
+  async
+  defer
+></script>
+{% endif %}
 {% endblock %}

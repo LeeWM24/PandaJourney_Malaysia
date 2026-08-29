@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 import os
+import sqlite3
 import time
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +21,73 @@ SERPAPI_URL = "https://serpapi.com/search.json"
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 load_dotenv(BASE_DIR / ".env")
+
+# ---------------------------------------------------------------------------
+# Persistent SQLite cache — cuts down repeat SerpAPI / geocoding usage.
+# Geocode results barely change (long TTL); attraction search results are
+# cached for a few hours since ratings/hours can drift slowly.
+# ---------------------------------------------------------------------------
+
+CACHE_DB_PATH = BASE_DIR / "data" / "cache.db"
+GEOCODE_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days
+ATTRACTION_CACHE_TTL_SECONDS = 6 * 3600      # 6 hours
+
+
+def _init_cache_db() -> None:
+    CACHE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(CACHE_DB_PATH)
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS api_cache (
+            cache_key TEXT PRIMARY KEY,
+            payload TEXT NOT NULL,
+            created_at REAL NOT NULL
+        )"""
+    )
+    conn.commit()
+    conn.close()
+
+
+_init_cache_db()
+
+
+def cache_get(key: str, max_age_seconds: float) -> Any | None:
+    try:
+        conn = sqlite3.connect(CACHE_DB_PATH)
+        row = conn.execute(
+            "SELECT payload, created_at FROM api_cache WHERE cache_key = ?",
+            (key,),
+        ).fetchone()
+        conn.close()
+    except sqlite3.Error as error:
+        print(f"[CACHE READ ERROR] {error}", flush=True)
+        return None
+
+    if not row:
+        return None
+
+    payload, created_at = row
+
+    if time.time() - created_at > max_age_seconds:
+        return None
+
+    try:
+        print(f"[CACHE HIT] {key}", flush=True)
+        return json.loads(payload)
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def cache_set(key: str, value: Any) -> None:
+    try:
+        conn = sqlite3.connect(CACHE_DB_PATH)
+        conn.execute(
+            "INSERT OR REPLACE INTO api_cache (cache_key, payload, created_at) VALUES (?, ?, ?)",
+            (key, json.dumps(value), time.time()),
+        )
+        conn.commit()
+        conn.close()
+    except sqlite3.Error as error:
+        print(f"[CACHE WRITE ERROR] {error}", flush=True)
 
 USER_AGENT = os.getenv(
     "NOMINATIM_USER_AGENT",
@@ -162,8 +231,13 @@ def geocode_place(query: str) -> dict[str, Any] | None:
         return None
 
     if key in GEOCODE_CACHE:
-        print(f"[GEOCODE CACHE] {query}", flush=True)
+        print(f"[GEOCODE MEMORY CACHE] {query}", flush=True)
         return GEOCODE_CACHE[key]
+
+    db_cached = cache_get(f"geocode:{key}", GEOCODE_CACHE_TTL_SECONDS)
+    if db_cached is not None:
+        GEOCODE_CACHE[key] = db_cached
+        return db_cached
 
     search_queries = [query]
 
@@ -215,6 +289,7 @@ def geocode_place(query: str) -> dict[str, Any] | None:
             }
 
             GEOCODE_CACHE[key] = result
+            cache_set(f"geocode:{key}", result)
 
             print(
                 f"[GEOCODE SUCCESS] {result['display_name']} "
@@ -233,6 +308,7 @@ def geocode_place(query: str) -> dict[str, Any] | None:
 
     if serpapi_result:
         GEOCODE_CACHE[key] = serpapi_result
+        cache_set(f"geocode:{key}", serpapi_result)
         return serpapi_result
 
     GEOCODE_CACHE[key] = None
@@ -280,41 +356,85 @@ def get_weather(latitude: float, longitude: float, trip_date: str) -> dict[str, 
         return None
 
 
-def search_attractions_serpapi(
-    latitude: float,
-    longitude: float,
-    interests: list[str],
-    minimum_rating: float
-) -> list[dict[str, Any]]:
-    api_key = os.getenv("SERPAPI_KEY", "").strip()
+def get_current_weather_batch(
+    coords: list[tuple[float, float]]
+) -> list[dict[str, Any] | None]:
+    """Fetch real-time weather for many coordinates in a single Open-Meteo
+    request (it accepts comma-separated lat/lon lists), so we don't need
+    one HTTP call per attraction card."""
 
-    if not api_key:
-        print("[SERPAPI SEARCH] No SERPAPI_KEY configured.", flush=True)
+    if not coords:
         return []
-
-    keyword = get_serpapi_search_keyword(interests)
-
-    print(
-        f"[SERPAPI SEARCH] query={keyword!r} near ({latitude}, {longitude}) "
-        f"min_rating={minimum_rating}",
-        flush=True,
-    )
 
     try:
         data = _request_json(
-            SERPAPI_URL,
+            OPEN_METEO_URL,
             params={
-                "engine": "google_maps",
-                "type": "search",
-                "q": keyword,
-                "ll": f"@{latitude},{longitude},13z",
-                "min_rating": str(minimum_rating),
-                "hl": "en",
-                "gl": "my",
-                "api_key": api_key,
+                "latitude": ",".join(str(lat) for lat, _ in coords),
+                "longitude": ",".join(str(lon) for _, lon in coords),
+                "current": "temperature_2m,weather_code",
+                "timezone": "Asia/Kuala_Lumpur",
             },
         )
+    except requests.RequestException as error:
+        print(f"[WEATHER BATCH ERROR] {error}", flush=True)
+        return [None] * len(coords)
 
+    # Open-Meteo returns a list of results when multiple locations are
+    # requested, or a single object when only one location is requested.
+    entries = data if isinstance(data, list) else [data]
+
+    results: list[dict[str, Any] | None] = []
+
+    for entry in entries:
+        current = (entry or {}).get("current") or {}
+        code = current.get("weather_code")
+
+        if code is None:
+            results.append(None)
+            continue
+
+        results.append(
+            {
+                "temp": current.get("temperature_2m"),
+                "weather_code": code,
+                "condition": WEATHER_LABELS.get(code, f"WMO code {code}"),
+            }
+        )
+
+    # Defensive: pad/truncate in case the API returned an unexpected shape.
+    if len(results) < len(coords):
+        results.extend([None] * (len(coords) - len(results)))
+
+    return results[: len(coords)]
+
+
+def _serpapi_page(
+    keyword: str,
+    latitude: float,
+    longitude: float,
+    minimum_rating: float,
+    api_key: str,
+    start: int,
+) -> list[dict[str, Any]]:
+    """Fetch one page (~20 results) of Google Maps local results."""
+
+    params = {
+        "engine": "google_maps",
+        "type": "search",
+        "q": keyword,
+        "ll": f"@{latitude},{longitude},13z",
+        "min_rating": str(minimum_rating),
+        "hl": "en",
+        "gl": "my",
+        "api_key": api_key,
+    }
+
+    if start:
+        params["start"] = start
+
+    try:
+        data = _request_json(SERPAPI_URL, params=params)
     except requests.RequestException as error:
         print(f"[SERPAPI SEARCH ERROR] {error}", flush=True)
         return []
@@ -323,12 +443,69 @@ def search_attractions_serpapi(
         print(f"[SERPAPI SEARCH ERROR] API responded: {data['error']}", flush=True)
         return []
 
-    raw_results = data.get("local_results", [])
+    return data.get("local_results", [])
+
+
+def search_attractions_serpapi(
+    latitude: float,
+    longitude: float,
+    interests: list[str],
+    minimum_rating: float,
+    max_pages: int = 3,
+) -> list[dict[str, Any]]:
+    """Search Google Maps via SerpAPI, paginating up to `max_pages` pages
+    (~20 results each) so results aren't hard-capped at 20. Results are
+    cached in SQLite per (location, interests, min rating) so repeat
+    searches for the same destination don't re-spend SerpAPI credits.
+
+    NOTE on cost: every extra page is a separate billed SerpAPI request —
+    3 pages = 3 credits per *uncached* search. The cache above is what
+    keeps this affordable; pagination alone does not.
+    """
+
+    api_key = os.getenv("SERPAPI_KEY", "").strip()
+
+    if not api_key:
+        print("[SERPAPI SEARCH] No SERPAPI_KEY configured.", flush=True)
+        return []
+
+    keyword = get_serpapi_search_keyword(interests)
+
+    cache_key = (
+        f"attractions:{round(latitude, 3)}:{round(longitude, 3)}:"
+        f"{keyword}:{minimum_rating}:{max_pages}"
+    )
+    cached = cache_get(cache_key, ATTRACTION_CACHE_TTL_SECONDS)
+    if cached is not None:
+        return cached
+
+    print(
+        f"[SERPAPI SEARCH] query={keyword!r} near ({latitude}, {longitude}) "
+        f"min_rating={minimum_rating} max_pages={max_pages}",
+        flush=True,
+    )
+
+    raw_results: list[dict[str, Any]] = []
+
+    for page in range(max_pages):
+        page_results = _serpapi_page(
+            keyword, latitude, longitude, minimum_rating, api_key, start=page * 20
+        )
+
+        if not page_results:
+            break  # no more pages / error — stop paginating
+
+        raw_results.extend(page_results)
+
+        if len(page_results) < 20:
+            break  # short page = last page
+
     print(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps", flush=True)
 
+    seen_place_ids: set[str] = set()
     candidates = []
 
-    for item in data.get("local_results", [])[:20]:
+    for item in raw_results:
         coordinates = item.get("gps_coordinates") or {}
 
         if "latitude" not in coordinates or "longitude" not in coordinates:
@@ -341,6 +518,14 @@ def search_attractions_serpapi(
 
         if is_bad_candidate_name(title):
             continue
+
+        place_id = item.get("place_id") or item.get("data_id") or ""
+
+        if place_id and place_id in seen_place_ids:
+            continue  # de-dupe across pages
+
+        if place_id:
+            seen_place_ids.add(place_id)
 
         text = f"{title} {item_type} {description}".lower()
 
@@ -358,7 +543,6 @@ def search_attractions_serpapi(
         address = item.get("address") or ""
         hours = item.get("hours") or ""
         price = item.get("price") or ""
-        place_id = item.get("place_id") or item.get("data_id") or ""
 
         candidates.append(
             {
@@ -383,6 +567,8 @@ def search_attractions_serpapi(
         )
 
     print(f"[SERPAPI SEARCH] {len(candidates)} candidate(s) kept after filtering", flush=True)
+
+    cache_set(cache_key, candidates)
 
     return candidates
 
@@ -569,7 +755,6 @@ def prepare_selected_attractions(
         item["category"] = item.get("category") or ", ".join(item.get("tags", [])[:2]).title() or "Attraction"
         item["location"] = item.get("location") or item.get("source") or "Malaysia"
         item["area"] = item.get("area") or item["location"]
-        item["weather_suitability"] = "Indoor" if "indoor" in [tag.lower() for tag in item.get("tags", [])] else "Sunny"
         item["waze_url"] = build_waze_url(item)
         item["photo_urls"] = item.get("photo_urls") or get_attraction_images([tag.lower() for tag in item.get("tags", [])])
         item["image_url"] = item.get("image_url") or item["photo_urls"][0]
@@ -610,6 +795,38 @@ def prepare_selected_attractions(
 
         prepared.append(item)
 
+    # Real-time weather per attraction — one batched Open-Meteo call for
+    # every card instead of a static "Sunny"/"Indoor" guess.
+    coords: list[tuple[float, float]] = []
+    coord_indexes: list[int] = []
+
+    for idx, item in enumerate(prepared):
+        lat = item.get("latitude")
+        lon = item.get("longitude")
+        if lat is not None and lon is not None:
+            coords.append((float(lat), float(lon)))
+            coord_indexes.append(idx)
+
+    weather_results = get_current_weather_batch(coords)
+
+    for idx, weather in zip(coord_indexes, weather_results):
+        item = prepared[idx]
+        item["current_weather"] = weather
+
+        is_indoor = "indoor" in [tag.lower() for tag in item.get("tags", [])]
+
+        if weather:
+            item["weather_suitability"] = weather["condition"]
+        elif is_indoor:
+            item["weather_suitability"] = "Indoor"
+        else:
+            item["weather_suitability"] = "Unknown"
+
+    for idx, item in enumerate(prepared):
+        if "current_weather" not in item:
+            item["current_weather"] = None
+            item["weather_suitability"] = item.get("weather_suitability") or "Unknown"
+
     return prepared
 
 
@@ -620,6 +837,10 @@ def build_attraction_results(
     use_weather: bool,
     sort_mode: str,
     keyword: str = "",
+    destination_lat: float | None = None,
+    destination_lon: float | None = None,
+    max_results: int = 60,
+    max_pages: int = 3,
 ) -> tuple[list[dict[str, Any]], str, str]:
 
     destination_text = destination_text.strip()
@@ -629,11 +850,22 @@ def build_attraction_results(
             "Destination is required."
         )
 
-    # 1. Geocode destination
+    # 1. Resolve destination coordinates.
+    # If the frontend already gave us lat/lon (e.g. from Google Places
+    # Autocomplete), skip geocoding entirely — one less network call and
+    # one less thing that can fail.
 
-    destination_place = geocode_place(
-        destination_text
-    )
+    if destination_lat is not None and destination_lon is not None:
+        destination_place = {
+            "display_name": destination_text,
+            "latitude": float(destination_lat),
+            "longitude": float(destination_lon),
+            "source": "Google Places Autocomplete",
+        }
+    else:
+        destination_place = geocode_place(
+            destination_text
+        )
 
     if not destination_place:
         raise ValueError(
@@ -674,6 +906,7 @@ def build_attraction_results(
         destination_place["longitude"],
         interest_list,
         minimum_rating,
+        max_pages=max_pages,
     )
 
     live_data = bool(candidates)
@@ -700,7 +933,7 @@ def build_attraction_results(
         interest_list,
         weather,
         minimum_rating,
-        max_results=20,
+        max_results=max_results,
         filter_partly_cloudy=(
             use_weather
             and weather is not None

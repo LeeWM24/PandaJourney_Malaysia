@@ -93,6 +93,11 @@ def smart_attraction():
             request.form.get("destination", "").strip()
         )
 
+        # Populated by Google Places Autocomplete on the frontend when the
+        # user picks a suggestion — lets us skip our own geocoding step.
+        destination_lat = request.form.get("destination_lat", "").strip()
+        destination_lon = request.form.get("destination_lng", "").strip()
+
         filters["interests"] = request.form.getlist(
             "interests"
         )
@@ -131,6 +136,12 @@ def smart_attraction():
                         minimum_rating=minimum_rating,
                         use_weather=filters["weather_aware"],
                         sort_mode=filters["sort"],
+                        destination_lat=(
+                            float(destination_lat) if destination_lat else None
+                        ),
+                        destination_lon=(
+                            float(destination_lon) if destination_lon else None
+                        ),
                     )
                 )
 
@@ -202,6 +213,7 @@ def smart_attraction():
         results_label=results_label,
         nominatim_email=os.environ.get("NOMINATIM_EMAIL", ""),
         nominatim_user_agent=os.environ.get("NOMINATIM_USER_AGENT", ""),
+        google_maps_api_key=os.environ.get("GOOGLE_MAPS_API_KEY", ""),
     )
 
 

@@ -343,13 +343,35 @@ function renderCards() {
   }
 }
 
+// Real-time weather icon lookup — condition strings come from the backend's
+// Open-Meteo WMO code mapping, so this matches on keywords rather than a
+// fixed set of exact strings.
+function weatherIcon(condition) {
+  const text = String(condition || '').toLowerCase();
+  if (text.includes('thunder')) return '⛈️';
+  if (text.includes('rain') || text.includes('drizzle')) return '🌧️';
+  if (text.includes('fog')) return '🌫️';
+  if (text.includes('overcast')) return '☁️';
+  if (text.includes('partly')) return '⛅';
+  if (text.includes('clear') || text.includes('sunny') || text.includes('mainly clear')) return '☀️';
+  return '🌡️';
+}
+
+function buildWeatherBadgeHtml(attraction) {
+  const weather = attraction.current_weather;
+  if (weather && weather.condition) {
+    const temp = weather.temp !== null && weather.temp !== undefined ? `${Math.round(weather.temp)}°C` : '';
+    return `<span class="badge badge-warning">${weatherIcon(weather.condition)} ${weather.condition}${temp ? ' · ' + temp : ''}</span>`;
+  }
+  if (attraction.weather_suitability === 'Indoor') {
+    return '<span class="badge badge-info">🏛️ Indoor</span>';
+  }
+  return '';
+}
+
 function buildCard(attraction) {
   const isFav = favourites.has(attraction.id);
-  const weatherBadge = {
-    'Sunny': '<span class="badge badge-warning">☀️ Sunny</span>',
-    'Partly Cloudy': '<span class="badge badge-muted">⛅ Partly Cloudy</span>',
-    'Indoor': '<span class="badge badge-info">🏛️ Indoor</span>',
-  }[attraction.weather_suitability] || '';
+  const weatherBadge = buildWeatherBadgeHtml(attraction);
 
   const reasons = (attraction.reason_tags || []).map((reason) => `<span class="reason-tag">${reason}</span>`).join('');
   const locationLabel = attraction.location || attraction.area || 'Unknown location';
@@ -477,8 +499,12 @@ function openDetail(id) {
 
   mainImage.src = gallery[0] || '';
   nameEl.textContent = attraction.name || 'Attraction';
+  const weather = attraction.current_weather;
+  const weatherText = weather && weather.condition
+    ? `${weatherIcon(weather.condition)} ${weather.condition}${weather.temp !== null && weather.temp !== undefined ? ' · ' + Math.round(weather.temp) + '°C' : ''}`
+    : (attraction.weather_suitability || 'Weather unavailable');
   metaTop.innerHTML = `
-    <span>${attraction.weather_suitability || 'Unknown'}</span>
+    <span>${weatherText}</span>
     <span>${attraction.category || ''}</span>`;
   metaBottom.innerHTML = `
     <span>${attraction.area || attraction.location || ''}</span>
