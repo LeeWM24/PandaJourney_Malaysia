@@ -153,25 +153,28 @@
   }
 
   .save-modal-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 10000;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    background: rgba(15, 23, 42, 0.42);
-    backdrop-filter: blur(3px);
-    padding: 18px;
-  }
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 18px;
+}
 
-  .save-modal-card {
-    width: min(460px, 100%);
-    border-radius: 22px;
-    padding: 24px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    box-shadow: 0 22px 55px rgba(15, 23, 42, 0.22);
-  }
+.save-modal-card {
+  width: min(460px, 100%);
+  border-radius: 22px;
+  padding: 24px;
+  background: #ffffff;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  opacity: 1;
+}
 
   .save-modal-title {
     font-size: 20px;
@@ -180,7 +183,7 @@
   }
 
   .save-modal-sub {
-    color: var(--text-muted);
+    color: var(--fg-2);
     font-size: 13px;
     line-height: 1.5;
     margin-bottom: 16px;
@@ -201,80 +204,185 @@
     font-weight: 700;
   }
 
+
 .custom-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);   
+  background: rgba(0, 0, 0, 0.55);
   display: none;
   align-items: center;
   justify-content: center;
   z-index: 10001;
   padding: 18px;
-  }
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
 
-  .custom-modal-backdrop.show {
-    display: flex;
-  }
+.custom-modal-backdrop.show {
+  display: flex;
+}
 
-  .custom-modal-box {
-    width: min(420px, 92%);
-    background: #ffffff;               
-    color: #16352b;
-    border-radius: 22px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
-    padding: 28px 24px 22px;
-    border: 2px solid #d7e9df;
-    text-align: center;
-    opacity: 1;                        
-  }
+.custom-modal-box {
+  width: min(420px, 92%);
+  background: #ffffff;
+  color: #16352b;
+  border-radius: 22px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+  padding: 28px 24px 22px;
+  border: 2px solid #d7e9df;
+  text-align: center;
+  opacity: 1;
+}
 
-  .custom-modal-icon {
-    font-size: 42px;
-    margin-bottom: 12px;
-  }
+.custom-modal-icon {
+  font-size: 42px;
+  margin-bottom: 12px;
+}
 
-  .custom-modal-title {
-    font-size: 22px;
-    font-weight: 900;
-    margin-bottom: 10px;
-    color: #16352b;
-  }
+.custom-modal-title {
+  font-size: 22px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  color: #16352b;
+}
 
-  .custom-modal-message {
-    font-size: 14px;
-    line-height: 1.6;
-    color: #4b6358;
-    margin-bottom: 22px;
-  }
+.custom-modal-message {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #4b6358;
+  margin-bottom: 22px;
+}
 
-  .custom-modal-actions {
-    display: flex;
-    justify-content: center;
-  }
+.custom-modal-actions {
+  display: flex;
+  justify-content: center;
+}
 
-  .custom-modal-icon {
-    font-size: 42px;
-    margin-bottom: 12px;
-  }
+.interest-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
-  .custom-modal-title {
-    font-size: 22px;
-    font-weight: 900;
-    margin-bottom: 10px;
-    color: var(--text);
-  }
+.interest-chip {
+  cursor: pointer;
+}
 
-  .custom-modal-message {
-    font-size: 14px;
-    line-height: 1.6;
-    color: var(--text-muted);
-    margin-bottom: 22px;
-  }
+.interest-chip input {
+  display: none;
+}
 
-  .custom-modal-actions {
-    display: flex;
-    justify-content: center;
-  }
+.interest-chip.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
+}
+
+.stop-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.stop-one-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stop-name {
+  font-weight: 900;
+  color: var(--fg);
+}
+
+.stop-inline-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #e8f7ef;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 800;
+  border: 1px solid #bfe7cf;
+}
+
+.stop-rating {
+  font-size: 12px;
+  font-weight: 800;
+  color: #047857;
+}
+
+
+.location-autocomplete {
+  position: relative;
+}
+
+.location-suggestions {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  z-index: 10020;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+  overflow: hidden;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.location-suggestion-item {
+  width: 100%;
+  border: 0;
+  background: #ffffff;
+  padding: 11px 13px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border-bottom: 1px solid #edf5ef;
+}
+
+.location-suggestion-item:last-child {
+  border-bottom: 0;
+}
+
+.location-suggestion-item:hover {
+  background: #e8f7ef;
+}
+
+.location-suggestion-icon {
+  font-size: 15px;
+  margin-top: 1px;
+}
+
+.location-suggestion-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.location-suggestion-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--fg);
+  line-height: 1.4;
+}
+
+.location-suggestion-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.location-suggestion-status {
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--fg-2);
+}
+
 </style>
 {% endblock %}
 
@@ -327,6 +435,27 @@
       <div class="save-modal-actions">
         <button type="button" class="btn btn-secondary btn-md" id="cancel-save-title-btn">Cancel</button>
         <button type="button" class="btn btn-primary btn-md" id="confirm-save-title-btn">Save Itinerary</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="planner-alert-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="planner-alert-title">
+      <div class="custom-modal-icon" id="planner-alert-icon">⚠️</div>
+
+      <div class="custom-modal-title" id="planner-alert-title">
+        Notice
+      </div>
+
+      <div class="custom-modal-message" id="planner-alert-message">
+        Please check your input.
+      </div>
+
+      <div class="custom-modal-actions">
+        <button type="button" id="planner-alert-ok" class="btn btn-primary btn-md">
+          OK
+        </button>
       </div>
     </div>
   </div>
@@ -391,17 +520,22 @@
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
 
-            <div class="form-input-icon">
-              <span class="icon">🟢</span>
-              <input
-                class="form-input"
-                id="start"
-                name="start"
-                type="text"
-                placeholder="e.g. KL Sentral"
-                value="{{ form.start | default('') }}"
-                required
-              />
+            <div class="location-autocomplete">
+              <div class="form-input-icon">
+                <span class="icon">🟢</span>
+                <input
+                  class="form-input"
+                  id="start"
+                  name="start"
+                  type="text"
+                  placeholder="e.g. KL Sentral"
+                  value="{{ form.start | default('') }}"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+
+              <div id="start-suggestions" class="location-suggestions" hidden></div>
             </div>
 
             <div class="gps-location-row">
@@ -415,17 +549,22 @@
           <div class="form-group mb-3">
             <label class="form-label" for="end">End Location</label>
 
-            <div class="form-input-icon">
-              <span class="icon">🔴</span>
-              <input
-                class="form-input"
-                id="end"
-                name="end"
-                type="text"
-                placeholder="e.g. Petronas Twin Towers"
-                value="{{ form.end | default('') }}"
-                required
-              />
+            <div class="location-autocomplete">
+              <div class="form-input-icon">
+                <span class="icon">🔴</span>
+                <input
+                  class="form-input"
+                  id="end"
+                  name="end"
+                  type="text"
+                  placeholder="e.g. Petronas Twin Towers"
+                  value="{{ form.end | default('') }}"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+
+              <div id="end-suggestions" class="location-suggestions" hidden></div>
             </div>
           </div>
 
@@ -495,17 +634,39 @@
           </div>
 
           <div class="form-group mb-4">
-            <label class="form-label" for="interests">Travel Interest</label>
+            <label class="form-label">Travel Interests</label>
 
-            {% set selected_interest = form.get("interests", "culture") %}
+            {% set selected_interests = form.getlist("interests") if form.getlist is defined else form.interests | default(["culture"]) %}
+            {% if selected_interests is string %}
+              {% set selected_interests = [selected_interests] %}
+            {% endif %}
 
-            <select class="form-select" id="interests" name="interests">
-              <option value="culture" {% if selected_interest == "culture" %}selected{% endif %}>Culture</option>
-              <option value="museum" {% if selected_interest == "museum" %}selected{% endif %}>Museum</option>
-              <option value="nature" {% if selected_interest == "nature" %}selected{% endif %}>Nature</option>
-              <option value="shopping" {% if selected_interest == "shopping" %}selected{% endif %}>Shopping</option>
-              <option value="food" {% if selected_interest == "food" %}selected{% endif %}>Food</option>
-            </select>
+            <div class="interest-chip-group">
+              {% set interest_options = [
+                ("culture", "Culture"),
+                ("museum", "Museum"),
+                ("nature", "Nature"),
+                ("shopping", "Shopping"),
+                ("food", "Food")
+              ] %}
+
+              {% for value, label in interest_options %}
+                <label class="chip interest-chip {% if value in selected_interests %}active{% endif %}">
+                  {{ label }}
+                  <input
+                    type="checkbox"
+                    name="interests"
+                    value="{{ value }}"
+                    style="display:none;"
+                    {% if value in selected_interests %}checked{% endif %}
+                  />
+                </label>
+              {% endfor %}
+            </div>
+
+            <div class="text-xs text-muted mt-2">
+              You can select more than one interest for a more diverse itinerary.
+            </div>
           </div>
 
           <div class="form-group mb-4" id="favourite-section">
@@ -604,25 +765,45 @@
           {% endif %}
 
           <div class="stop-list mb-4">
-            {% for attraction in plan["selected"] %}
-              <div class="stop-item">
-                <span class="stop-handle">⠿</span>
+          {% for attraction in plan["selected"] %}
+            <div class="stop-item">
+              <span class="stop-handle">⠿</span>
 
-                <span class="stop-name">
-                  {{ loop.index }}. {{ attraction.name }}
-                </span>
+              <div class="stop-main">
+                <div class="stop-one-line">
+                  <span class="stop-name">
+                    {{ loop.index }}. {{ attraction.name }}
+                  </span>
 
-                <button
-                  type="button"
-                  class="stop-remove js-remove-stop"
-                  data-stop-name="{{ attraction.name | e }}"
-                  aria-label="Remove {{ attraction.name | e }}"
-                >
-                  ✕
-                </button>
+                  {% set matched_interests = attraction.get("matched_interests", []) %}
+
+                  {% if matched_interests %}
+                    {% for interest in matched_interests %}
+                      <span class="stop-inline-tag">
+                        {{ interest | title }}
+                      </span>
+                    {% endfor %}
+                  {% endif %}
+
+                  {% if attraction.get("rating") %}
+                    <span class="stop-rating">
+                      ⭐ {{ "%.1f"|format(attraction.get("rating") | float) }}
+                    </span>
+                  {% endif %}
+                </div>
               </div>
-            {% endfor %}
-          </div>
+
+              <button
+                type="button"
+                class="stop-remove js-remove-stop"
+                data-stop-name="{{ attraction.name | e }}"
+                aria-label="Remove {{ attraction.name | e }}"
+              >
+                ✕
+              </button>
+            </div>
+          {% endfor %}
+        </div>
 
           <div class="timetable">
             {% for item in plan["timetable"] %}

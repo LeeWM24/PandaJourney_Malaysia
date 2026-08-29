@@ -365,6 +365,186 @@ function escapeCssValue(value) {
   return String(value).replace(/"/g, '\\"');
 }
 
+function getSelectedInterests() {
+  return Array.from(document.querySelectorAll('input[name="interests"]:checked'))
+    .map(function (input) {
+      return input.value;
+    });
+}
+
+function openPlannerAlertModal(title, message, icon = "⚠️") {
+  const modal = document.getElementById("planner-alert-modal");
+  const iconElement = document.getElementById("planner-alert-icon");
+  const titleElement = document.getElementById("planner-alert-title");
+  const messageElement = document.getElementById("planner-alert-message");
+  const okButton = document.getElementById("planner-alert-ok");
+
+  if (!modal) {
+    console.warn(message);
+    return;
+  }
+
+  if (iconElement) {
+    iconElement.textContent = icon;
+  }
+
+  if (titleElement) {
+    titleElement.textContent = title;
+  }
+
+  if (messageElement) {
+    messageElement.textContent = message;
+  }
+
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+
+  if (okButton) {
+    okButton.focus();
+  }
+}
+
+function closePlannerAlertModal() {
+  const modal = document.getElementById("planner-alert-modal");
+
+  if (!modal) return;
+
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
+}
+
+// ================================
+// Location Autocomplete
+// ================================
+
+function showLocationSuggestionStatus(boxElement, message) {
+  if (!boxElement) return;
+
+  boxElement.hidden = false;
+  boxElement.innerHTML = `
+    <div class="location-suggestion-status">
+      ${escapeHtml(message)}
+    </div>
+  `;
+}
+
+function hideLocationSuggestions(boxElement) {
+  if (!boxElement) return;
+
+  boxElement.hidden = true;
+  boxElement.innerHTML = "";
+}
+
+function renderLocationSuggestions(inputElement, boxElement, suggestions) {
+  if (!inputElement || !boxElement) return;
+
+  if (!suggestions.length) {
+    showLocationSuggestionStatus(boxElement, "No location found.");
+    return;
+  }
+
+  boxElement.hidden = false;
+  boxElement.innerHTML = "";
+
+  suggestions.forEach(function (suggestion) {
+    const button = document.createElement("button");
+
+    button.type = "button";
+    button.className = "location-suggestion-item";
+
+    button.innerHTML = `
+      <span class="location-suggestion-icon">📍</span>
+      <span class="location-suggestion-main">
+        <span class="location-suggestion-name">
+          ${escapeHtml(suggestion.display_name)}
+        </span>
+        <span class="location-suggestion-sub">
+          ${escapeHtml(suggestion.source || "Location suggestion")}
+        </span>
+      </span>
+    `;
+
+    button.addEventListener("click", function () {
+      inputElement.value = suggestion.display_name;
+      hideLocationSuggestions(boxElement);
+
+      if (inputElement.id === "start") {
+        const useCurrentLocationInput = document.getElementById("use_current_location");
+        const latitudeInput = document.getElementById("start_latitude");
+        const longitudeInput = document.getElementById("start_longitude");
+
+        if (useCurrentLocationInput) useCurrentLocationInput.value = "0";
+        if (latitudeInput) latitudeInput.value = "";
+        if (longitudeInput) longitudeInput.value = "";
+        setGpsStatus("");
+      }
+    });
+
+    boxElement.appendChild(button);
+  });
+}
+
+function setupLocationAutocomplete(inputId, suggestionsId) {
+  const inputElement = document.getElementById(inputId);
+  const boxElement = document.getElementById(suggestionsId);
+
+  if (!inputElement || !boxElement) return;
+
+  let debounceTimer = null;
+  let latestQuery = "";
+
+  inputElement.addEventListener("input", function () {
+    const queryText = inputElement.value.trim();
+
+    latestQuery = queryText;
+
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+    }
+
+    if (queryText.length < 3 || queryText === "Current Location") {
+      hideLocationSuggestions(boxElement);
+      return;
+    }
+
+    showLocationSuggestionStatus(boxElement, "Searching locations...");
+
+    debounceTimer = setTimeout(function () {
+      fetch(`/api/location-suggestions?q=${encodeURIComponent(queryText)}`)
+        .then(function (response) {
+          if (!response.ok) {
+            throw new Error("Location suggestion request failed.");
+          }
+
+          return response.json();
+        })
+        .then(function (data) {
+          if (latestQuery !== inputElement.value.trim()) {
+            return;
+          }
+
+          renderLocationSuggestions(
+            inputElement,
+            boxElement,
+            data.suggestions || []
+          );
+        })
+        .catch(function (error) {
+          console.error("Location suggestion error:", error);
+          showLocationSuggestionStatus(boxElement, "Unable to load suggestions.");
+        });
+    }, 600);
+  });
+
+  inputElement.addEventListener("focus", function () {
+    const queryText = inputElement.value.trim();
+
+    if (queryText.length >= 3 && boxElement.innerHTML.trim()) {
+      boxElement.hidden = false;
+    }
+  });
+}
+
 // ================================
 // Favourite Places
 // ================================
@@ -541,7 +721,12 @@ function renderFavouritePlaces() {
 
       if (selectedCount > maxStops) {
         checkbox.checked = false;
-        alert(`You can only select up to ${maxStops} favourite place${maxStops > 1 ? "s" : ""}.`);
+
+        openPlannerAlertModal(
+          "Favourite Limit Reached",
+          `You can only select up to ${maxStops} favourite place${maxStops > 1 ? "s" : ""}.`,
+          "⚠️"
+        );
       }
 
       enforceFavouriteLimit();
@@ -618,11 +803,30 @@ function validateFavouriteSelection() {
   const selectedCount = getSelectedFavouriteIds().length;
 
   if (selectedCount > maxStops) {
-    alert(`Selected favourite places cannot exceed maximum stops (${maxStops}).`);
+    openPlannerAlertModal(
+      "Favourite Limit Exceeded",
+      `Selected favourite places cannot exceed maximum stops (${maxStops}).`,
+      "⚠️"
+    );
     return false;
   }
 
   updateSelectedFavouritesHidden();
+  return true;
+}
+
+function validateInterestSelection() {
+  const selectedInterests = getSelectedInterests();
+
+  if (!selectedInterests.length) {
+    openPlannerAlertModal(
+      "Travel Interest Required",
+      "Please select at least one travel interest before generating the itinerary.",
+      "⚠️"
+    );
+    return false;
+  }
+
   return true;
 }
 
@@ -633,6 +837,7 @@ function submitPlannerForm(loadingText = "Generating itinerary...") {
 
   if (!validateTripDateTime()) return;
   if (!validateFavouriteSelection()) return;
+  if (!validateInterestSelection()) return;
 
   showPlannerLoading(loadingText);
 
@@ -714,13 +919,23 @@ function validateTripDateTime() {
   const currentTime = getCurrentTimeKey();
 
   if (tripDateInput.value < today) {
-    alert("Travel date cannot be before today.");
+    openPlannerAlertModal(
+      "Invalid Travel Date",
+      "Travel date cannot be before today.",
+      "📅"
+    );
+
     tripDateInput.value = today;
     return false;
   }
 
   if (tripDateInput.value === today && startTimeInput.value < currentTime) {
-    alert("Start time cannot be earlier than the current time.");
+    openPlannerAlertModal(
+      "Invalid Start Time",
+      "Start time cannot be earlier than the current time.",
+      "⏰"
+    );
+
     startTimeInput.value = currentTime;
     return false;
   }
@@ -849,7 +1064,11 @@ async function saveItinerary() {
   const saveButton = document.getElementById("save-itinerary-btn");
 
   if (!currentUser) {
-    alert("Please login before saving itinerary.");
+    openPlannerAlertModal(
+      "Login Required",
+      "Please login before saving itinerary.",
+      "🔐"
+    );
     return;
   }
 
@@ -857,7 +1076,11 @@ async function saveItinerary() {
   const mapData = getJsonData("map-data");
 
   if (!plan || !mapData) {
-    alert("No generated itinerary found.");
+    openPlannerAlertModal(
+      "No Itinerary Found",
+      "Please generate an itinerary before saving.",
+      "🗺️"
+    );
     return;
   }
 
@@ -932,7 +1155,8 @@ async function saveItinerary() {
 
       available_hours: availableHours,
       minimum_rating: minimumRating,
-      interest: getFormValue("interests", "culture"),
+      interest: getSelectedInterests()[0] || "culture",
+      interests: getSelectedInterests(),
 
       total_distance_km: Number(plan.total_distance_km || 0),
       google_maps_full_route_url: plan.google_maps_full_route_url || "",
@@ -962,7 +1186,7 @@ async function saveItinerary() {
         stop_order: index + 1,
 
         stop_name: stop.name || "Unnamed Stop",
-        category: stop.category || stop.type || getFormValue("interests", "culture"),
+        category: stop.category || stop.type || getSelectedInterests()[0] || "culture",
         rating: Number(stop.rating || 0),
 
         latitude: normaliseCoordinate(stop.latitude),
@@ -988,7 +1212,12 @@ async function saveItinerary() {
 
   } catch (error) {
     console.error("Failed to save itinerary:", error);
-    alert("Failed to save itinerary. Please check console.");
+
+    openPlannerAlertModal(
+      "Save Failed",
+      "Failed to save itinerary. Please check console.",
+      "❌"
+    );
 
     saveButton.disabled = false;
     saveButton.textContent = "💾 Save";
@@ -1001,6 +1230,31 @@ async function saveItinerary() {
 
 document.addEventListener("DOMContentLoaded", function () {
   updateDateTimeLimits();
+
+  const plannerAlertOkButton = document.getElementById("planner-alert-ok");
+  const plannerAlertModal = document.getElementById("planner-alert-modal");
+
+  if (plannerAlertOkButton) {
+    plannerAlertOkButton.addEventListener("click", closePlannerAlertModal);
+  }
+
+  if (plannerAlertModal) {
+    plannerAlertModal.addEventListener("click", function (event) {
+      if (event.target === plannerAlertModal) {
+        closePlannerAlertModal();
+      }
+    });
+  }
+
+  document.querySelectorAll(".interest-chip input").forEach(function (checkbox) {
+    checkbox.addEventListener("change", function () {
+      const chip = checkbox.closest(".interest-chip");
+
+      if (chip) {
+        chip.classList.toggle("active", checkbox.checked);
+      }
+    });
+  });
 
   const tripDateInput = document.getElementById("trip_date");
   const startTimeInput = document.getElementById("start_time");
@@ -1016,7 +1270,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (itineraryForm) {
     itineraryForm.addEventListener("submit", function (event) {
-      if (!validateTripDateTime() || !validateFavouriteSelection()) {
+      if (!validateTripDateTime() || !validateFavouriteSelection() || !validateInterestSelection()) {
         event.preventDefault();
         hidePlannerLoading();
         return;
@@ -1050,6 +1304,19 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   resetGpsWhenStartEdited();
+
+  setupLocationAutocomplete("start", "start-suggestions");
+  setupLocationAutocomplete("end", "end-suggestions");
+
+  document.addEventListener("click", function (event) {
+    const startBox = document.getElementById("start-suggestions");
+    const endBox = document.getElementById("end-suggestions");
+
+    if (!event.target.closest(".location-autocomplete")) {
+      hideLocationSuggestions(startBox);
+      hideLocationSuggestions(endBox);
+    }
+  });
 
   const favouritesSearchInput = document.getElementById("favourites-search");
 
@@ -1131,9 +1398,21 @@ document.addEventListener("DOMContentLoaded", function () {
 
   document.addEventListener("keydown", function (event) {
     if (event.key === "Escape") {
-      const modal = document.getElementById("save-success-modal");
+      const plannerAlertModal = document.getElementById("planner-alert-modal");
+      const saveSuccessModal = document.getElementById("save-success-modal");
+      const saveTitleModal = document.getElementById("save-title-modal");
 
-      if (modal && modal.classList.contains("show")) {
+      if (plannerAlertModal && plannerAlertModal.classList.contains("show")) {
+        closePlannerAlertModal();
+        return;
+      }
+
+      if (saveTitleModal && saveTitleModal.style.display === "flex") {
+        closeSaveTitleModal(null);
+        return;
+      }
+
+      if (saveSuccessModal && saveSuccessModal.classList.contains("show")) {
         closeSaveSuccessModal();
       }
     }

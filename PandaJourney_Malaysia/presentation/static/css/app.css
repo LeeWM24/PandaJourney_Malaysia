@@ -162,13 +162,34 @@ button, input, select, textarea { font: inherit; }
 /* Forms */
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-label { color: var(--fg-2); font-size: 13px; text-transform: uppercase; font-weight: 700; letter-spacing: .03em; }
-.form-input, .form-select { width: 100%; min-height: 42px; border: 1px solid var(--border); border-radius: 16px; background: white; color: var(--fg); padding: 0 16px; outline: 0; }
+.form-input,
+.form-select {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  color: var(--fg);
+  padding: 0 16px;
+  outline: 0;
+}
+
 .form-input::placeholder { color: #a9c6b7; }
 .form-input:focus, .form-select:focus { border-color: var(--primary); box-shadow: 0 0 0 4px rgba(15,138,103,.10); }
 .form-input-icon { position: relative; }
 .form-input-icon .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 14px; }
 .form-input-icon .form-input { padding-left: 42px; }
-.form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.form-row-2 {display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  width: 100%;
+}
+
+.form-row-2 > * {
+  min-width: 0;
+}
 .chip { min-height: 32px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border); background: white; color: var(--fg-2); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; cursor: pointer; user-select: none; }
 .chip.active { background: var(--primary); color: white; border-color: var(--primary); }
 .toggle-wrap { padding: 16px 0; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
@@ -544,12 +565,12 @@ button, input, select, textarea { font: inherit; }
 
 .custom-modal-box {
   width: min(420px, 92%);
-  background: #10261b;
-  color: #ffffff;
+  background: #ffffff;
+  color: var(--fg);
   border-radius: 18px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   padding: 28px 24px 22px;
-  border: 1px solid rgba(180, 220, 190, 0.25);
+  border: 1px solid var(--border);
   text-align: center;
 }
 
@@ -558,21 +579,25 @@ button, input, select, textarea { font: inherit; }
   margin-bottom: 12px;
 }
 
-.custom-modal-title {
-  font-size: 24px;
-  font-weight: 800;
-  margin-bottom: 10px;
-  color: #ffffff;
-}
-
-.custom-modal-message {
-  font-size: 15px;
-  line-height: 1.6;
-  color: #dcebdd;
-  margin-bottom: 22px;
-}
 
 .custom-modal-actions {
   display: flex;
   justify-content: center;
+}
+
+
+.interest-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.interest-chip input {
+  display: none;
+}
+
+.interest-chip.active {
+  background: var(--primary);
+  color: #ffffff;
+  border-color: var(--primary);
 }
