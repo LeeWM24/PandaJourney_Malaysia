@@ -147,6 +147,12 @@
     position: relative;
   }
 
+  .stop-list.is-scrollable {
+    max-height: 380px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
   .edit-stop-row {
     padding: 0 0 16px;
     position: relative;
@@ -200,15 +206,21 @@
     align-items: flex-start;
   }
 
+  .stop-display > div:first-child {
+    min-width: 0;
+  }
+
   .stop-title {
     font-weight: 900;
     color: var(--fg);
     margin-bottom: 3px;
+    overflow-wrap: anywhere;
   }
 
   .stop-subtitle {
     color: var(--fg-2);
     font-size: 13px;
+    overflow-wrap: anywhere;
   }
 
   .stop-actions-inline {
@@ -335,6 +347,19 @@
     margin-top: 10px;
   }
 
+  .stop-warning {
+    display: none;
+    margin-top: 10px;
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.45;
+  }
+
+  .stop-warning.show {
+    display: block;
+  }
+
   .comment-input {
     flex: 1;
   }
@@ -349,6 +374,48 @@
     font-size: 13px;
     font-weight: 700;
     color: var(--fg-2);
+  }
+
+  .interest-choice-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 42px;
+    align-items: center;
+  }
+
+  .interest-choice {
+    position: relative;
+  }
+
+  .interest-choice input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .interest-choice span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 15px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--fg-2);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .interest-choice input:checked + span {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  .interest-choice input:focus + span {
+    box-shadow: 0 0 0 4px rgba(15, 138, 103, .10);
   }
 
   .comment-message {
@@ -371,6 +438,29 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .comments-list.is-scrollable {
+    max-height: 456px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  .stop-list.is-scrollable::-webkit-scrollbar,
+  .comments-list.is-scrollable::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .stop-list.is-scrollable::-webkit-scrollbar-track,
+  .comments-list.is-scrollable::-webkit-scrollbar-track {
+    background: #eef8f2;
+    border-radius: 999px;
+  }
+
+  .stop-list.is-scrollable::-webkit-scrollbar-thumb,
+  .comments-list.is-scrollable::-webkit-scrollbar-thumb {
+    background: #b9ddcd;
+    border-radius: 999px;
   }
 
   .comment-row {
@@ -732,14 +822,29 @@
             <input id="route-hours-input" class="route-input" type="number" min="1" max="24" step="1" aria-label="Available hours">
           </div>
           <div class="route-field">
-            <label>Interest</label>
-            <select id="route-interest-input" class="route-input" aria-label="Interest">
-              <option value="culture">Culture</option>
-              <option value="nature">Nature</option>
-              <option value="museum">Museum</option>
-              <option value="shopping">Shopping</option>
-              <option value="food">Food</option>
-            </select>
+            <label>Interests</label>
+            <div id="route-interest-input" class="interest-choice-grid" aria-label="Interests">
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="culture">
+                <span>Culture</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="nature">
+                <span>Nature</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="museum">
+                <span>Museum</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="shopping">
+                <span>Shopping</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="food">
+                <span>Food</span>
+              </label>
+            </div>
           </div>
           <button type="button" id="save-route-details-btn" class="btn btn-primary btn-md">Save route details</button>
         </div>

@@ -137,6 +137,18 @@ function formatMinutes(minutes) {
   return `${hours} hr ${remainder} min`;
 }
 
+function formatInterests(interests, fallback) {
+  const values = (Array.isArray(interests) ? interests : [fallback || interests])
+    .map(value => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!values.length) return "-";
+
+  return [...new Set(values)]
+    .map(value => value.charAt(0).toUpperCase() + value.slice(1))
+    .join(", ");
+}
+
 function getBadgeClass(status) {
   if (status === "Published") return "badge-success";
   if (status === "Draft") return "badge-warning";
@@ -506,7 +518,7 @@ function renderItinerary(itinerary, stops) {
   setText("detail-start", startName);
   setText("detail-end", endName);
   setText("detail-hours", itinerary.available_hours ? `${itinerary.available_hours} hrs` : "Estimated");
-  setText("detail-interest", itinerary.interest || "-");
+  setText("detail-interest", formatInterests(itinerary.interests, itinerary.interest));
   setText("detail-stop-count", `${stopCount} stops`);
   setText("detail-travel-duration", formatMinutes(itinerary.travel_duration_minutes));
 

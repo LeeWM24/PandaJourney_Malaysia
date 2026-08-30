@@ -23,6 +23,8 @@ const COLLABORATOR_COLLECTION = "collaborators";
 const COMMENT_COLLECTION = "comments";
 const NOTIFICATION_COLLECTION = "notifications";
 const USER_COLLECTION = "users";
+const MAX_EDIT_STOPS = 10;
+const MAX_TRAVEL_LEG_MINUTES = 240;
 
 const pageElement = document.getElementById("edit-page");
 const loadingElement = document.getElementById("edit-loading");
@@ -88,6 +90,7 @@ let selectedStopPlaces = {};
 let stopSuggestionTimers = {};
 let selectedRoutePlaces = {};
 let routeSuggestionTimers = {};
+let busyAction = "";
 
 function showError() {
   if (loadingElement) loadingElement.style.display = "none";
@@ -176,6 +179,42 @@ function formatMinutesAsDuration(minutes) {
   if (!hours) return `${remainder} mins`;
   if (!remainder) return `${hours} hr${hours === 1 ? "" : "s"}`;
   return `${hours} hr${hours === 1 ? "" : "s"} ${remainder} mins`;
+}
+
+function normaliseInterest(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getSavedInterests() {
+  const saved = Array.isArray(itinerary?.interests)
+    ? itinerary.interests
+    : [itinerary?.interest];
+
+  const interests = saved
+    .map(normaliseInterest)
+    .filter(Boolean);
+
+  return interests.length ? [...new Set(interests)] : ["culture"];
+}
+
+function getSelectedRouteInterests() {
+  const checked = Array.from(document.querySelectorAll('input[name="route_interests"]:checked'))
+    .map(input => normaliseInterest(input.value))
+    .filter(Boolean);
+
+  return checked.length ? checked : [];
+}
+
+function formatInterests(interests) {
+  const values = (Array.isArray(interests) ? interests : [interests])
+    .map(normaliseInterest)
+    .filter(Boolean);
+
+  if (!values.length) return "Culture";
+
+  return [...new Set(values)]
+    .map(value => value.charAt(0).toUpperCase() + value.slice(1))
+    .join(", ");
 }
 
 function showStopSuggestionStatus(boxElement, message) {
@@ -407,6 +446,27 @@ function recalculateStopTimes(stops) {
   });
 }
 
+function recalculateStopTimesWithExistingTravel(stops) {
+  let cursor = parseClockMinutes(itinerary?.start_time || "09:00");
+
+  return stops.map((stop, index) => {
+    const visitMinutes = Math.max(0, Number(stop.visit_duration_minutes || 0));
+    const travelMinutes = Math.max(0, Number(stop.travel_minutes_from_previous || 0));
+    const arrivalMinutes = cursor + travelMinutes;
+    const departureMinutes = arrivalMinutes + visitMinutes;
+    cursor = departureMinutes;
+
+    return {
+      ...stop,
+      stop_order: index + 1,
+      arrival_time: formatClockMinutes(arrivalMinutes),
+      departure_time: formatClockMinutes(departureMinutes),
+      visit_duration_minutes: visitMinutes,
+      travel_minutes_from_previous: travelMinutes
+    };
+  });
+}
+
 function getItineraryPoint(prefix) {
   const latitude = Number(itinerary?.[`${prefix}_latitude`]);
   const longitude = Number(itinerary?.[`${prefix}_longitude`]);
@@ -556,6 +616,89 @@ function setRouteSaveMessage(message, isError = false) {
   routeSaveMessage.style.color = isError ? "#dc2626" : "";
 }
 
+function isBusy(action = "") {
+  return busyAction && (!action || busyAction === action);
+}
+
+async function runBusyAction(action, buttonElement, busyText, callback) {
+  if (busyAction) return;
+  busyAction = action;
+
+  const originalText = buttonElement?.textContent;
+  if (buttonElement) {
+    buttonElement.disabled = true;
+    if (busyText) buttonElement.textContent = busyText;
+  }
+  updateAddStopButtonState();
+
+  try {
+    await callback();
+  } finally {
+    if (buttonElement) {
+      buttonElement.disabled = false;
+      if (originalText && buttonElement.dataset.confirmFar !== "1") {
+        buttonElement.textContent = originalText;
+      }
+    }
+    busyAction = "";
+    updateAddStopButtonState();
+  }
+}
+
+function describeRouteCalculation(stopCount) {
+  return stopCount > 4
+    ? "Calculating route timing. Larger routes can take a moment..."
+    : "Calculating route timing...";
+}
+
+function getFarTravelLegMessage(timing) {
+  const legMinutes = [
+    ...timing.stops.map(stop => Number(stop.travel_minutes_from_previous || 0)),
+    Number(timing.finalTravelMinutes || 0)
+  ];
+  const farLegIndex = legMinutes.findIndex(minutes => minutes > MAX_TRAVEL_LEG_MINUTES);
+
+  if (farLegIndex === -1) return "";
+
+  return `This stop is very far from the previous stop. Travel time is ${formatMinutesAsDuration(legMinutes[farLegIndex])}.`;
+}
+
+function showFarStopConfirmation(warningElement, saveButton, message) {
+  if (warningElement) {
+    warningElement.textContent = `${message} Are you sure you want to save it?`;
+    warningElement.classList.add("show");
+  }
+  if (saveButton) {
+    saveButton.dataset.confirmFar = "1";
+    saveButton.textContent = "Save anyway";
+  }
+}
+
+function clearFarStopConfirmation(warningElement, saveButton) {
+  if (warningElement) {
+    warningElement.textContent = "";
+    warningElement.classList.remove("show");
+  }
+  if (saveButton) {
+    delete saveButton.dataset.confirmFar;
+    saveButton.textContent = "Save changes";
+  }
+}
+
+function stopsHaveSameRoute(previousStops, nextStops) {
+  if (previousStops.length !== nextStops.length) return false;
+
+  return previousStops.every((stop, index) => {
+    const nextStop = nextStops[index];
+    if (!nextStop) return false;
+    return (
+      stop.document_id === nextStop.document_id
+      && Number(stop.latitude) === Number(nextStop.latitude)
+      && Number(stop.longitude) === Number(nextStop.longitude)
+    );
+  });
+}
+
 function showSuggestionStatus(boxElement, message, itemClass = "stop-suggestion-item", subClass = "stop-suggestion-sub") {
   if (!boxElement) return;
   boxElement.hidden = false;
@@ -584,13 +727,27 @@ function setEditingState() {
     routeStartInput,
     routeEndInput,
     routeHoursInput,
-    routeInterestInput,
     saveRouteDetailsButton,
     addStopButton,
     inviteEmailInput
   ].forEach(element => {
     if (element) element.disabled = !canEdit;
   });
+  routeInterestInput?.querySelectorAll('input[name="route_interests"]').forEach(input => {
+    input.disabled = !canEdit;
+  });
+  updateAddStopButtonState();
+}
+
+function updateAddStopButtonState() {
+  if (!addStopButton) return;
+  const isAtStopLimit = stopDocs.length >= MAX_EDIT_STOPS;
+  addStopButton.disabled = !canEdit || Boolean(draftStop) || Boolean(busyAction) || isAtStopLimit;
+  if (isAtStopLimit) {
+    addStopButton.textContent = `Cannot add more than ${MAX_EDIT_STOPS} stops`;
+  } else {
+    addStopButton.textContent = draftStop ? "Finish current stop first" : "+ Add a stop";
+  }
 }
 
 async function ensureOwnerCollaborator() {
@@ -644,8 +801,11 @@ function renderItinerary() {
   if (routeHoursInput && document.activeElement !== routeHoursInput) {
     routeHoursInput.value = itinerary.available_hours || "";
   }
-  if (routeInterestInput && document.activeElement !== routeInterestInput) {
-    routeInterestInput.value = itinerary.interest || "culture";
+  if (routeInterestInput && !routeInterestInput.contains(document.activeElement)) {
+    const savedInterests = getSavedInterests();
+    routeInterestInput.querySelectorAll('input[name="route_interests"]').forEach(input => {
+      input.checked = savedInterests.includes(normaliseInterest(input.value));
+    });
   }
   const calculatedMinutes = getTotalRouteMinutes(recalculateStopTimes(stopDocs));
 
@@ -660,6 +820,9 @@ function sortByCreatedDesc(items) {
 function renderStops() {
   if (!stopList) return;
   const visibleStops = draftStop ? [...stopDocs, draftStop] : stopDocs;
+  const calculatedStops = recalculateStopTimes(visibleStops);
+  stopList.classList.toggle("is-scrollable", visibleStops.length > 4);
+  updateAddStopButtonState();
   if (stopCountText) stopCountText.textContent = `${stopDocs.length} stops`;
 
   if (!visibleStops.length) {
@@ -675,7 +838,7 @@ function renderStops() {
     if (editingStopId === stop.document_id) row.classList.add("is-editing");
     row.draggable = canEdit && !isDraft;
     row.dataset.stopId = stop.document_id;
-    const calculatedStop = recalculateStopTimes(visibleStops)[index] || stop;
+    const calculatedStop = calculatedStops[index] || stop;
     const durationText = Number(calculatedStop.visit_duration_minutes || 0)
       ? `${Number(calculatedStop.visit_duration_minutes || 0)} mins visit`
       : "Estimated";
@@ -730,6 +893,7 @@ function renderStops() {
             <button type="button" class="btn btn-primary btn-sm js-save-stop">Save changes</button>
             <button type="button" class="btn btn-secondary btn-sm js-cancel-stop">Cancel</button>
           </div>
+          <div class="stop-warning js-stop-warning" aria-live="polite"></div>
         </div>
       </div>
     `;
@@ -749,7 +913,12 @@ function renderStops() {
     row.addEventListener("drop", function (event) {
       event.preventDefault();
       if (!canEdit || !draggedStopId || draggedStopId === stop.document_id) return;
-      reorderStops(draggedStopId, stop.document_id).catch(console.error);
+      runBusyAction(
+        "reorder-stops",
+        null,
+        "",
+        () => reorderStops(draggedStopId, stop.document_id)
+      ).catch(console.error);
     });
 
     row.querySelector(".js-edit-stop")?.addEventListener("click", function () {
@@ -762,9 +931,11 @@ function renderStops() {
       renderStops();
     });
 
-    row.querySelector(".js-save-stop")?.addEventListener("click", function () {
+    row.querySelector(".js-save-stop")?.addEventListener("click", function (event) {
       const nameInput = row.querySelector(".js-stop-name");
       const durationInput = row.querySelector(".js-stop-duration");
+      const saveButton = event.currentTarget;
+      const warningElement = row.querySelector(".js-stop-warning");
       const placeChanges = getSelectedStopPlaceChanges(stop.document_id);
 
       const changes = {
@@ -773,11 +944,14 @@ function renderStops() {
         ...placeChanges
       };
 
-      if (isDraft) {
-        createStopFromDraft(index + 1, changes).catch(console.error);
-      } else {
-        saveStopChanges(stop.document_id, index + 1, changes).catch(console.error);
-      }
+      runBusyAction(
+        isDraft ? "create-stop" : `save-stop:${stop.document_id}`,
+        saveButton,
+        "Saving...",
+        () => isDraft
+          ? createStopFromDraft(index + 1, changes, saveButton?.dataset.confirmFar === "1", warningElement, saveButton)
+          : saveStopChanges(stop.document_id, index + 1, changes, saveButton?.dataset.confirmFar === "1", warningElement, saveButton)
+      ).catch(console.error);
     });
 
     row.querySelector(".js-delete-stop")?.addEventListener("click", function () {
@@ -791,7 +965,7 @@ function renderStops() {
       openConfirmModal(
         "Remove stop?",
         `Remove ${stopName} from this itinerary? This action cannot be undone.`,
-        () => deleteStop(stop.document_id, stopName).catch(console.error)
+        () => deleteStop(stop.document_id, stopName)
       );
     });
 
@@ -855,7 +1029,8 @@ async function saveRouteDetails() {
     "end_longitude"
   );
   const availableHours = Math.max(1, Number(routeHoursInput?.value || itinerary.available_hours || 1));
-  const interest = String(routeInterestInput?.value || itinerary.interest || "").trim();
+  const interests = getSelectedRouteInterests();
+  const interest = interests[0] || "";
 
   if (!startPlace.name || !endPlace.name) {
     setRouteSaveMessage("Start and end location are required.", true);
@@ -872,7 +1047,12 @@ async function saveRouteDetails() {
     return;
   }
 
-  setRouteSaveMessage("Saving route details...");
+  if (!interests.length) {
+    setRouteSaveMessage("Please choose at least one interest.", true);
+    return;
+  }
+
+  setRouteSaveMessage(describeRouteCalculation(stopDocs.length));
   const previousItinerary = itinerary;
   itinerary = {
     ...itinerary,
@@ -884,7 +1064,8 @@ async function saveRouteDetails() {
     end_longitude: endPlace.longitude,
     destination: endPlace.name,
     available_hours: availableHours,
-    interest
+    interest,
+    interests
   };
 
   try {
@@ -913,6 +1094,7 @@ async function saveRouteDetails() {
       destination: endPlace.name,
       available_hours: availableHours,
       interest,
+      interests,
       stop_count: stopDocs.length,
       travel_duration_minutes: timing.travelMinutes,
       total_duration_minutes: timing.totalMinutes,
@@ -930,7 +1112,7 @@ async function saveRouteDetails() {
   }
 }
 
-async function saveStopChanges(stopDocumentId, stopNumber, changes) {
+async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar = false, warningElement = null, saveButton = null) {
   if (!canEdit) return;
 
   const cleanName = String(changes.stop_name || "").trim();
@@ -958,7 +1140,26 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes) {
       ? { ...stop, ...changes, visit_duration_minutes: nextMinutes }
       : stop;
   });
-  const timing = await recalculateStopTimesWithOsrm(nextStops);
+  const routeChanged = !stopsHaveSameRoute(stopDocs, nextStops);
+  if (routeChanged) {
+    setRouteSaveMessage(describeRouteCalculation(nextStops.length));
+  }
+  const timing = routeChanged
+    ? await recalculateStopTimesWithOsrm(nextStops)
+    : (() => {
+      const localStops = recalculateStopTimesWithExistingTravel(nextStops);
+      return {
+        stops: localStops,
+        travelMinutes: localStops.reduce((total, stop) => total + Number(stop.travel_minutes_from_previous || 0), 0),
+        totalMinutes: getTotalRouteMinutes(localStops)
+      };
+    })();
+  const farLegMessage = routeChanged ? getFarTravelLegMessage(timing) : "";
+  if (farLegMessage && !confirmedFar) {
+    showFarStopConfirmation(warningElement, saveButton, farLegMessage);
+    return;
+  }
+  clearFarStopConfirmation(warningElement, saveButton);
   const recalculatedStops = timing.stops;
 
   const batch = writeBatch(db);
@@ -986,6 +1187,10 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes) {
 
   await batch.commit();
   editingStopId = "";
+  setRouteSaveMessage(
+    routeChanged ? "Route timing updated." : "Visit time saved.",
+    false
+  );
   await addActivity("stop_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} updated stop ${stopNumber}`);
 }
 
@@ -997,7 +1202,9 @@ async function reorderStops(sourceId, targetId) {
   const reordered = [...stopDocs];
   const [moved] = reordered.splice(sourceIndex, 1);
   reordered.splice(targetIndex, 0, moved);
+  setRouteSaveMessage(describeRouteCalculation(reordered.length));
   const timing = await recalculateStopTimesWithOsrm(reordered);
+  const farLegMessage = getFarTravelLegMessage(timing, reordered);
   const recalculatedStops = timing.stops;
 
   const batch = writeBatch(db);
@@ -1016,13 +1223,16 @@ async function reorderStops(sourceId, targetId) {
     updated_at: serverTimestamp()
   });
   await batch.commit();
+  setRouteSaveMessage(farLegMessage || "Route timing updated.", Boolean(farLegMessage));
   await addActivity("stops_reordered", `${currentUser.displayName || currentUser.email || "A collaborator"} reordered stops`);
 }
 
 async function deleteStop(stopDocumentId, stopName) {
   if (!canEdit) return;
   const remaining = stopDocs.filter(item => item.document_id !== stopDocumentId);
+  setRouteSaveMessage(describeRouteCalculation(remaining.length));
   const timing = await recalculateStopTimesWithOsrm(remaining);
+  const farLegMessage = getFarTravelLegMessage(timing, remaining);
   const recalculatedStops = timing.stops;
   const batch = writeBatch(db);
   batch.delete(doc(db, STOP_COLLECTION, stopDocumentId));
@@ -1042,11 +1252,22 @@ async function deleteStop(stopDocumentId, stopName) {
     updated_at: serverTimestamp()
   });
   await batch.commit();
+  setRouteSaveMessage(farLegMessage || "Route timing updated.", Boolean(farLegMessage));
   await addActivity("stop_deleted", `${currentUser.displayName || currentUser.email || "A collaborator"} deleted ${stopName}`);
 }
 
 async function addStop() {
   if (!canEdit || !itinerary) return;
+  if (stopDocs.length >= MAX_EDIT_STOPS) {
+    setRouteSaveMessage(`Cannot add more than ${MAX_EDIT_STOPS} stops.`, true);
+    updateAddStopButtonState();
+    return;
+  }
+  if (draftStop) {
+    editingStopId = "__draft_stop__";
+    renderStops();
+    return;
+  }
   draftStop = {
     document_id: "__draft_stop__",
     stop_order: stopDocs.length + 1,
@@ -1064,8 +1285,15 @@ async function addStop() {
   renderStops();
 }
 
-async function createStopFromDraft(stopNumber, changes) {
+async function createStopFromDraft(stopNumber, changes, confirmedFar = false, warningElement = null, saveButton = null) {
   if (!canEdit || !itinerary || !draftStop) return;
+  if (stopDocs.length >= MAX_EDIT_STOPS) {
+    setRouteSaveMessage(`Cannot add more than ${MAX_EDIT_STOPS} stops.`, true);
+    draftStop = null;
+    editingStopId = "";
+    renderStops();
+    return;
+  }
   const cleanName = String(changes.stop_name || "").trim();
   if (!cleanName || cleanName.toLowerCase() === "new stop") {
     openConfirmModal(
@@ -1098,7 +1326,15 @@ async function createStopFromDraft(stopNumber, changes) {
     visit_duration_minutes: Number(changes.visit_duration_minutes || 0),
     travel_minutes_from_previous: 0
   };
+  setRouteSaveMessage(describeRouteCalculation(stopDocs.length + 1));
   const timing = await recalculateStopTimesWithOsrm([...stopDocs, newStop]);
+  const farLegMessage = getFarTravelLegMessage(timing);
+  if (farLegMessage && !confirmedFar) {
+    showFarStopConfirmation(warningElement, saveButton, farLegMessage);
+    setRouteSaveMessage("");
+    return;
+  }
+  clearFarStopConfirmation(warningElement, saveButton);
   const recalculatedStops = timing.stops;
   const calculatedNewStop = recalculatedStops[recalculatedStops.length - 1];
   await setDoc(stopRef, {
@@ -1127,6 +1363,7 @@ async function createStopFromDraft(stopNumber, changes) {
   });
   draftStop = null;
   editingStopId = "";
+  setRouteSaveMessage("Route timing updated.");
   await addActivity("stop_added", `${currentUser.displayName || currentUser.email || "A collaborator"} added ${cleanName}`);
 }
 
@@ -1265,6 +1502,7 @@ async function inviteCollaborator(email) {
 
 function renderComments(comments) {
   if (!commentsList) return;
+  commentsList.classList.toggle("is-scrollable", comments.length > 4);
   if (!comments.length) {
     commentsList.innerHTML = `<div class="empty-soft">No comments yet.</div>`;
     return;
@@ -1509,23 +1747,41 @@ dateInput?.addEventListener("change", async function () {
 setupRoutePlaceAutocomplete(routeStartInput, routeStartSuggestions, "start");
 setupRoutePlaceAutocomplete(routeEndInput, routeEndSuggestions, "end");
 
-saveRouteDetailsButton?.addEventListener("click", function () {
-  saveRouteDetails().catch(error => {
+saveRouteDetailsButton?.addEventListener("click", function (event) {
+  runBusyAction(
+    "save-route-details",
+    event.currentTarget,
+    "Saving...",
+    saveRouteDetails
+  ).catch(error => {
     console.error("Route details save failed:", error);
     setRouteSaveMessage("Could not save route details.", true);
   });
 });
 
-addStopButton?.addEventListener("click", () => addStop().catch(console.error));
+addStopButton?.addEventListener("click", function (event) {
+  runBusyAction(
+    "add-stop-draft",
+    event.currentTarget,
+    "Adding...",
+    addStop
+  ).catch(console.error);
+});
 
 inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
+  const submitButton = inviteForm.querySelector('button[type="submit"]');
   const email = normaliseEmail(inviteEmailInput?.value);
   if (!email || !email.includes("@")) {
     setInviteMessage("Enter a valid email address.", true);
     return;
   }
-  inviteCollaborator(email).catch(error => {
+  runBusyAction(
+    "invite-collaborator",
+    submitButton,
+    "Inviting...",
+    () => inviteCollaborator(email)
+  ).catch(error => {
     console.error("Invite failed:", error);
     setInviteMessage("Could not send the invite.", true);
   });
@@ -1562,20 +1818,33 @@ confirmModal?.addEventListener("click", function (event) {
   if (event.target === confirmModal) closeConfirmModal();
 });
 
-confirmDeleteButton?.addEventListener("click", function () {
+confirmDeleteButton?.addEventListener("click", function (event) {
   const action = pendingConfirmAction;
   closeConfirmModal();
-  if (typeof action === "function") action();
+  if (typeof action === "function") {
+    runBusyAction(
+      "confirm-action",
+      event.currentTarget,
+      "Deleting...",
+      action
+    ).catch(console.error);
+  }
 });
 
 commentForm?.addEventListener("submit", function (event) {
   event.preventDefault();
+  const submitButton = commentForm.querySelector('button[type="submit"]');
   const text = commentInput?.value || "";
   if (!text.trim()) {
     setCommentMessage("Comment cannot be empty.", true);
     return;
   }
-  addComment(text)
+  runBusyAction(
+    "add-comment",
+    submitButton,
+    "Sending...",
+    () => addComment(text)
+  )
     .then(() => {
       if (commentInput) commentInput.value = "";
     })
