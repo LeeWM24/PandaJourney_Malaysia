@@ -480,14 +480,8 @@ const today = [
       : "No Trip";
 }
 
-
-// =================================
 // Recent Itineraries
-// =================================
-
-function updateRecentItineraries(
-  itineraries
-) {
+function updateRecentItineraries(itineraries) {
   if (!recentListElement) {
     return;
   }
@@ -557,28 +551,32 @@ function updateRecentItineraries(
           "No date";
 
         return `
-          <div class="recent-item">
+          <div class="dashboard-recent-item">
+
             <div class="recent-icon">
               🗓️
             </div>
 
-            <div class="recent-info">
-              <div class="recent-title">
+            <div class="dashboard-recent-info">
+
+              <div class="dashboard-recent-title">
                 ${escapeHtml(title)}
               </div>
 
-              <div class="recent-meta">
+              <div class="dashboard-recent-meta">
                 ${escapeHtml(destination)}
                 ·
                 ${escapeHtml(travelDate)}
               </div>
+
             </div>
 
             <a
               href="/saved-itineraries/${encodeURIComponent(item.id)}"
-              class="btn btn-secondary btn-sm">
-              View
+              class="btn btn-secondary btn-sm dashboard-recent-edit">
+              Edit
             </a>
+
           </div>
         `;
       })

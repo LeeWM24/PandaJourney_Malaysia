@@ -1,12 +1,90 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard — PandaJourney Malaysia{% endblock %}
+
 {% block page_title %}Dashboard{% endblock %}
 
 {% block page_subtitle %}
 Welcome back,
 <span id="dashboardName"></span>
 {% endblock %}
+
+
+{% block extra_head %}
+<style>
+  /* =================================
+     Recent Itineraries
+  ================================= */
+
+  #dashboard-recent-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .dashboard-recent-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease,
+      transform 0.2s ease;
+  }
+
+  .dashboard-recent-item:hover {
+    border-color: #b8d8cd;
+    box-shadow: 0 5px 14px rgba(15, 122, 90, 0.08);
+    transform: translateY(-1px);
+  }
+
+  .dashboard-recent-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .dashboard-recent-title {
+    margin: 0 0 5px;
+    color: #1f2937;
+    font-size: 16px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  .dashboard-recent-meta {
+    margin: 0;
+    color: #6b7280;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .dashboard-recent-edit {
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+
+  /* Loading/empty state should use full width */
+  #dashboard-recent-list .empty-state {
+    width: 100%;
+  }
+
+  @media (max-width: 600px) {
+    .dashboard-recent-item {
+      align-items: flex-start;
+      padding: 14px;
+    }
+
+    .dashboard-recent-edit {
+      align-self: center;
+    }
+  }
+</style>
+{% endblock %}
+
 
 {% block topbar_actions %}
 <a
@@ -15,6 +93,7 @@ Welcome back,
   ✈️ Plan a Trip
 </a>
 {% endblock %}
+
 
 {% block content %}
 
@@ -88,6 +167,7 @@ Welcome back,
   </div>
 </div>
 
+
 <div class="page-inner">
 
   <!-- =================================
@@ -120,6 +200,7 @@ Welcome back,
       </div>
     </div>
 
+
     <!-- Favourite Attractions -->
     <div class="card summary-card">
       <div class="summary-card-header">
@@ -144,6 +225,7 @@ Welcome back,
       </div>
     </div>
 
+
     <!-- Shared Trips -->
     <div class="card summary-card">
       <div class="summary-card-header">
@@ -167,6 +249,7 @@ Welcome back,
         Shared Trips
       </div>
     </div>
+
 
     <!-- Upcoming Trip -->
     <div class="card summary-card">
@@ -194,6 +277,7 @@ Welcome back,
 
   </div>
 
+
   <!-- =================================
        Quick Access
   ================================= -->
@@ -219,6 +303,7 @@ Welcome back,
       </span>
     </a>
 
+
     <a
       href="{{ url_for('smart_itinerary') }}"
       class="quick-tile"
@@ -234,6 +319,7 @@ Welcome back,
       </span>
     </a>
 
+
     <a
       href="{{ url_for('public_itinerary') }}"
       class="quick-tile"
@@ -248,6 +334,7 @@ Welcome back,
         Sharing
       </span>
     </a>
+
 
     <a
       href="{{ url_for('profile') }}"
@@ -266,6 +353,7 @@ Welcome back,
 
   </div>
 
+
   <!-- =================================
        Recent Itineraries
   ================================= -->
@@ -283,7 +371,10 @@ Welcome back,
       </a>
     </div>
 
-    <div id="dashboard-recent-list">
+    <div
+      id="dashboard-recent-list"
+      class="dashboard-recent-list">
+
       <div
         class="empty-state"
         style="padding: 28px 0;">
@@ -303,11 +394,10 @@ Welcome back,
 
 {% endblock %}
 
+
 {% block extra_scripts %}
 <script
   type="module"
   src="{{ url_for('static', filename='js/dashboard.js') }}">
 </script>
 {% endblock %}
-
-
