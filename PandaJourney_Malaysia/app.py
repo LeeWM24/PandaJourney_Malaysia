@@ -17,6 +17,7 @@ from services.itinerary_service import (
 
 from services.smart_attraction import (
     build_attraction_results,
+    suggest_destinations,
 )
 
 
@@ -28,6 +29,23 @@ app = Flask(
 )
 
 app.secret_key = os.getenv("SECRET_KEY", "panda-demo-secret")
+
+
+def asset_version(relative_path: str) -> int:
+    """Returns a static asset's last-modified time as a cache-busting
+    query string value. Browsers cache .js/.css files aggressively and
+    Flask's dev-server auto-reload doesn't touch them, so without this,
+    editing a static file and refreshing the page can silently keep
+    serving the old cached copy. Falls back to 0 if the file is missing
+    so a template render never breaks because of this."""
+    try:
+        full_path = os.path.join(app.static_folder, relative_path)
+        return int(os.path.getmtime(full_path))
+    except OSError:
+        return 0
+
+
+app.jinja_env.globals["asset_version"] = asset_version
 
 
 def get_current_user():
@@ -74,10 +92,23 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/smart-attraction/suggest", methods=["GET"])
+def smart_attraction_suggest():
+    """Type-ahead destination suggestions for the smart-attraction filter
+    panel's search bar (used when no Google Maps key is configured
+    client-side). Separate from /api/location-suggestions, which powers
+    the itinerary planner's destination field."""
+    query = request.args.get("q", "").strip()
+    suggestions = suggest_destinations(query)
+    return jsonify(suggestions)
+
+
 @app.route("/smart-attraction", methods=["GET", "POST"])
 def smart_attraction():
     filters = {
         "destination": "",
+        "destination_lat": "",
+        "destination_lng": "",
         "interests": [],
         "min_rating": "4.0",
         "weather_aware": True,
@@ -131,54 +162,73 @@ def smart_attraction():
                 minimum_rating = float(
                     filters["min_rating"] or 4.0
                 )
-
-                attractions, weather_status, source_note = (
-                    build_attraction_results(
-                        destination_text=filters["destination"],
-                        interest_list=filters["interests"],
-                        minimum_rating=minimum_rating,
-                        use_weather=filters["weather_aware"],
-                        sort_mode=filters["sort"],
-                        destination_lat=(
-                            float(destination_lat) if destination_lat else None
-                        ),
-                        destination_lon=(
-                            float(destination_lon) if destination_lon else None
-                        ),
-                    )
-                )
-
-                results_label = (
-                    f"Showing {len(attractions)} attractions"
-                )
-
             except ValueError:
                 flash(
                     "Invalid rating or filter input. "
                     "Please revise your selection.",
                     "error"
                 )
+            else:
+                try:
+                    attractions, weather_status, source_note, resolved_place = (
+                        build_attraction_results(
+                            destination_text=filters["destination"],
+                            interest_list=filters["interests"],
+                            minimum_rating=minimum_rating,
+                            use_weather=filters["weather_aware"],
+                            sort_mode=filters["sort"],
+                            destination_lat=(
+                                float(destination_lat) if destination_lat else None
+                            ),
+                            destination_lon=(
+                                float(destination_lon) if destination_lon else None
+                            ),
+                        )
+                    )
 
-            except Exception as error:
-                print(
-                    f"[SMART ATTRACTION ERROR] {error}",
-                    flush=True
-                )
+                    # Feed the resolved coordinates back into the hidden
+                    # destination_lat/destination_lng inputs so that a *second*
+                    # search (e.g. just changing minimum rating, without
+                    # re-picking from the autocomplete dropdown) reuses these
+                    # coordinates instead of re-geocoding the destination text —
+                    # which can be an overly-specific address Nominatim can't
+                    # parse as free text (e.g. a full autocomplete-picked address).
+                    filters["destination_lat"] = resolved_place["latitude"]
+                    filters["destination_lng"] = resolved_place["longitude"]
 
-                flash(
-                    "Unable to load attraction recommendations "
-                    "at this time. Please try again.",
-                    "error"
-                )
+                    results_label = (
+                        f"Showing {len(attractions)} attractions"
+                    )
 
-                attractions = []
+                except ValueError as error:
+                    flash(
+                        str(error) or (
+                            "Could not find that destination. "
+                            "Please try a different search term."
+                        ),
+                        "error"
+                    )
+
+                except Exception as error:
+                    print(
+                        f"[SMART ATTRACTION ERROR] {error}",
+                        flush=True
+                    )
+
+                    flash(
+                        "Unable to load attraction recommendations "
+                        "at this time. Please try again.",
+                        "error"
+                    )
+
+                    attractions = []
 
     else:
         filters["destination"] = "Kuala Lumpur"
         filters["interests"] = ["culture"]
 
         try:
-            attractions, weather_status, source_note = (
+            attractions, weather_status, source_note, resolved_place = (
                 build_attraction_results(
                     destination_text=filters["destination"],
                     interest_list=filters["interests"],
@@ -187,6 +237,9 @@ def smart_attraction():
                     sort_mode=filters["sort"],
                 )
             )
+
+            filters["destination_lat"] = resolved_place["latitude"]
+            filters["destination_lng"] = resolved_place["longitude"]
 
             results_label = (
                 f"Showing {len(attractions)} attractions near "
