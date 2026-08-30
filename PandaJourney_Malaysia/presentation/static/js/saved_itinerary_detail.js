@@ -18,6 +18,7 @@ import {
 
 const ITINERARY_COLLECTION = "Itinerary";
 const ITINERARY_STOP_COLLECTION = "itinerary_stops";
+const COLLABORATOR_COLLECTION = "collaborators";
 
 const pageElement = document.getElementById("saved-detail-page");
 const loadingElement = document.getElementById("detail-loading");
@@ -350,6 +351,24 @@ async function getRoadRouteGeometry(mapPoints) {
 // Firebase Load
 // ================================
 
+async function userCanViewItinerary(user, itineraryData, resolvedItineraryId) {
+  if (!user || !itineraryData) return false;
+
+  if (itineraryData.user_id === user.uid || itineraryData.status === "Published") {
+    return true;
+  }
+
+  const collaboratorQuery = query(
+    collection(db, COLLABORATOR_COLLECTION),
+    where("itinerary_id", "==", resolvedItineraryId),
+    where("user_id", "==", user.uid),
+    where("status", "==", "accepted")
+  );
+
+  const collaboratorSnapshot = await getDocs(collaboratorQuery);
+  return !collaboratorSnapshot.empty;
+}
+
 async function getItinerary(user) {
   if (!itineraryId) {
     console.error("[Saved Detail] Missing itinerary id.");
@@ -364,10 +383,11 @@ async function getItinerary(user) {
 
   if (directDocSnap.exists()) {
     const data = directDocSnap.data();
+    const resolvedItineraryId = data.itinerary_id || directDocSnap.id;
 
     console.log("[Saved Detail] direct document found:", data);
 
-    if (data.user_id !== user.uid && data.status !== "Published") {
+    if (!(await userCanViewItinerary(user, data, resolvedItineraryId))) {
       console.warn("[Saved Detail] permission mismatch:", {
         documentUserId: data.user_id,
         currentUserId: user.uid,
@@ -380,7 +400,7 @@ async function getItinerary(user) {
     return {
       ...data,
       document_id: directDocSnap.id,
-      itinerary_id: data.itinerary_id || directDocSnap.id
+      itinerary_id: resolvedItineraryId
     };
   }
 
@@ -398,10 +418,11 @@ async function getItinerary(user) {
 
   const docSnap = snapshot.docs[0];
   const data = docSnap.data();
+  const resolvedItineraryId = data.itinerary_id || docSnap.id;
 
   console.log("[Saved Detail] fallback document found:", data);
 
-  if (data.user_id !== user.uid && data.status !== "Published") {
+  if (!(await userCanViewItinerary(user, data, resolvedItineraryId))) {
     console.warn("[Saved Detail] permission mismatch:", {
       documentUserId: data.user_id,
       currentUserId: user.uid,
@@ -414,7 +435,7 @@ async function getItinerary(user) {
   return {
     ...data,
     document_id: docSnap.id,
-    itinerary_id: data.itinerary_id || docSnap.id
+    itinerary_id: resolvedItineraryId
   };
 }
 
