@@ -78,17 +78,25 @@ function getDateString(value) {
     return value.slice(0, 10);
   }
 
-  if (value?.toDate) {
-    return value
-      .toDate()
-      .toISOString()
-      .slice(0, 10);
-  }
+  const date =
+    value?.toDate
+      ? value.toDate()
+      : value instanceof Date
+        ? value
+        : null;
 
-  if (value instanceof Date) {
-    return value
-      .toISOString()
-      .slice(0, 10);
+  if (date) {
+    return [
+      date.getFullYear(),
+
+      String(
+        date.getMonth() + 1
+      ).padStart(2, "0"),
+
+      String(
+        date.getDate()
+      ).padStart(2, "0")
+    ].join("-");
   }
 
   return "";
@@ -425,20 +433,26 @@ function updateSharedCount(itineraries) {
     String(sharedCount);
 }
 
-
-// =================================
 // Upcoming Trip
-// =================================
-
 function updateUpcomingTrip(itineraries) {
   if (!upcomingDateElement) {
     return;
   }
 
-  const today =
-    new Date()
-      .toISOString()
-      .slice(0, 10);
+  const now =
+  new Date();
+
+const today = [
+  now.getFullYear(),
+
+  String(
+    now.getMonth() + 1
+  ).padStart(2, "0"),
+
+  String(
+    now.getDate()
+  ).padStart(2, "0")
+].join("-");
 
   const upcoming =
     itineraries
@@ -571,10 +585,7 @@ function updateRecentItineraries(
       .join("");
 }
 
-
-// =================================
 // Firebase Authentication
-// =================================
 
 onAuthStateChanged(
   auth,
@@ -584,7 +595,10 @@ onAuthStateChanged(
         "No Firebase user logged in."
       );
 
-      window.location.href = "/";
+      window.location.href =
+      `/login?next=${encodeURIComponent(
+        window.location.pathname
+      )}`;
       return;
     }
 

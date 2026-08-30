@@ -41,7 +41,7 @@ def get_current_user():
     return session.get("user", {})
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
     return render_template("login.html")
 
@@ -80,7 +80,7 @@ def logout():
     session.clear()
     return redirect(url_for("login"))
 
-
+@app.route("/", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
 def smart_attraction():
     filters = {

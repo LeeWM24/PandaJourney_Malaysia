@@ -43,6 +43,23 @@ const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
 
+function getSafeLoginDestination() {
+  const requested =
+    new URLSearchParams(
+      window.location.search
+    ).get("next");
+
+  if (
+    requested &&
+    requested.startsWith("/") &&
+    !requested.startsWith("//")
+  ) {
+    return requested;
+  }
+
+  return "/profile";
+}
+
 provider.setCustomParameters({
   prompt: "select_account"
 });
@@ -86,7 +103,7 @@ if (googleLogin) {
 
       console.log("User saved to Firestore!");
 
-      window.location.href = "/profile";
+      window.location.href = getSafeLoginDestination();
 
     } catch (error) {
       console.error("Google Login failed:", error);
@@ -123,7 +140,7 @@ if (googleSignup) {
 
       console.log("User saved to Firestore!");
 
-      window.location.href = "/profile";
+      window.location.href = getSafeLoginDestination();
 
     } catch (error) {
       console.error("Google Sign Up failed:", error);
@@ -256,7 +273,7 @@ if (loginForm && document.getElementById("email")) {
           { merge: true }
         );
 
-        window.location.href = "/profile";
+        window.location.href = getSafeLoginDestination();
 
       } catch (error) {
         console.error("Email Login failed:", error);
@@ -334,7 +351,7 @@ if (registerForm) {
         "Account created successfully!\n\nPlease check your email and click the verification link before logging in."
       );
 
-      window.location.href = "/";
+      window.location.href = "/login";
 
     } catch (error) {
       console.error("Create Account failed:", error);

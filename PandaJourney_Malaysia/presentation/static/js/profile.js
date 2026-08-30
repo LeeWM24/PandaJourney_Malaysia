@@ -24,13 +24,6 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/12.1.0/firebase-storage.js";
-
-
 // Elements
 
 const identityName =
@@ -74,6 +67,26 @@ const avatarFileInput =
 
 const interestHint =
   document.getElementById("interest-hint");
+
+  const removeFavouriteDialog =
+  document.getElementById(
+    "remove-favourite-dialog"
+  );
+
+const removeFavouriteName =
+  document.getElementById(
+    "remove-favourite-name"
+  );
+
+const cancelRemoveFavouriteBtn =
+  document.getElementById(
+    "cancel-remove-favourite-btn"
+  );
+
+const confirmRemoveFavouriteBtn =
+  document.getElementById(
+    "confirm-remove-favourite-btn"
+  );
 
 
 // Account Security Elements
@@ -123,6 +136,7 @@ let originalAvatarType = "";
 let originalAvatar = "";
 let originalAvatarUrl = "";
 let originalInterests = [];
+let pendingFavouriteRemoval = null;
 
 
 // Avatar Renderer
@@ -411,37 +425,65 @@ window.toggleEdit = function () {
     );
 
   if (identityView) {
-    identityView.style.display = "none";
+    identityView.style.display =
+      "none";
   }
 
   if (identityEdit) {
-    identityEdit.style.display = "flex";
+    identityEdit.style.display =
+      "flex";
   }
 
-  if (editActions) {
-    editActions.classList.remove("hidden");
-  }
+  editActions
+    ?.classList
+    .remove("hidden");
 
   if (editButton) {
-    editButton.style.display = "none";
+    editButton.style.display =
+      "none";
   }
 
-  if (avatarEditBtn) {
-    avatarEditBtn.classList.remove(
-      "hidden"
-    );
-  }
+  avatarEditBtn
+    ?.classList
+    .remove("hidden");
 
   document
-    .querySelectorAll(".interest-chip")
+    .querySelectorAll(
+      ".interest-chip"
+    )
     .forEach(chip => {
-      chip.classList.add("editable");
+      chip.classList.add(
+        "editable"
+      );
     });
 
   if (interestHint) {
     interestHint.textContent =
       "Select the interests that describe you.";
   }
+
+  const profileIdentityCard =
+    document.getElementById(
+      "profile-identity-card"
+    );
+
+  profileIdentityCard
+    ?.classList
+    .add("profile-editing");
+
+  profileIdentityCard
+    ?.scrollIntoView({
+      behavior: "smooth",
+      block: "start"
+    });
+
+  setTimeout(
+    () => {
+      editName?.focus();
+      editName?.select();
+    },
+    450
+  );
 };
 
 
@@ -836,7 +878,6 @@ avatarOptions.forEach(option => {
         option.dataset.avatar || "";
 
       selectedAvatarUrl = "";
-      selectedAvatarFile = null;
 
       renderAvatar({
         type: "emoji",
@@ -912,6 +953,12 @@ window.cancelEdit = function () {
         "aria-pressed",
         selected ? "true" : "false"
       );
+      document
+      .getElementById(
+        "profile-identity-card"
+      )
+      ?.classList
+      .remove("profile-editing");
     });
 
   if (interestHint) {
@@ -1003,8 +1050,6 @@ async function () {
     );
 
   try {
-    // Update Firebase Auth name.
-
     await updateProfile(
       user,
       {
@@ -1012,11 +1057,6 @@ async function () {
           newDisplayName
       }
     );
-
-    // avatarUrl now contains either:
-    // 1. Base64 uploaded photo,
-    // 2. An empty string for emoji,
-    // 3. An empty string for Google photo.
 
     const userData = {
       displayName:
@@ -1096,6 +1136,12 @@ async function () {
     }
 
     isEditing = false;
+    document
+    .getElementById(
+      "profile-identity-card"
+    )
+    ?.classList
+    .remove("profile-editing");
 
     document
       .querySelectorAll(
@@ -1257,7 +1303,6 @@ async function loadSavedItineraryCount(
 
 
 // Favourite Attractions
-
 async function loadFavourites(user) {
   const loadingEl =
     document.getElementById(
@@ -1327,13 +1372,24 @@ async function loadFavourites(user) {
     listEl.style.display = "block";
     listEl.innerHTML = "";
 
-    snapshot.forEach(docSnap => {
+    const favouriteDocs =
+    snapshot.docs;
+
+  favouriteDocs.forEach(
+  (docSnap, index) => {
       const data = docSnap.data();
 
       const row =
         document.createElement("div");
 
       row.className = "fav-row";
+      if (index >= 5) {
+      row.classList.add(
+        "fav-row-extra"
+      );
+
+      row.hidden = true;
+    }
 
       row.innerHTML = `
         <div class="recent-icon">⭐</div>
@@ -1356,15 +1412,68 @@ async function loadFavourites(user) {
         ?.addEventListener(
           "click",
           () => {
-            removeFavourite(
+            openRemoveFavouriteDialog(
               docSnap.id,
-              user
+              user,
+              data.name || "this attraction"
             );
           }
         );
 
       listEl.appendChild(row);
     });
+    if (favouriteDocs.length > 5) {
+  const toggleButton =
+    document.createElement(
+      "button"
+    );
+
+  toggleButton.type = "button";
+
+  toggleButton.className =
+    "btn btn-ghost btn-sm fav-toggle";
+
+  toggleButton.textContent =
+    `Show all (${favouriteDocs.length})`;
+
+  toggleButton.setAttribute(
+    "aria-expanded",
+    "false"
+  );
+
+  toggleButton.addEventListener(
+    "click",
+    () => {
+      const willExpand =
+        toggleButton.getAttribute(
+          "aria-expanded"
+        ) === "false";
+
+      listEl
+        .querySelectorAll(
+          ".fav-row-extra"
+        )
+        .forEach(row => {
+          row.hidden =
+            !willExpand;
+        });
+
+      toggleButton.setAttribute(
+        "aria-expanded",
+        String(willExpand)
+      );
+
+      toggleButton.textContent =
+        willExpand
+          ? "Show less"
+          : `Show all (${favouriteDocs.length})`;
+    }
+  );
+
+  listEl.appendChild(
+    toggleButton
+  );
+}
   } catch (error) {
     console.error(
       "Failed to load favourites:",
@@ -1388,29 +1497,114 @@ async function loadFavourites(user) {
 
 // Remove Favourite
 
-async function removeFavourite(
+function openRemoveFavouriteDialog(
   documentId,
-  user
+  user,
+  attractionName
 ) {
-  try {
-    await deleteDoc(
-      doc(
-        db,
-        FAVOURITES_COLLECTION,
-        documentId
-      )
-    );
+  pendingFavouriteRemoval = {
+    documentId,
+    user
+  };
 
-    await loadFavourites(user);
-  } catch (error) {
-    console.error(
-      "Failed to remove favourite:",
-      error
-    );
+  if (removeFavouriteName) {
+    removeFavouriteName.textContent =
+      attractionName;
+  }
+
+  removeFavouriteDialog
+    ?.showModal();
+}
+
+
+function closeRemoveFavouriteDialog() {
+  pendingFavouriteRemoval =
+    null;
+
+  if (
+    removeFavouriteDialog?.open
+  ) {
+    removeFavouriteDialog.close();
   }
 }
 
 
+cancelRemoveFavouriteBtn
+  ?.addEventListener(
+    "click",
+    closeRemoveFavouriteDialog
+  );
+
+
+removeFavouriteDialog
+  ?.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target ===
+        removeFavouriteDialog
+      ) {
+        closeRemoveFavouriteDialog();
+      }
+    }
+  );
+
+
+confirmRemoveFavouriteBtn
+  ?.addEventListener(
+    "click",
+    async () => {
+      if (
+        !pendingFavouriteRemoval
+      ) {
+        return;
+      }
+
+      const {
+        documentId,
+        user
+      } = pendingFavouriteRemoval;
+
+      try {
+        confirmRemoveFavouriteBtn
+          .disabled = true;
+
+        confirmRemoveFavouriteBtn
+          .textContent =
+          "Removing...";
+
+        await deleteDoc(
+          doc(
+            db,
+            FAVOURITES_COLLECTION,
+            documentId
+          )
+        );
+
+        closeRemoveFavouriteDialog();
+
+        await loadFavourites(
+          user
+        );
+      } catch (error) {
+        console.error(
+          "Failed to remove favourite:",
+          error
+        );
+
+        alert(
+          "Unable to remove this favourite. Please try again."
+        );
+      } finally {
+        confirmRemoveFavouriteBtn
+          .disabled = false;
+
+        confirmRemoveFavouriteBtn
+          .textContent =
+          "Remove";
+      }
+    }
+  );
 // Shared Itinerary Count
 
 async function loadSharedItineraryCount(
@@ -1732,7 +1926,6 @@ changePasswordForm
 
 
 // Logout
-
 // Custom Sign Out Modal
 
 const logoutDialog =
