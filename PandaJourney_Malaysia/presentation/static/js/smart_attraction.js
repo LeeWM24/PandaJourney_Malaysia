@@ -43,7 +43,6 @@ const favouriteDocIds = new Map();
 let currentUser = null;
 let hasSearched = !!searchState.searched;
 let appliedFilters = {
-  dest: searchState.filters.destination || '',
   interests: searchState.filters.interests || [],
   minRating: searchState.filters.min_rating || '0',
   weather: !!searchState.filters.weather_aware,
@@ -51,12 +50,13 @@ let appliedFilters = {
 let currentAttr = null;
 let toastTimer = null;
 
-// Pagination: render only PAGE_SIZE cards at a time and reveal more via the "Show more" button
+// Pagination: render only PAGE_SIZE cards for the current page, with real
+// page-number navigation (rather than a cumulative "show more" list).
 const PAGE_SIZE = 5;
-let visibleCount = PAGE_SIZE;
+let currentPage = 1;
 
 function resetPagination() {
-  visibleCount = PAGE_SIZE;
+  currentPage = 1;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -65,6 +65,8 @@ document.addEventListener('DOMContentLoaded', () => {
   bindPanelEvents();
   renderCards();
   updateFavUI();
+  bindSearchLoadingOverlay();
+  bindDestinationSuggestions();
 
   const clearBtn = document.getElementById('clear-filters');
   if (clearBtn && hasSearched) {
@@ -72,6 +74,156 @@ document.addEventListener('DOMContentLoaded', () => {
     clearBtn.style.display = '';
   }
 });
+
+// Shows the loading overlay the instant the search form is submitted.
+// This is a normal full-page form POST (not AJAX), so the overlay just
+// stays up until the new page finishes loading — no need to hide it.
+function bindSearchLoadingOverlay() {
+  const form = document.getElementById('filter-form');
+  const overlay = document.getElementById('planner-loading-overlay');
+  if (!form || !overlay) return;
+
+  form.addEventListener('submit', () => {
+    const destination = document.getElementById('destination');
+    if (destination && !destination.value.trim()) {
+      return; // let native "required" validation handle empty destination
+    }
+    overlay.style.display = 'flex';
+    overlay.setAttribute('aria-hidden', 'false');
+  });
+}
+
+// Custom "Google Maps style" type-ahead for the destination field, used
+// only when no Google Places key is configured (see PANDA_HAS_GOOGLE_MAPS,
+// set inline in smart_attraction.html). Debounces keystrokes, hits our
+// own /smart-attraction/suggest endpoint (backed by cached Nominatim
+// results), and fills the same hidden lat/lng inputs Google's widget uses
+// — so the backend doesn't need to know which source picked the place.
+function bindDestinationSuggestions() {
+  if (window.PANDA_HAS_GOOGLE_MAPS) return; // Google's own widget handles this instead
+
+  const input = document.getElementById('destination');
+  const latInput = document.getElementById('destination_lat');
+  const lngInput = document.getElementById('destination_lng');
+  const dropdown = document.getElementById('destination-suggestions');
+  if (!input || !dropdown) return;
+
+  let debounceTimer = null;
+  let activeIndex = -1;
+  let currentItems = [];
+
+  function closeDropdown() {
+    dropdown.classList.remove('show');
+    dropdown.innerHTML = '';
+    activeIndex = -1;
+    currentItems = [];
+  }
+
+  function selectItem(item) {
+    // Fill the box with just the clean name — the full address (still
+    // used for the fallback geocode path) stays behind the scenes.
+    input.value = item.name || item.display_name;
+    if (latInput) latInput.value = item.latitude;
+    if (lngInput) lngInput.value = item.longitude;
+    closeDropdown();
+  }
+
+  function renderItems(items) {
+    currentItems = items;
+    activeIndex = -1;
+
+    if (!items.length) {
+      closeDropdown();
+      return;
+    }
+
+    dropdown.innerHTML = items.map((item, index) => `
+      <div class="destination-suggestion-item" role="option" data-index="${index}">
+        📍
+        <span>
+          <span class="destination-suggestion-name">${item.name || item.display_name}</span>
+          ${item.subtitle ? `<span class="destination-suggestion-sub">${item.subtitle}</span>` : ''}
+        </span>
+      </div>`).join('');
+
+    dropdown.classList.add('show');
+
+    dropdown.querySelectorAll('.destination-suggestion-item').forEach((el) => {
+      el.addEventListener('mousedown', (event) => {
+        // mousedown (not click) fires before the input's blur event closes the dropdown
+        event.preventDefault();
+        selectItem(currentItems[Number(el.dataset.index)]);
+      });
+    });
+  }
+
+  async function fetchSuggestions(query) {
+    try {
+      const response = await fetch(`/smart-attraction/suggest?q=${encodeURIComponent(query)}`);
+      if (!response.ok) throw new Error('Suggestion request failed');
+      const items = await response.json();
+      renderItems(Array.isArray(items) ? items : []);
+    } catch (error) {
+      closeDropdown();
+    }
+  }
+
+  input.addEventListener('input', () => {
+    // Typing invalidates any previously selected lat/lng — force the
+    // backend to (re)geocode whatever text ends up submitted.
+    if (latInput) latInput.value = '';
+    if (lngInput) lngInput.value = '';
+
+    const query = input.value.trim();
+    clearTimeout(debounceTimer);
+
+    if (query.length < 3) {
+      closeDropdown();
+      return;
+    }
+
+    debounceTimer = setTimeout(() => fetchSuggestions(query), 300);
+  });
+
+  input.addEventListener('keydown', (event) => {
+    if (!dropdown.classList.contains('show')) return;
+    const items = dropdown.querySelectorAll('.destination-suggestion-item');
+    if (!items.length) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      activeIndex = Math.min(activeIndex + 1, items.length - 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      activeIndex = Math.max(activeIndex - 1, 0);
+    } else if (event.key === 'Enter') {
+      if (activeIndex >= 0) {
+        event.preventDefault();
+        selectItem(currentItems[activeIndex]);
+      }
+      return;
+    } else if (event.key === 'Escape') {
+      closeDropdown();
+      return;
+    } else {
+      return;
+    }
+
+    items.forEach((el, idx) => el.classList.toggle('active', idx === activeIndex));
+    items[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  });
+
+  input.addEventListener('blur', () => {
+    // Slight delay so a mousedown-based selection (above) can still fire first.
+    setTimeout(closeDropdown, 120);
+  });
+
+  document.addEventListener('click', (event) => {
+    if (event.target !== input && !dropdown.contains(event.target)) {
+      closeDropdown();
+    }
+  });
+}
 
 onAuthStateChanged(auth, (user) => {
   currentUser = user;
@@ -208,14 +360,6 @@ function bindFilterEvents() {
   document.getElementById('sort-select').addEventListener('change', () => { resetPagination(); renderCards(); });
   const clearFiltersButton = document.getElementById('clear-filters');
   if (clearFiltersButton) clearFiltersButton.addEventListener('click', clearFilters);
-
-  const showMoreButton = document.getElementById('show-more-btn');
-  if (showMoreButton) {
-    showMoreButton.addEventListener('click', () => {
-      visibleCount += PAGE_SIZE;
-      renderCards();
-    });
-  }
 }
 
 function bindPanelEvents() {
@@ -252,15 +396,6 @@ function getFilteredAttractions() {
   // Show all attractions by default until the user applies filters/search
   if (!hasSearched) return Array.isArray(attractionsData) ? [...attractionsData] : [];
   return attractionsData.filter((item) => {
-    if (appliedFilters.dest) {
-      const query = appliedFilters.dest.toLowerCase();
-      const name = String(item.name || '').toLowerCase();
-      const location = String(item.location || item.area || '').toLowerCase();
-      const tagsRaw = item.interest_tags || item.tags || [];
-      const tags = (Array.isArray(tagsRaw) ? tagsRaw : [tagsRaw]).map((tag) => String(tag).toLowerCase());
-      const matches = name.includes(query) || location.includes(query) || tags.some((tag) => tag.includes(query));
-      if (!matches) return false;
-    }
     if (appliedFilters.interests.length > 0) {
       // match when the attraction has any of the selected interests (OR logic)
       const itemInterestsRaw = item.interests || item.interest_tags || item.tags || [];
@@ -279,6 +414,7 @@ function getSortedAttractions(list) {
   const mode = document.getElementById('sort-select').value;
   return [...list].sort((a, b) => {
     if (mode === 'rating') return Number(b.rating || 0) - Number(a.rating || 0);
+    if (mode === 'rating-asc') return Number(a.rating || 0) - Number(b.rating || 0);
     if (mode === 'nearest') return Number(a.distance_km ?? Infinity) - Number(b.distance_km ?? Infinity);
     return 0;
   });
@@ -287,12 +423,15 @@ function getSortedAttractions(list) {
 function renderCards() {
   const filtered = getFilteredAttractions();
   const sorted = getSortedAttractions(filtered);
-  const visible = sorted.slice(0, visibleCount);
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  currentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const visible = sorted.slice(startIndex, startIndex + PAGE_SIZE);
   const grid = document.getElementById('cards-grid');
   const countEl = document.getElementById('results-count');
   const noteEl = document.getElementById('results-note');
   const weatherEl = document.getElementById('weather-note');
-  const showMoreButton = document.getElementById('show-more-btn');
+  const paginationWrap = document.getElementById('pagination-wrap');
 
   const label = hasSearched ? `result${sorted.length !== 1 ? 's' : ''}` : 'attractions';
   countEl.innerHTML = `Showing <strong>${visible.length}</strong> of <strong>${sorted.length}</strong> ${label}`;
@@ -313,7 +452,7 @@ function renderCards() {
   }
 
   if (sorted.length === 0) {
-    if (showMoreButton) showMoreButton.style.display = 'none';
+    if (paginationWrap) paginationWrap.style.display = 'none';
     if (!hasSearched) {
       grid.innerHTML = '';
       return;
@@ -331,16 +470,54 @@ function renderCards() {
 
   grid.innerHTML = visible.map((attraction) => buildCard(attraction)).join('');
   updateCardFavourites();
+  renderPagination(totalPages, paginationWrap);
+}
 
-  if (showMoreButton) {
-    const remaining = sorted.length - visible.length;
-    if (remaining > 0) {
-      showMoreButton.style.display = '';
-      showMoreButton.textContent = `Show ${Math.min(PAGE_SIZE, remaining)} more`;
-    } else {
-      showMoreButton.style.display = 'none';
-    }
+// Builds Prev / page-number / Next controls — 5 attractions per page,
+// jump straight to any page instead of accumulating a longer list.
+function renderPagination(totalPages, paginationWrap) {
+  if (!paginationWrap) return;
+
+  if (totalPages <= 1) {
+    paginationWrap.style.display = 'none';
+    paginationWrap.innerHTML = '';
+    return;
   }
+
+  paginationWrap.style.display = 'flex';
+
+  const pageButton = (page, label, opts = {}) => `
+    <button type="button" class="page-btn ${opts.active ? 'active' : ''}"
+      data-page="${page}" ${opts.disabled ? 'disabled' : ''}>${label}</button>`;
+
+  let buttons = pageButton(currentPage - 1, '‹', { disabled: currentPage === 1 });
+
+  // Simple windowed page numbers: first, last, and a few around current.
+  const pages = new Set([1, totalPages, currentPage - 1, currentPage, currentPage + 1]);
+  let lastRendered = 0;
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    if (!pages.has(page)) continue;
+    if (page - lastRendered > 1) {
+      buttons += `<span class="page-btn" style="border:none;background:none;cursor:default;">…</span>`;
+    }
+    buttons += pageButton(page, String(page), { active: page === currentPage });
+    lastRendered = page;
+  }
+
+  buttons += pageButton(currentPage + 1, '›', { disabled: currentPage === totalPages });
+
+  paginationWrap.innerHTML = buttons;
+
+  paginationWrap.querySelectorAll('.page-btn[data-page]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const page = Number(btn.dataset.page);
+      if (!page || page < 1 || page > totalPages || page === currentPage) return;
+      currentPage = page;
+      renderCards();
+      document.getElementById('cards-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
 }
 
 // Real-time weather icon lookup — condition strings come from the backend's
@@ -369,6 +546,17 @@ function buildWeatherBadgeHtml(attraction) {
   return '';
 }
 
+// Fallback image used whenever SerpAPI doesn't return a photo, or a photo
+// URL 404s — avoids the "broken image icon + overflowing alt text" look.
+const PLACEHOLDER_IMAGE =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300">' +
+    '<rect width="400" height="300" fill="#e2e8f0"/>' +
+    '<text x="50%" y="50%" font-size="70" text-anchor="middle" dominant-baseline="central">🏞️</text>' +
+    '</svg>'
+  );
+
 function buildCard(attraction) {
   const isFav = favourites.has(attraction.id);
   const weatherBadge = buildWeatherBadgeHtml(attraction);
@@ -380,7 +568,7 @@ function buildCard(attraction) {
   return `
     <article class="attr-card">
       <button class="attr-card-img-wrap" type="button" onclick="openDetail(${attraction.id})" aria-label="View details for ${attraction.name}">
-        <img src="${attraction.image_url || ''}" alt="${attraction.name}" loading="lazy" />
+        <img src="${attraction.image_url || PLACEHOLDER_IMAGE}" alt="${attraction.name}" loading="lazy" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMAGE}';" />
         <div class="attr-card-img-overlay"><span class="img-hint">View details</span></div>
         <div class="img-badge-tr">${weatherBadge}</div>
         <div class="img-fav-badge ${isFav ? 'show' : ''}">★</div>
@@ -497,7 +685,11 @@ function openDetail(id) {
   const sourceEl = document.getElementById('detail-source');
   const galleryEl = document.getElementById('detail-gallery');
 
-  mainImage.src = gallery[0] || '';
+  mainImage.src = gallery[0] || PLACEHOLDER_IMAGE;
+  mainImage.onerror = () => {
+    mainImage.onerror = null;
+    mainImage.src = PLACEHOLDER_IMAGE;
+  };
   nameEl.textContent = attraction.name || 'Attraction';
   const weather = attraction.current_weather;
   const weatherText = weather && weather.condition
@@ -522,7 +714,7 @@ function openDetail(id) {
 
   galleryEl.innerHTML = gallery.map((photo, index) => `
     <button id="thumb-${index}" type="button" class="detail-thumb ${index === 0 ? 'active' : ''}" onclick="setGalleryImg(${index})">
-      <img src="${photo}" alt="Gallery ${index + 1}" />
+      <img src="${photo || PLACEHOLDER_IMAGE}" alt="Gallery ${index + 1}" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMAGE}';" />
     </button>`).join('');
 
   document.getElementById('detail-backdrop').classList.add('active');
@@ -538,7 +730,7 @@ function openDetail(id) {
 function setGalleryImg(index) {
   if (!currentAttr) return;
   const images = currentAttr.photo_urls && currentAttr.photo_urls.length ? currentAttr.photo_urls : [currentAttr.image_url || ''];
-  document.getElementById('detail-main-image').src = images[index] || '';
+  document.getElementById('detail-main-image').src = images[index] || PLACEHOLDER_IMAGE;
   images.forEach((_, idx) => {
     document.getElementById(`thumb-${idx}`)?.classList.toggle('active', idx === index);
   });

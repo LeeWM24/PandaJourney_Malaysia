@@ -14,8 +14,98 @@
   .form-input-icon { position: relative; }
   .form-input-icon .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 16px; pointer-events: none; }
   .form-input-icon .form-input { padding-left: 42px; }
+  .destination-suggestions {
+    position: absolute;
+    left: 0; right: 0; top: calc(100% + 4px);
+    background: #ffffff;
+    background: var(--card, #ffffff);
+    opacity: 1;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+    z-index: 400;
+    max-height: 260px;
+    overflow-y: auto;
+    display: none;
+  }
+  .destination-suggestions.show { display: block; }
+  .destination-suggestion-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 14px;
+    font-size: 13px;
+    line-height: 1.4;
+    cursor: pointer;
+    background: var(--card, #ffffff);
+    border-bottom: 1px solid var(--border);
+  }
+  .destination-suggestion-item:last-child { border-bottom: none; }
+  .destination-suggestion-item:hover,
+  .destination-suggestion-item.active { background: var(--muted-bg, #f0f7f4); }
+  .destination-suggestion-item > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .destination-suggestion-name { font-weight: 700; color: var(--fg); }
+  .destination-suggestion-sub {
+    font-size: 11.5px;
+    color: var(--muted-fg, #5a7a6a);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Loading overlay — shown while the search form submits (SerpAPI can
+     take a few seconds), same visual language as the itinerary planner. */
+  .planner-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+  }
+  .planner-loading-card {
+    min-width: 230px;
+    border-radius: 18px;
+    padding: 22px 24px;
+    background: #ffffff;
+    background: var(--card, #ffffff);
+    opacity: 1;
+    border: 1px solid var(--border);
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);
+    text-align: center;
+  }
+  .planner-spinner {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 12px;
+    border-radius: 999px;
+    border: 4px solid var(--border);
+    border-top-color: var(--primary, #0f8a67);
+    animation: planner-spin 0.9s linear infinite;
+  }
+  .planner-loading-title { font-size: 14px; font-weight: 800; color: var(--fg); }
+  .planner-loading-sub { margin-top: 4px; color: var(--muted-fg, #5a7a6a); font-size: 12px; }
+  @keyframes planner-spin { to { transform: rotate(360deg); } }
   .filter-actions { display: flex; gap: 12px; margin-top: 18px; align-items: stretch; }
   .filter-actions .btn { flex: 1; }
+  .page-btn {
+    min-width: 34px;
+    height: 34px;
+    padding: 0 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card, #ffffff);
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .page-btn:hover { background: var(--muted-bg, #f0f7f4); }
+  .page-btn.active { background: var(--primary, #0f8a67); border-color: var(--primary, #0f8a67); color: #fff; }
+  .page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .page-btn:disabled:hover { background: var(--card, #ffffff); }
   .filter-actions .clear-filters { background: transparent; color: var(--fg-2); border: 1px solid var(--border); }
     .filter-actions { flex-direction: column; }
     .filter-actions .btn { width: 100%; }
@@ -240,6 +330,13 @@
 {% endblock %}
 
 {% block content %}
+<div id="planner-loading-overlay" class="planner-loading-overlay" aria-live="polite" aria-hidden="true">
+  <div class="planner-loading-card">
+    <div class="planner-spinner"></div>
+    <div class="planner-loading-title">Searching attractions...</div>
+    <div class="planner-loading-sub">Fetching live places &amp; weather — this can take a few seconds.</div>
+  </div>
+</div>
 <div class="page-inner">
 <div class="attraction-layout">
   <aside class="filter-panel">
@@ -256,8 +353,9 @@
                    autocomplete="off"
                    placeholder="e.g. Bukit Bintang"
                    value="{{ filters.destination | default('') }}" />
-            <input type="hidden" id="destination_lat" name="destination_lat" value="" />
-            <input type="hidden" id="destination_lng" name="destination_lng" value="" />
+            <input type="hidden" id="destination_lat" name="destination_lat" value="{{ filters.destination_lat | default('') }}" />
+            <input type="hidden" id="destination_lng" name="destination_lng" value="{{ filters.destination_lng | default('') }}" />
+            <div id="destination-suggestions" class="destination-suggestions" role="listbox"></div>
           </div>
         </div>
 
@@ -313,6 +411,7 @@
           <select class="sort-select" id="sort-select">
             <option value="score">Most Relevant</option>
             <option value="rating">Highest Rated</option>
+            <option value="rating-asc">Lowest Rated</option>
             <option value="nearest" selected>Nearest</option>
           </select>
         </div>
@@ -320,9 +419,7 @@
     </div>
 
     <div id="cards-grid" class="cards-grid"></div>
-    <div class="show-more-wrap" style="display:flex; justify-content:center; margin-top: 1.25rem;">
-      <button id="show-more-btn" type="button" class="btn btn-ghost" style="display:none;">Show 5 more</button>
-    </div>
+    <div id="pagination-wrap" class="pagination-wrap" style="display:none; justify-content:center; align-items:center; gap:6px; margin-top: 1.25rem; flex-wrap: wrap;"></div>
   </section>
 </div>
 </div>
@@ -423,7 +520,10 @@
 {{ {"email": nominatim_email, "user_agent": nominatim_user_agent} | tojson }}
 </script>
 
-<script src="{{ url_for('static', filename='js/smart_attraction.js') }}" type="module"></script>
+<script>
+  window.PANDA_HAS_GOOGLE_MAPS = {{ 'true' if google_maps_api_key else 'false' }};
+</script>
+<script src="{{ url_for('static', filename='js/smart_attraction.js') }}?v={{ asset_version('js/smart_attraction.js') }}" type="module"></script>
 
 {% if google_maps_api_key %}
 <script>
@@ -446,6 +546,12 @@
       if (place && place.geometry && place.geometry.location) {
         latInput.value = place.geometry.location.lat();
         lngInput.value = place.geometry.location.lng();
+        // Google's widget defaults to filling the box with the full
+        // formatted address — replace it with just the place name to
+        // match the custom dropdown's cleaner look.
+        if (place.name) {
+          input.value = place.name;
+        }
       } else {
         latInput.value = '';
         lngInput.value = '';

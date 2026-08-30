@@ -128,7 +128,10 @@ def is_bad_candidate_name(name: str) -> bool:
 
 def get_serpapi_search_keyword(interests: list[str]) -> str:
     """Return a more suitable Google Maps search keyword based on interest."""
-    interest = interests[0].lower() if interests else "attraction"
+    if not interests:
+        return "tourist attractions"
+
+    interest = interests[0].lower()
 
     keyword_map = {
         "food": "restaurants cafe food court",
@@ -230,6 +233,10 @@ def geocode_place(query: str) -> dict[str, Any] | None:
         print("[GEOCODE ERROR] Empty input.", flush=True)
         return None
 
+    # Only ever cache *successful* geocodes. Caching a failure would mean
+    # one Nominatim hiccup (or one query that's simply too specific)
+    # permanently blocks that exact string for the rest of the process's
+    # life — even after we improve the fallback logic below.
     if key in GEOCODE_CACHE:
         print(f"[GEOCODE MEMORY CACHE] {query}", flush=True)
         return GEOCODE_CACHE[key]
@@ -243,6 +250,20 @@ def geocode_place(query: str) -> dict[str, Any] | None:
 
     if "malaysia" not in key:
         search_queries.append(f"{query}, Malaysia")
+
+    # A destination string can be over-specified — e.g. a full address
+    # copied from an autocomplete suggestion ("Bukit Jalil National
+    # Stadium, Persiaran KL Sports City, Bukit Jalil, Kuala Lumpur, 57000,
+    # Malaysia") — which Nominatim's free-text search can fail to match
+    # even though the venue name and the area are each individually
+    # findable. If the exact string fails, progressively drop the
+    # left-most comma-separated segment (usually the venue name) and
+    # retry, falling back toward the general area rather than giving up.
+    segments = [part.strip() for part in query.split(",") if part.strip()]
+    for drop_count in range(1, len(segments) - 1):
+        reduced = ", ".join(segments[drop_count:])
+        if reduced and reduced not in search_queries:
+            search_queries.append(reduced)
 
     for index, search_text in enumerate(search_queries):
         params = {
@@ -288,6 +309,12 @@ def geocode_place(query: str) -> dict[str, Any] | None:
                 "source": "OpenStreetMap Nominatim API",
             }
 
+            if search_text != query:
+                print(
+                    f"[GEOCODE FALLBACK] '{query}' matched via reduced query '{search_text}'",
+                    flush=True,
+                )
+
             GEOCODE_CACHE[key] = result
             cache_set(f"geocode:{key}", result)
 
@@ -311,8 +338,81 @@ def geocode_place(query: str) -> dict[str, Any] | None:
         cache_set(f"geocode:{key}", serpapi_result)
         return serpapi_result
 
-    GEOCODE_CACHE[key] = None
+    # Deliberately NOT caching this failure — see comment above.
     return None
+
+
+def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    """Lightweight autocomplete for the destination field — powers the
+    'type-ahead' dropdown when no Google Maps key is configured. Uses the
+    same free Nominatim endpoint as geocode_place, cached briefly since
+    the same partial query gets hit repeatedly as the user types."""
+
+    key = query.strip().lower()
+
+    if len(key) < 3:
+        return []
+
+    cache_key = f"suggest:{key}:{limit}"
+    cached = cache_get(cache_key, max_age_seconds=24 * 3600)
+    if cached is not None:
+        return cached
+
+    params = {
+        "q": key,
+        "format": "jsonv2",
+        "limit": limit,
+        "addressdetails": 1,
+        "countrycodes": "my",
+    }
+
+    if NOMINATIM_EMAIL:
+        params["email"] = NOMINATIM_EMAIL
+
+    try:
+        response = requests.get(
+            NOMINATIM_URL,
+            params=params,
+            headers={"User-Agent": USER_AGENT, "Accept-Language": "en"},
+            timeout=10,
+        )
+        response.raise_for_status()
+        results = response.json()
+    except requests.RequestException as error:
+        print(f"[SUGGEST ERROR] {error}", flush=True)
+        return []
+
+    suggestions = []
+
+    for item in results:
+        if "lat" not in item or "lon" not in item:
+            continue
+
+        display_name = item.get("display_name", "")
+        # Nominatim's jsonv2 "name" field is just the place/venue name
+        # (e.g. "Bukit Jalil National Stadium"); display_name is the full
+        # comma-separated address. Fall back to the first address segment
+        # if "name" is missing so we still get something short.
+        short_name = item.get("name") or display_name.split(",")[0].strip()
+
+        # Secondary line for context — whatever's left of the address
+        # after the name, trimmed down to the first couple of segments.
+        remainder = display_name
+        if short_name and remainder.startswith(short_name):
+            remainder = remainder[len(short_name):].lstrip(", ")
+        sub_parts = [part.strip() for part in remainder.split(",") if part.strip()]
+        subtitle = ", ".join(sub_parts[:2])
+
+        suggestions.append({
+            "name": short_name,
+            "subtitle": subtitle,
+            "display_name": display_name,
+            "latitude": float(item["lat"]),
+            "longitude": float(item["lon"]),
+        })
+
+    cache_set(cache_key, suggestions)
+    return suggestions
 
 
 def get_weather(latitude: float, longitude: float, trip_date: str) -> dict[str, Any] | None:
@@ -416,6 +516,8 @@ def _serpapi_page(
     minimum_rating: float,
     api_key: str,
     start: int,
+    zoom: int = 13,
+    apply_min_rating: bool = True,
 ) -> list[dict[str, Any]]:
     """Fetch one page (~20 results) of Google Maps local results."""
 
@@ -423,12 +525,14 @@ def _serpapi_page(
         "engine": "google_maps",
         "type": "search",
         "q": keyword,
-        "ll": f"@{latitude},{longitude},13z",
-        "min_rating": str(minimum_rating),
+        "ll": f"@{latitude},{longitude},{zoom}z",
         "hl": "en",
         "gl": "my",
         "api_key": api_key,
     }
+
+    if apply_min_rating:
+        params["min_rating"] = str(minimum_rating)
 
     if start:
         params["start"] = start
@@ -446,6 +550,33 @@ def _serpapi_page(
     return data.get("local_results", [])
 
 
+def classify_indoor_outdoor(item_type: str, description: str, title: str) -> str | None:
+    """Heuristic indoor/outdoor classification from SerpAPI's place type,
+    description and name — this is what actually powers weather-aware
+    scoring, so without it the feature silently does nothing."""
+
+    text = f"{item_type} {description} {title}".lower()
+
+    indoor_keywords = (
+        "museum", "gallery", "mall", "shopping centre", "shopping center",
+        "aquarium", "cinema", "theatre", "theater", "planetarium",
+        "indoor", "arcade", "market hall", "temple interior", "mosque",
+        "church", "spa", "casino", "bowling", "convention centre",
+    )
+    outdoor_keywords = (
+        "park", "garden", "beach", "waterfall", "hiking", "trail",
+        "square", "viewpoint", "hill", "lake", "island", "zoo",
+        "outdoor", "playground", "botanical", "trek", "mountain",
+        "river", "cave", "wildlife", "farm", "street",
+    )
+
+    if any(keyword in text for keyword in indoor_keywords):
+        return "indoor"
+    if any(keyword in text for keyword in outdoor_keywords):
+        return "outdoor"
+    return None
+
+
 def search_attractions_serpapi(
     latitude: float,
     longitude: float,
@@ -460,7 +591,10 @@ def search_attractions_serpapi(
 
     NOTE on cost: every extra page is a separate billed SerpAPI request —
     3 pages = 3 credits per *uncached* search. The cache above is what
-    keeps this affordable; pagination alone does not.
+    keeps this affordable; pagination alone does not. If a search comes
+    back completely empty (e.g. a precise POI like a single stadium
+    building), we retry at up to 2 wider zoom levels — this only spends
+    extra credits on the rare 0-result case, not on every search.
     """
 
     api_key = os.getenv("SERPAPI_KEY", "").strip()
@@ -487,18 +621,53 @@ def search_attractions_serpapi(
 
     raw_results: list[dict[str, Any]] = []
 
-    for page in range(max_pages):
-        page_results = _serpapi_page(
-            keyword, latitude, longitude, minimum_rating, api_key, start=page * 20
-        )
+    # A destination picked from the autocomplete dropdown can be a precise
+    # single building (e.g. a stadium) rather than a whole city/area — the
+    # default zoom that works great for a city-centre point can come back
+    # empty for those. If we get nothing, automatically zoom out and retry
+    # before giving up, so precise POIs don't silently return 0 results.
+    for zoom in (13, 11, 9):
+        for page in range(max_pages):
+            page_results = _serpapi_page(
+                keyword, latitude, longitude, minimum_rating, api_key,
+                start=page * 20, zoom=zoom,
+            )
 
-        if not page_results:
-            break  # no more pages / error — stop paginating
+            if not page_results:
+                break  # no more pages / error — stop paginating this zoom level
 
-        raw_results.extend(page_results)
+            raw_results.extend(page_results)
 
-        if len(page_results) < 20:
-            break  # short page = last page
+            if len(page_results) < 20:
+                break  # short page = last page
+
+        if raw_results:
+            break  # found something — no need to zoom out further
+
+        print(f"[SERPAPI SEARCH] 0 results at zoom={zoom}, widening search area...", flush=True)
+
+    # Still nothing even at the widest zoom? Google's own min_rating filter
+    # can zero out an otherwise-nonempty result set in a sparse/rural area
+    # (e.g. a small border town) where nearby places just aren't well-rated
+    # or well-reviewed yet. Try once more without it — recommend_attractions()
+    # still applies minimum_rating locally afterwards, but only against
+    # places that actually have a rating, so unrated-but-real places can
+    # still surface instead of a flat "0 results".
+    if not raw_results:
+        print("[SERPAPI SEARCH] Still empty — retrying widest zoom without min_rating filter...", flush=True)
+        for page in range(max_pages):
+            page_results = _serpapi_page(
+                keyword, latitude, longitude, minimum_rating, api_key,
+                start=page * 20, zoom=9, apply_min_rating=False,
+            )
+
+            if not page_results:
+                break
+
+            raw_results.extend(page_results)
+
+            if len(page_results) < 20:
+                break
 
     print(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps", flush=True)
 
@@ -537,6 +706,10 @@ def search_attractions_serpapi(
 
         if interests and not tags:
             tags = [interests[0]]
+
+        weather_class = classify_indoor_outdoor(item_type, description, title)
+        if weather_class:
+            tags.append(weather_class)
 
         # data from SerpApi
         thumbnail = item.get("thumbnail") or ""
@@ -1000,4 +1173,9 @@ def build_attraction_results(
         selected,
         weather_message,
         source_note,
+        {
+            "latitude": destination_place["latitude"],
+            "longitude": destination_place["longitude"],
+            "display_name": destination_place.get("display_name", destination_text),
+        },
     )
