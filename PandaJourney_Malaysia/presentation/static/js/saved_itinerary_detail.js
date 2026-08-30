@@ -157,6 +157,13 @@ function normaliseNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function isUsableStop(stop) {
+  const name = String(stop.stop_name || "").trim().toLowerCase();
+  const latitude = normaliseNumber(stop.latitude);
+  const longitude = normaliseNumber(stop.longitude);
+  return Boolean(name) && name !== "new stop" && latitude !== null && longitude !== null;
+}
+
 function isCurrentLocationName(value) {
   return String(value || "").trim().toLowerCase() === "current location";
 }
@@ -172,6 +179,16 @@ function buildCoordinateText(point) {
   }
 
   return `${latitude.toFixed(7)},${longitude.toFixed(7)}`;
+}
+
+function sameCoordinate(pointA, pointB) {
+  if (!pointA || !pointB) return false;
+  const latA = normaliseNumber(pointA.latitude);
+  const lngA = normaliseNumber(pointA.longitude);
+  const latB = normaliseNumber(pointB.latitude);
+  const lngB = normaliseNumber(pointB.longitude);
+  if (latA === null || lngA === null || latB === null || lngB === null) return false;
+  return Math.abs(latA - latB) < 0.0001 && Math.abs(lngA - lngB) < 0.0001;
 }
 
 function buildGoogleMapsUrl(originPoint, destinationPoint, useLiveCurrentLocation = false) {
@@ -248,10 +265,6 @@ function buildFallbackFullRouteUrl(itinerary, stops) {
   const endLat = normaliseNumber(itinerary.end_latitude);
   const endLng = normaliseNumber(itinerary.end_longitude);
 
-  if (endLat === null || endLng === null) {
-    return "";
-  }
-
   const useLiveCurrentLocation = isCurrentLocationName(
     itinerary.start_location_name
   );
@@ -261,12 +274,7 @@ function buildFallbackFullRouteUrl(itinerary, stops) {
     longitude: startLng
   };
 
-  const endPoint = {
-    latitude: endLat,
-    longitude: endLng
-  };
-
-  const waypointPoints = stops
+  const validStopPoints = stops
     .map(function (stop) {
       const lat = normaliseNumber(stop.latitude);
       const lng = normaliseNumber(stop.longitude);
@@ -281,6 +289,18 @@ function buildFallbackFullRouteUrl(itinerary, stops) {
       };
     })
     .filter(Boolean);
+
+  const endPoint = validStopPoints.length
+    ? validStopPoints[validStopPoints.length - 1]
+    : endLat !== null && endLng !== null
+      ? { latitude: endLat, longitude: endLng }
+      : null;
+
+  if (!endPoint) {
+    return "";
+  }
+
+  const waypointPoints = validStopPoints.slice(0, -1);
 
   return buildGoogleMapsRouteUrl(
     startPoint,
@@ -434,7 +454,7 @@ async function loadDetail(user) {
     itinerary.itinerary_id ||
     itinerary.document_id;
 
-  const stops = await getItineraryStops(targetItineraryId);
+  const stops = (await getItineraryStops(targetItineraryId)).filter(isUsableStop);
 
   renderItinerary(itinerary, stops);
   renderStops(itinerary, stops);
@@ -453,16 +473,17 @@ async function loadDetail(user) {
 // ================================
 
 function renderItinerary(itinerary, stops) {
-  const stopCount =
-    itinerary.stop_count ||
-    stops.length ||
-    0;
+  const stopCount = stops.length;
+
+  const startName = itinerary.start_location_name || "Start Location";
+  const endName = itinerary.end_location_name || itinerary.destination || "End Location";
+  const routeName = `${startName} to ${endName}`;
 
   setText("detail-title", itinerary.title || "Untitled Trip");
-  setText("detail-destination", itinerary.destination || "Malaysia");
+  setText("detail-destination", routeName);
   setText("detail-date", formatDate(itinerary.travel_date));
-  setText("detail-start", itinerary.start_location_name || "Start Location");
-  setText("detail-end", itinerary.end_location_name || "End Location");
+  setText("detail-start", startName);
+  setText("detail-end", endName);
   setText("detail-hours", itinerary.available_hours ? `${itinerary.available_hours} hrs` : "Estimated");
   setText("detail-interest", itinerary.interest || "-");
   setText("detail-stop-count", `${stopCount} stops`);
@@ -474,9 +495,7 @@ function renderItinerary(itinerary, stops) {
     itinerary.start_location_name
   );
 
-  const fullRouteUrl = useLiveCurrentLocation
-    ? buildFallbackFullRouteUrl(itinerary, stops)
-    : itinerary.google_maps_full_route_url || buildFallbackFullRouteUrl(itinerary, stops);
+  const fullRouteUrl = buildFallbackFullRouteUrl(itinerary, stops);
 
   renderFullGoogleRouteAction(fullRouteUrl);
 }
@@ -638,12 +657,16 @@ async function renderMap(itinerary, stops) {
     }
   });
 
-  if (endLat !== null && endLng !== null) {
-    mapPoints.push({
+  const endPoint = endLat !== null && endLng !== null
+    ? {
       label: `End: ${itinerary.end_location_name || "End Location"}`,
       latitude: endLat,
       longitude: endLng
-    });
+    }
+    : null;
+
+  if (endPoint && !stops.length && !sameCoordinate(mapPoints[mapPoints.length - 1], endPoint)) {
+    mapPoints.push(endPoint);
   }
 
   if (!mapPoints.length) {
@@ -668,18 +691,20 @@ async function renderMap(itinerary, stops) {
     markerGroup.addLayer(marker);
   });
 
-  const roadRouteGeometry = await getRoadRouteGeometry(mapPoints);
-
   let routeLayer = null;
 
-  if (roadRouteGeometry) {
-    routeLayer = L.geoJSON(roadRouteGeometry).addTo(detailMap);
-  } else {
-    const polylinePoints = mapPoints.map(function (point) {
-      return [point.latitude, point.longitude];
-    });
+  if (mapPoints.length >= 2) {
+    const roadRouteGeometry = await getRoadRouteGeometry(mapPoints);
 
-    routeLayer = L.polyline(polylinePoints).addTo(detailMap);
+    if (roadRouteGeometry) {
+      routeLayer = L.geoJSON(roadRouteGeometry).addTo(detailMap);
+    } else {
+      const polylinePoints = mapPoints.map(function (point) {
+        return [point.latitude, point.longitude];
+      });
+
+      routeLayer = L.polyline(polylinePoints).addTo(detailMap);
+    }
   }
 
   detailMap.setView([mapPoints[0].latitude, mapPoints[0].longitude], 13);

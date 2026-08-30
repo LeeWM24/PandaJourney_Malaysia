@@ -1,6 +1,13 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
+try:
+    import truststore
+
+    truststore.inject_into_ssl()
+except ImportError:
+    pass
+
 # from services.public_itinerary_service import (
 #     get_public_itineraries,
 #     increment_view,
@@ -305,6 +312,17 @@ def saved_itineraries():
 def saved_itinerary_detail(itinerary_id):
     return render_template(
         "saved_itinerary_detail.html",
+        active_page="saved",
+        current_user=get_current_user(),
+        itinerary_id=itinerary_id
+    )
+
+
+@app.route("/saved-itinerary/<itinerary_id>/edit")
+@app.route("/saved-itineraries/<itinerary_id>/edit")
+def saved_itinerary_edit(itinerary_id):
+    return render_template(
+        "saved_itinerary_edit.html",
         active_page="saved",
         current_user=get_current_user(),
         itinerary_id=itinerary_id
