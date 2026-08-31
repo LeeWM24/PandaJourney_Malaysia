@@ -157,8 +157,130 @@ function normaliseNumber(value) {
   return Number.isFinite(numberValue) ? numberValue : null;
 }
 
+function getFirstValue(object, keys) {
+  for (const key of keys) {
+    if (
+      object &&
+      object[key] !== undefined &&
+      object[key] !== null &&
+      object[key] !== ""
+    ) {
+      return object[key];
+    }
+  }
+
+  return null;
+}
+
 function isCurrentLocationName(value) {
   return String(value || "").trim().toLowerCase() === "current location";
+}
+
+function getStartLocationName(itinerary) {
+  return (
+    itinerary.start_location_name ||
+    itinerary.start ||
+    "Start Location"
+  );
+}
+
+function getEndLocationName(itinerary) {
+  return (
+    itinerary.end_location_name ||
+    itinerary.end ||
+    itinerary.destination ||
+    "End Location"
+  );
+}
+
+function getStartPoint(itinerary) {
+  const latitude = normaliseNumber(
+    getFirstValue(itinerary, [
+      "start_latitude",
+      "start_lat",
+      "startLatitude"
+    ])
+  );
+
+  const longitude = normaliseNumber(
+    getFirstValue(itinerary, [
+      "start_longitude",
+      "start_lng",
+      "startLongitude"
+    ])
+  );
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude
+  };
+}
+
+function getEndPoint(itinerary) {
+  const latitude = normaliseNumber(
+    getFirstValue(itinerary, [
+      "end_latitude",
+      "end_lat",
+      "endLatitude"
+    ])
+  );
+
+  const longitude = normaliseNumber(
+    getFirstValue(itinerary, [
+      "end_longitude",
+      "end_lng",
+      "endLongitude"
+    ])
+  );
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude
+  };
+}
+
+function getStopPoint(stop) {
+  const latitude = normaliseNumber(stop.latitude);
+  const longitude = normaliseNumber(stop.longitude);
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude
+  };
+}
+
+function getLastStopPoint(stops) {
+  if (!stops.length) return null;
+
+  for (let index = stops.length - 1; index >= 0; index -= 1) {
+    const point = getStopPoint(stops[index]);
+
+    if (point) {
+      return point;
+    }
+  }
+
+  return null;
+}
+
+function getLastStopName(stops) {
+  if (!stops.length) return "Start Location";
+
+  const lastStop = stops[stops.length - 1];
+
+  return lastStop.stop_name || "Previous Stop";
 }
 
 function buildCoordinateText(point) {
@@ -203,8 +325,8 @@ function buildGoogleMapsUrl(originPoint, destinationPoint, useLiveCurrentLocatio
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-function buildGoogleMapsRouteUrl(origin, destination, waypoints = [], useLiveCurrentLocation = false) {
-  const destinationText = buildCoordinateText(destination);
+function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints = [], useLiveCurrentLocation = false) {
+  const destinationText = buildCoordinateText(destinationPoint);
 
   if (!destinationText) {
     return "";
@@ -215,7 +337,7 @@ function buildGoogleMapsRouteUrl(origin, destination, waypoints = [], useLiveCur
   params.set("api", "1");
 
   if (!useLiveCurrentLocation) {
-    const originText = buildCoordinateText(origin);
+    const originText = buildCoordinateText(originPoint);
 
     if (!originText) {
       return "";
@@ -227,7 +349,7 @@ function buildGoogleMapsRouteUrl(origin, destination, waypoints = [], useLiveCur
   params.set("destination", destinationText);
   params.set("travelmode", "driving");
 
-  const waypointTexts = waypoints
+  const waypointTexts = waypointPoints
     .map(buildCoordinateText)
     .filter(Boolean);
 
@@ -243,12 +365,10 @@ function buildGoogleMapsRouteUrl(origin, destination, waypoints = [], useLiveCur
 }
 
 function buildFallbackFullRouteUrl(itinerary, stops) {
-  const startLat = normaliseNumber(itinerary.start_latitude);
-  const startLng = normaliseNumber(itinerary.start_longitude);
-  const endLat = normaliseNumber(itinerary.end_latitude);
-  const endLng = normaliseNumber(itinerary.end_longitude);
+  const startPoint = getStartPoint(itinerary);
+  const endPoint = getEndPoint(itinerary);
 
-  if (endLat === null || endLng === null) {
+  if (!endPoint) {
     return "";
   }
 
@@ -256,30 +376,8 @@ function buildFallbackFullRouteUrl(itinerary, stops) {
     itinerary.start_location_name
   );
 
-  const startPoint = {
-    latitude: startLat,
-    longitude: startLng
-  };
-
-  const endPoint = {
-    latitude: endLat,
-    longitude: endLng
-  };
-
   const waypointPoints = stops
-    .map(function (stop) {
-      const lat = normaliseNumber(stop.latitude);
-      const lng = normaliseNumber(stop.longitude);
-
-      if (lat === null || lng === null) {
-        return null;
-      }
-
-      return {
-        latitude: lat,
-        longitude: lng
-      };
-    })
+    .map(getStopPoint)
     .filter(Boolean);
 
   return buildGoogleMapsRouteUrl(
@@ -461,31 +559,35 @@ function renderItinerary(itinerary, stops) {
   setText("detail-title", itinerary.title || "Untitled Trip");
   setText("detail-destination", itinerary.destination || "Malaysia");
   setText("detail-date", formatDate(itinerary.travel_date));
-  setText("detail-start", itinerary.start_location_name || "Start Location");
-  setText("detail-end", itinerary.end_location_name || "End Location");
+  setText("detail-start", getStartLocationName(itinerary));
+  setText("detail-end", getEndLocationName(itinerary));
   setText("detail-hours", itinerary.available_hours ? `${itinerary.available_hours} hrs` : "Estimated");
-  setText("detail-interest", itinerary.interest || "-");
+
+  if (Array.isArray(itinerary.interests) && itinerary.interests.length) {
+    setText("detail-interest", itinerary.interests.join(", "));
+  } else {
+    setText("detail-interest", itinerary.interest || "-");
+  }
+
   setText("detail-stop-count", `${stopCount} stops`);
   setText("detail-travel-duration", formatMinutes(itinerary.travel_duration_minutes));
 
   updateStatusBadge(itinerary.status || "Draft");
 
-  const useLiveCurrentLocation = isCurrentLocationName(
-    itinerary.start_location_name
-  );
-
-  const fullRouteUrl = useLiveCurrentLocation
-    ? buildFallbackFullRouteUrl(itinerary, stops)
-    : itinerary.google_maps_full_route_url || buildFallbackFullRouteUrl(itinerary, stops);
+  const rebuiltFullRouteUrl = buildFallbackFullRouteUrl(itinerary, stops);
+  const fullRouteUrl = rebuiltFullRouteUrl || itinerary.google_maps_full_route_url || "";
 
   renderFullGoogleRouteAction(fullRouteUrl);
+  renderEndLocationAction(itinerary, stops);
 }
 
 function renderFullGoogleRouteAction(url) {
   const action = document.getElementById("detail-full-route-action");
   const link = document.getElementById("detail-google-full-route-link");
 
-  if (!action || !link) return;
+  if (!action || !link) {
+    return;
+  }
 
   if (!url) {
     action.style.display = "none";
@@ -497,10 +599,76 @@ function renderFullGoogleRouteAction(url) {
   action.style.display = "flex";
 }
 
+function renderEndLocationAction(itinerary, stops) {
+  const endElement = document.getElementById("detail-end");
+
+  if (!endElement) {
+    return;
+  }
+
+  const endCard = endElement.parentElement;
+
+  if (!endCard) {
+    return;
+  }
+
+  const oldAction = document.getElementById("detail-end-route-action");
+
+  if (oldAction) {
+    oldAction.remove();
+  }
+
+  const endPoint = getEndPoint(itinerary);
+
+  if (!endPoint) {
+    return;
+  }
+
+  const startPoint = getStartPoint(itinerary);
+  const lastStopPoint = getLastStopPoint(stops);
+
+  const originPoint = lastStopPoint || startPoint;
+
+  const useLiveCurrentLocation =
+    !lastStopPoint &&
+    isCurrentLocationName(itinerary.start_location_name);
+
+  const googleMapsUrl = buildGoogleMapsUrl(
+    originPoint,
+    endPoint,
+    useLiveCurrentLocation
+  );
+
+  if (!googleMapsUrl) {
+    return;
+  }
+
+  endCard.classList.add("end-location-card");
+
+  const actionWrapper = document.createElement("div");
+  actionWrapper.id = "detail-end-route-action";
+  actionWrapper.className = "end-location-action";
+
+  actionWrapper.innerHTML = `
+    <a 
+      href="${escapeHtml(googleMapsUrl)}" 
+      target="_blank" 
+      rel="noopener noreferrer" 
+      class="btn btn-secondary btn-sm end-route-btn"
+    >
+      Google Maps
+    </a>
+  `;
+
+  endCard.appendChild(actionWrapper);
+}
+
 function renderStops(itinerary, stops) {
   const stopList = document.getElementById("detail-stop-list");
 
   if (!stopList) return;
+
+  stopList.innerHTML = "";
 
   if (!stops.length) {
     stopList.innerHTML = `
@@ -512,8 +680,6 @@ function renderStops(itinerary, stops) {
     `;
     return;
   }
-
-  stopList.innerHTML = "";
 
   stops.forEach(function (stop, index) {
     const row = document.createElement("div");
@@ -527,27 +693,22 @@ function renderStops(itinerary, stops) {
 
     let originPoint = null;
     let useLiveCurrentLocation = false;
+    let originLabel = "Previous Stop";
 
     if (index === 0) {
-      originPoint = {
-        latitude: itinerary.start_latitude,
-        longitude: itinerary.start_longitude
-      };
-
+      originPoint = getStartPoint(itinerary);
       useLiveCurrentLocation = isCurrentLocationName(
         itinerary.start_location_name
       );
+      originLabel = useLiveCurrentLocation
+        ? "Current Location"
+        : getStartLocationName(itinerary);
     } else {
-      originPoint = {
-        latitude: stops[index - 1].latitude,
-        longitude: stops[index - 1].longitude
-      };
+      originPoint = getStopPoint(stops[index - 1]);
+      originLabel = stops[index - 1].stop_name || "Previous Stop";
     }
 
-    const destinationPoint = {
-      latitude: stop.latitude,
-      longitude: stop.longitude
-    };
+    const destinationPoint = getStopPoint(stop);
 
     const googleMapsUrl = buildGoogleMapsUrl(
       originPoint,
@@ -556,13 +717,11 @@ function renderStops(itinerary, stops) {
     );
 
     const googleMapsLabel =
-      index === 0 && useLiveCurrentLocation
-        ? `Google Maps: Current Location → ${stop.stop_name || "Stop"}`
-        : stop.google_maps_label || `Google Maps: Previous Stop → ${stop.stop_name || "Stop"}`;
+      `Google Maps: ${originLabel} → ${stop.stop_name || "Stop"}`;
 
     const googleMapsButton = googleMapsUrl
       ? `
-        <div class="detail-stop-actions">
+        <div class="detail-stop-actions" style="margin-top:10px;">
           <a href="${escapeHtml(googleMapsUrl)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm">
             ${escapeHtml(googleMapsLabel)}
           </a>
@@ -610,41 +769,46 @@ async function renderMap(itinerary, stops) {
 
   mapElement.innerHTML = "";
 
-  const startLat = normaliseNumber(itinerary.start_latitude);
-  const startLng = normaliseNumber(itinerary.start_longitude);
-  const endLat = normaliseNumber(itinerary.end_latitude);
-  const endLng = normaliseNumber(itinerary.end_longitude);
+  const startPoint = getStartPoint(itinerary);
+  const endPoint = getEndPoint(itinerary);
 
   const mapPoints = [];
 
-  if (startLat !== null && startLng !== null) {
+  if (startPoint) {
     mapPoints.push({
-      label: `Start: ${itinerary.start_location_name || "Start Location"}`,
-      latitude: startLat,
-      longitude: startLng
+      label: `Start: ${getStartLocationName(itinerary)}`,
+      latitude: startPoint.latitude,
+      longitude: startPoint.longitude
     });
   }
 
   stops.forEach(function (stop, index) {
-    const lat = normaliseNumber(stop.latitude);
-    const lng = normaliseNumber(stop.longitude);
+    const stopPoint = getStopPoint(stop);
 
-    if (lat !== null && lng !== null) {
+    if (stopPoint) {
       mapPoints.push({
         label: `${index + 1}. ${stop.stop_name || "Stop"}`,
-        latitude: lat,
-        longitude: lng
+        latitude: stopPoint.latitude,
+        longitude: stopPoint.longitude
       });
     }
   });
 
-  if (endLat !== null && endLng !== null) {
+  if (endPoint) {
     mapPoints.push({
-      label: `End: ${itinerary.end_location_name || "End Location"}`,
-      latitude: endLat,
-      longitude: endLng
+      label: `End: ${getEndLocationName(itinerary)}`,
+      latitude: endPoint.latitude,
+      longitude: endPoint.longitude
+    });
+  } else {
+    console.warn("[Saved Detail] End location coordinate missing:", {
+      end_location_name: itinerary.end_location_name,
+      end_latitude: itinerary.end_latitude,
+      end_longitude: itinerary.end_longitude
     });
   }
+
+  console.log("[Saved Detail] mapPoints:", mapPoints);
 
   if (!mapPoints.length) {
     mapElement.innerHTML = "No map coordinates available.";
@@ -679,7 +843,9 @@ async function renderMap(itinerary, stops) {
       return [point.latitude, point.longitude];
     });
 
-    routeLayer = L.polyline(polylinePoints).addTo(detailMap);
+    if (polylinePoints.length >= 2) {
+      routeLayer = L.polyline(polylinePoints).addTo(detailMap);
+    }
   }
 
   detailMap.setView([mapPoints[0].latitude, mapPoints[0].longitude], 13);
