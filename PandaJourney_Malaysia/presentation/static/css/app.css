@@ -601,3 +601,26 @@ button, input, select, textarea { font: inherit; }
   color: #ffffff;
   border-color: var(--primary);
 }
+
+
+.end-location-card {
+  position: relative;
+  padding-right: 130px;
+}
+
+.end-location-action {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+}
+
+.end-route-btn {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 5px 12px;
+  font-size: 11px;
+  line-height: 1.2;
+  border-radius: 999px;
+  white-space: nowrap;
+}
