@@ -103,6 +103,11 @@ if (googleLogin) {
 
       console.log("User saved to Firestore!");
 
+      localStorage.setItem(
+      "pandajourney-authenticated",
+      "true"
+    );
+
       window.location.href = getSafeLoginDestination();
 
     } catch (error) {
@@ -139,7 +144,10 @@ if (googleSignup) {
       );
 
       console.log("User saved to Firestore!");
-
+      localStorage.setItem(
+        "pandajourney-authenticated",
+        "true"
+      );
       window.location.href = getSafeLoginDestination();
 
     } catch (error) {
@@ -273,6 +281,10 @@ if (loginForm && document.getElementById("email")) {
           { merge: true }
         );
 
+        localStorage.setItem(
+          "pandajourney-authenticated",
+          "true"
+        );
         window.location.href = getSafeLoginDestination();
 
       } catch (error) {

@@ -20,7 +20,7 @@
     </div>
     <div class="modal-actions">
       <button class="btn btn-ghost btn-md" id="logout-cancel" type="button">Cancel</button>
-      <form action="{{ url_for('logout') }}" method="post" style="flex:1; margin:0;">
+      <form id="global-logout-form" action="{{ url_for('logout') }}" method="post" style="flex:1; margin:0;">
         <button type="submit" class="btn btn-danger btn-md btn-full">Sign out</button>
       </form>
     </div>
@@ -76,10 +76,56 @@
         <span>Profile</span>
       </a>
 
-      <button type="button" class="logout-btn js-open-logout">
-        <span class="nav-icon">🚪</span>
-        <span>Logout</span>
+      <button
+        type="button"
+        id="auth-nav-button"
+        class="logout-btn js-open-logout"
+        aria-label="Account action">
+
+        <span
+          class="nav-icon"
+          id="auth-nav-icon">
+        </span>
+
+        <span id="auth-nav-text">
+        </span>
       </button>
+
+    <script>
+    (function () {
+      var button =
+        document.getElementById("auth-nav-button");
+
+      var icon =
+        document.getElementById("auth-nav-icon");
+
+      var text =
+        document.getElementById("auth-nav-text");
+
+      var loginHint =
+        localStorage.getItem("pandajourney-authenticated");
+
+      var isLikelyLoggedIn =
+        loginHint === "true";
+
+      if (icon) {
+        icon.textContent =
+          isLikelyLoggedIn ? "🚪" : "🔐";
+      }
+
+      if (text) {
+        text.textContent =
+          isLikelyLoggedIn ? "Logout" : "Login";
+      }
+
+      if (button) {
+        button.setAttribute(
+          "aria-label",
+          isLikelyLoggedIn ? "Logout" : "Login"
+        );
+      }
+    })();
+    </script>
     </div>
   </aside>
 

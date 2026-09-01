@@ -7,10 +7,9 @@
 {% block topbar_actions %}
 <button
   type="button"
-  class="btn btn-danger btn-sm"
-  id="topbar-signout-btn"
-  onclick="confirmLogout()">
-  🚪 Sign out
+  class="btn btn-danger btn-sm js-open-logout"
+  id="topbar-logout-btn">
+  🚪 Logout
 </button>
 {% endblock %}
 
@@ -550,6 +549,24 @@
   font-size: 13px;
 }
 
+#remove-favourite-dialog .logout-dialog-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+#remove-favourite-dialog .logout-dialog-actions .btn {
+  flex: 1;
+  min-height: 46px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* =================================
    Responsive
 ================================= */
@@ -911,7 +928,7 @@
           </div>
 
           <div class="profile-stat-label">
-            Shared Itineraries
+            Published Itineraries
           </div>
         </div>
       </div>
@@ -1205,7 +1222,7 @@
     <div class="danger-zone">
       <div>
         <div class="danger-zone-title">
-          Sign out of PandaJourney
+          Logout from PandaJourney
         </div>
 
         <div class="danger-zone-sub">
@@ -1215,9 +1232,8 @@
 
       <button
         type="button"
-        class="btn btn-danger btn-sm"
-        onclick="confirmLogout()">
-        🚪 Sign out
+        class="btn btn-danger btn-sm js-open-logout">
+        🚪 Logout
       </button>
     </div>
 
@@ -1267,47 +1283,6 @@
     </button>
   </div>
 </dialog>
-
-<!-- =================================
-     Sign Out Dialog
-================================= -->
-
-<dialog
-  class="logout-dialog"
-  id="logout-dialog"
-  aria-labelledby="logout-dialog-title">
-
-  <div class="logout-dialog-icon">
-    🚪
-  </div>
-
-  <div class="logout-dialog-content">
-    <h3 id="logout-dialog-title">
-      Sign out?
-    </h3>
-
-    <p>
-      Are you sure you want to sign out of PandaJourney?
-    </p>
-  </div>
-
-  <div class="logout-dialog-actions">
-    <button
-      type="button"
-      class="btn btn-ghost"
-      id="cancel-logout-btn">
-      Cancel
-    </button>
-
-    <button
-      type="button"
-      class="btn btn-danger"
-      id="confirm-logout-btn">
-      Sign Out
-    </button>
-  </div>
-</dialog>
-
 <!-- Profile Saved Toast -->
 
 <div

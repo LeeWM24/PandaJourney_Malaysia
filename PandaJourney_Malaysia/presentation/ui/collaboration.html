@@ -748,7 +748,7 @@ img { display: block; }
 .app-toast.is-visible { opacity: 1; transform: translateX(-50%) translateY(0); }
 </style>
 </head>
-<body>
+<body data-public-page="false">
 
 <!-- ═══════════════════════════════════════════════════════════════
      MAIN DEFAULT STATE (Owner view, default content)
@@ -1298,6 +1298,11 @@ img { display: block; }
     showToast(`${name} joined the itinerary`);
   });
 })();
+</script>
+
+<script
+  type="module"
+  src="{{ url_for('static', filename='js/auth-guard.js') }}?v={{ asset_version('js/auth-guard.js') }}">
 </script>
 
 </body>

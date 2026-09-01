@@ -5,7 +5,6 @@ import {
 
 import {
   onAuthStateChanged,
-  signOut,
   updateProfile,
   EmailAuthProvider,
   reauthenticateWithCredential,
@@ -242,7 +241,6 @@ function restoreOriginalAvatar() {
 onAuthStateChanged(auth, async user => {
   if (!user) {
     console.log("No user logged in.");
-    window.location.href = "/";
     return;
   }
 
@@ -1923,84 +1921,3 @@ changePasswordForm
       }
     }
   );
-
-
-// Logout
-// Custom Sign Out Modal
-
-const logoutDialog =
-  document.getElementById("logout-dialog");
-
-const cancelLogoutBtn =
-  document.getElementById("cancel-logout-btn");
-
-const confirmLogoutBtn =
-  document.getElementById("confirm-logout-btn");
-
-
-window.confirmLogout = function () {
-  if (!logoutDialog) {
-    console.error(
-      "Logout dialog was not found."
-    );
-    return;
-  }
-
-  if (!logoutDialog.open) {
-    logoutDialog.showModal();
-  }
-};
-
-
-cancelLogoutBtn?.addEventListener(
-  "click",
-  () => {
-    logoutDialog?.close();
-  }
-);
-
-
-logoutDialog?.addEventListener(
-  "click",
-  event => {
-    const dialogBox =
-      logoutDialog.getBoundingClientRect();
-
-    const clickedOutside =
-      event.clientX < dialogBox.left ||
-      event.clientX > dialogBox.right ||
-      event.clientY < dialogBox.top ||
-      event.clientY > dialogBox.bottom;
-
-    if (clickedOutside) {
-      logoutDialog.close();
-    }
-  }
-);
-
-
-confirmLogoutBtn?.addEventListener(
-  "click",
-  async () => {
-    try {
-      confirmLogoutBtn.disabled = true;
-
-      confirmLogoutBtn.textContent =
-        "Signing out...";
-
-      await signOut(auth);
-
-      window.location.replace("/");
-    } catch (error) {
-      console.error(
-        "Logout failed:",
-        error
-      );
-
-      confirmLogoutBtn.disabled = false;
-
-      confirmLogoutBtn.textContent =
-        "Sign Out";
-    }
-  }
-);

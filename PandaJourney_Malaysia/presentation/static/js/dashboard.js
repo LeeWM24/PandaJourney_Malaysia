@@ -592,11 +592,6 @@ onAuthStateChanged(
       console.log(
         "No Firebase user logged in."
       );
-
-      window.location.href =
-      `/login?next=${encodeURIComponent(
-        window.location.pathname
-      )}`;
       return;
     }
 
@@ -605,9 +600,10 @@ onAuthStateChanged(
       user.uid
     );
 
-    await loadDashboardUser(user);
+    
 
     await Promise.all([
+      await loadDashboardUser(user),
       loadFavouriteCount(user),
       loadItineraryData(user)
     ]);

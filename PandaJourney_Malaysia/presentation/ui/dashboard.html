@@ -63,13 +63,82 @@ Welcome back,
   }
 
   .dashboard-recent-edit {
-    margin-left: auto;
     flex-shrink: 0;
+    margin-left: auto;
   }
 
-  /* Loading/empty state should use full width */
   #dashboard-recent-list .empty-state {
     width: 100%;
+  }
+
+
+  /* =================================
+     Quick Access
+  ================================= */
+
+  .quick-access-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    width: 100%;
+  }
+
+  .quick-access-grid .quick-tile {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 14px;
+    width: 100%;
+    min-width: 0;
+    min-height: 100px;
+    padding: 20px;
+    color: #1f2937;
+    text-decoration: none;
+    border: 1px solid rgba(15, 122, 90, 0.08);
+    border-radius: 16px;
+    box-sizing: border-box;
+    transition:
+      transform 0.2s ease,
+      box-shadow 0.2s ease,
+      border-color 0.2s ease;
+  }
+
+  .quick-access-grid .quick-tile:hover {
+    border-color: rgba(15, 122, 90, 0.22);
+    box-shadow: 0 8px 20px rgba(15, 122, 90, 0.1);
+    transform: translateY(-2px);
+  }
+
+  .quick-access-grid .tile-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    width: 46px;
+    height: 46px;
+    font-size: 27px;
+    background: rgba(255, 255, 255, 0.7);
+    border-radius: 13px;
+  }
+
+  .quick-access-grid .tile-label {
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+
+  /* =================================
+     Responsive Layout
+  ================================= */
+
+  @media (max-width: 1100px) {
+    .quick-access-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   @media (max-width: 600px) {
@@ -80,6 +149,15 @@ Welcome back,
 
     .dashboard-recent-edit {
       align-self: center;
+    }
+
+    .quick-access-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .quick-access-grid .quick-tile {
+      min-height: 88px;
+      padding: 16px;
     }
   }
 </style>
@@ -177,6 +255,7 @@ Welcome back,
   <div class="summary-cards mb-6">
 
     <!-- Saved Itineraries -->
+
     <div class="card summary-card">
       <div class="summary-card-header">
         <span class="summary-icon">
@@ -202,6 +281,7 @@ Welcome back,
 
 
     <!-- Favourite Attractions -->
+
     <div class="card summary-card">
       <div class="summary-card-header">
         <span class="summary-icon">
@@ -226,7 +306,8 @@ Welcome back,
     </div>
 
 
-    <!-- Shared Trips -->
+    <!-- Published Trips -->
+
     <div class="card summary-card">
       <div class="summary-card-header">
         <span class="summary-icon">
@@ -246,12 +327,13 @@ Welcome back,
       </div>
 
       <div class="summary-label">
-        Shared Trips
+        Published Trips
       </div>
     </div>
 
 
     <!-- Upcoming Trip -->
+
     <div class="card summary-card">
       <div class="summary-card-header">
         <span class="summary-icon">
