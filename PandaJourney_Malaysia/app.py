@@ -19,7 +19,8 @@ from services.itinerary_service import (
     make_plan,
     build_map_data,
     get_default_itinerary_form,
-    get_location_suggestions
+    get_location_suggestions,
+    search_attractions_serpapi
 )
 
 from services.smart_attraction import (
@@ -309,6 +310,74 @@ def location_suggestions():
 
     return jsonify({
         "suggestions": suggestions
+    })
+
+
+@app.route("/api/edit-stop-suggestions")
+def edit_stop_suggestions():
+    query_text = request.args.get("q", "").strip()
+    raw_interests = request.args.get("interests", "")
+    interests = [
+        interest.strip().lower()
+        for interest in raw_interests.split(",")
+        if interest.strip()
+    ]
+
+    if len(query_text) < 3:
+        return jsonify({
+            "custom_location": None,
+            "suggestions": []
+        })
+
+    try:
+        location_matches = get_location_suggestions(query_text, limit=1)
+    except Exception as error:
+        print(f"[EDIT STOP LOCATION SUGGESTION ERROR] {error}", flush=True)
+        location_matches = []
+
+    custom_location = location_matches[0] if location_matches else None
+    attraction_suggestions = []
+
+    if custom_location:
+        try:
+            candidates = search_attractions_serpapi(
+                latitude=float(custom_location["latitude"]),
+                longitude=float(custom_location["longitude"]),
+                interests=interests or ["culture"],
+                minimum_rating=4.0
+            )
+
+            for candidate in candidates[:3]:
+                attraction_suggestions.append({
+                    "display_name": candidate.get("name") or "Unnamed attraction",
+                    "name": candidate.get("name") or "Unnamed attraction",
+                    "address": candidate.get("address", ""),
+                    "latitude": candidate.get("latitude"),
+                    "longitude": candidate.get("longitude"),
+                    "rating": candidate.get("rating") or "Not available",
+                    "category": candidate.get("category") or "Attraction",
+                    "source": "SerpAPI attraction suggestion",
+                    "suggestion_type": "attraction"
+                })
+        except Exception as error:
+            print(f"[EDIT STOP ATTRACTION SUGGESTION ERROR] {error}", flush=True)
+
+    if custom_location:
+        custom_location = {
+            "display_name": custom_location.get("display_name", query_text),
+            "name": custom_location.get("display_name", query_text),
+            "address": custom_location.get("display_name", ""),
+            "latitude": custom_location.get("latitude"),
+            "longitude": custom_location.get("longitude"),
+            "rating": "Not available",
+            "category": "Custom Stop",
+            "source": custom_location.get("source", "OpenStreetMap Nominatim"),
+            "suggestion_type": "custom"
+        }
+
+    return jsonify({
+        "custom_location": custom_location,
+        "suggestions": attraction_suggestions
     })
 
 

@@ -77,6 +77,9 @@ let canEdit = false;
 let isOwner = false;
 let allActivityMode = false;
 let lastActivityViewedAt = 0;
+let lastCommentsViewedAt = 0;
+let ownCollaboratorDocumentId = "";
+let hasCommentsViewedState = false;
 let pendingInviteLink = "";
 let pendingInviteEmail = "";
 let unsubscribeFns = [];
@@ -91,6 +94,21 @@ let stopSuggestionTimers = {};
 let selectedRoutePlaces = {};
 let routeSuggestionTimers = {};
 let busyAction = "";
+let commentsSeenTimer = null;
+let highlightRefreshTimer = null;
+let latestCommentDocs = [];
+let latestActivityDocs = [];
+const NEW_HIGHLIGHT_MS = 60 * 1000;
+const temporaryActivityHighlights = new Map();
+const temporaryCommentHighlights = new Map();
+
+function normaliseRatingForSave(value) {
+  if (value === "Not available") return "Not available";
+  const numberValue = Number(value || 0);
+  return Number.isFinite(numberValue) && numberValue > 0
+    ? numberValue
+    : "Not available";
+}
 
 function showError() {
   if (loadingElement) loadingElement.style.display = "none";
@@ -229,25 +247,62 @@ function hideStopSuggestions(boxElement) {
   boxElement.innerHTML = "";
 }
 
-function renderStopSuggestions(inputElement, boxElement, stopId, suggestions) {
+function renderStopSuggestions(inputElement, boxElement, stopId, payload) {
   if (!inputElement || !boxElement) return;
-  if (!suggestions.length) {
+  const customLocation = payload?.custom_location || null;
+  const suggestions = Array.isArray(payload?.suggestions)
+    ? payload.suggestions
+    : Array.isArray(payload)
+      ? payload
+      : [];
+
+  if (!customLocation && !suggestions.length) {
     showStopSuggestionStatus(boxElement, "No location found.");
     return;
   }
 
   boxElement.hidden = false;
   boxElement.innerHTML = "";
+
+  if (customLocation) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "stop-suggestion-item stop-suggestion-custom";
+    button.innerHTML = `
+      <span class="stop-suggestion-kicker">Use searched location</span>
+      <span class="stop-suggestion-name">${escapeHtml(customLocation.display_name)}</span>
+      <span class="stop-suggestion-meta">
+        <span>Category: Custom Stop</span>
+        <span>Rating: Not available</span>
+      </span>
+      <span class="stop-suggestion-sub">${escapeHtml(customLocation.address || customLocation.source || "")}</span>
+    `;
+    button.addEventListener("click", function () {
+      inputElement.value = customLocation.display_name;
+      selectedStopPlaces[stopId] = customLocation;
+      hideStopSuggestions(boxElement);
+    });
+    boxElement.appendChild(button);
+  }
+
   suggestions.forEach(suggestion => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "stop-suggestion-item";
+    const ratingText = suggestion.rating && suggestion.rating !== "Not available"
+      ? `${suggestion.rating}`
+      : "Not available";
     button.innerHTML = `
-      <span class="stop-suggestion-name">${escapeHtml(suggestion.display_name)}</span>
-      <span class="stop-suggestion-sub">${escapeHtml(suggestion.source || "Location suggestion")}</span>
+      <span class="stop-suggestion-kicker">Suggested attraction</span>
+      <span class="stop-suggestion-name">${escapeHtml(suggestion.display_name || suggestion.name)}</span>
+      <span class="stop-suggestion-meta">
+        <span>Category: ${escapeHtml(suggestion.category || "Attraction")}</span>
+        <span>Rating: ${escapeHtml(ratingText)}</span>
+      </span>
+      <span class="stop-suggestion-sub">${escapeHtml(suggestion.address || suggestion.source || "")}</span>
     `;
     button.addEventListener("click", function () {
-      inputElement.value = suggestion.display_name;
+      inputElement.value = suggestion.display_name || suggestion.name || "";
       selectedStopPlaces[stopId] = suggestion;
       hideStopSuggestions(boxElement);
     });
@@ -272,14 +327,21 @@ function setupStopPlaceAutocomplete(row, stopId, stop) {
 
     showStopSuggestionStatus(boxElement, "Searching locations...");
     stopSuggestionTimers[stopId] = setTimeout(function () {
-      fetch(`/api/location-suggestions?q=${encodeURIComponent(queryText)}`)
+      const interests = getSelectedRouteInterests().length
+        ? getSelectedRouteInterests()
+        : getSavedInterests();
+      const params = new URLSearchParams({
+        q: queryText,
+        interests: interests.join(",")
+      });
+      fetch(`/api/edit-stop-suggestions?${params.toString()}`)
         .then(response => {
-          if (!response.ok) throw new Error("Location suggestion request failed.");
+          if (!response.ok) throw new Error("Stop suggestion request failed.");
           return response.json();
         })
         .then(data => {
           if (queryText !== inputElement.value.trim()) return;
-          renderStopSuggestions(inputElement, boxElement, stopId, data.suggestions || []);
+          renderStopSuggestions(inputElement, boxElement, stopId, data);
         })
         .catch(error => {
           console.error("Stop suggestion error:", error);
@@ -361,11 +423,36 @@ function getSelectedStopPlaceChanges(stopId) {
   return {
     place_id: place.place_id || "",
     stop_name: place.display_name || place.name || "",
-    category: place.category || place.type || "",
-    rating: Number(place.rating || 0),
+    address: place.address || place.display_name || "",
+    category: place.category || place.type || "Custom Stop",
+    rating: normaliseRatingForSave(place.rating),
     latitude: Number(place.latitude),
     longitude: Number(place.longitude)
   };
+}
+
+function rememberTemporaryHighlight(store, id) {
+  if (!id || store.has(id)) return;
+  store.set(id, Date.now() + NEW_HIGHLIGHT_MS);
+  scheduleHighlightRefresh();
+}
+
+function hasTemporaryHighlight(store, id) {
+  const expiresAt = store.get(id);
+  if (!expiresAt) return false;
+  if (Date.now() > expiresAt) {
+    store.delete(id);
+    return false;
+  }
+  return true;
+}
+
+function scheduleHighlightRefresh() {
+  clearTimeout(highlightRefreshTimer);
+  highlightRefreshTimer = setTimeout(function () {
+    renderComments(sortByCreatedDesc(latestCommentDocs).slice(0, 20));
+    renderActivities(allActivityMode ? latestActivityDocs : latestActivityDocs.slice(0, 5));
+  }, NEW_HIGHLIGHT_MS + 100);
 }
 
 function hasValidStopCoordinates(stop) {
@@ -578,6 +665,18 @@ function getTotalRouteMinutes(stops) {
   }, 0);
 }
 
+function getStoredFinalTravelMinutes(stops) {
+  const savedTravelMinutes = Number(itinerary?.travel_duration_minutes || 0);
+  const stopTravelMinutes = stops.reduce((total, stop) => {
+    return total + Number(stop.travel_minutes_from_previous || 0);
+  }, 0);
+  return Math.max(0, savedTravelMinutes - stopTravelMinutes);
+}
+
+function getTotalRouteMinutesWithFinalLeg(stops) {
+  return getTotalRouteMinutes(stops) + getStoredFinalTravelMinutes(stops);
+}
+
 function formatRelativeTime(value) {
   const time = timestampMillis(value);
   if (!time) return "";
@@ -743,11 +842,27 @@ function updateAddStopButtonState() {
   if (!addStopButton) return;
   const isAtStopLimit = stopDocs.length >= MAX_EDIT_STOPS;
   addStopButton.disabled = !canEdit || Boolean(draftStop) || Boolean(busyAction) || isAtStopLimit;
+  addStopButton.hidden = isAtStopLimit;
   if (isAtStopLimit) {
     addStopButton.textContent = `Cannot add more than ${MAX_EDIT_STOPS} stops`;
   } else {
     addStopButton.textContent = draftStop ? "Finish current stop first" : "+ Add a stop";
   }
+}
+
+function scrollToEditingStop() {
+  if (!stopList || !editingStopId) return;
+
+  window.setTimeout(function () {
+    const row = stopList.querySelector(`[data-stop-id="${editingStopId}"]`);
+
+    if (row) {
+      row.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+      });
+    }
+  }, 50);
 }
 
 async function ensureOwnerCollaborator() {
@@ -766,6 +881,7 @@ async function ensureOwnerCollaborator() {
     role: "owner",
     status: "accepted",
     last_activity_viewed_at: serverTimestamp(),
+    last_comments_viewed_at: serverTimestamp(),
     created_at: serverTimestamp(),
     updated_at: serverTimestamp()
   });
@@ -807,7 +923,7 @@ function renderItinerary() {
       input.checked = savedInterests.includes(normaliseInterest(input.value));
     });
   }
-  const calculatedMinutes = getTotalRouteMinutes(recalculateStopTimes(stopDocs));
+  const calculatedMinutes = getTotalRouteMinutesWithFinalLeg(recalculateStopTimesWithExistingTravel(stopDocs));
 
   if (hoursText) hoursText.textContent = formatMinutesAsDuration(calculatedMinutes);
   if (stopCountText) stopCountText.textContent = `${stopDocs.length} stops`;
@@ -819,8 +935,14 @@ function sortByCreatedDesc(items) {
 
 function renderStops() {
   if (!stopList) return;
+  if (stopDocs.length >= MAX_EDIT_STOPS && draftStop) {
+    draftStop = null;
+    if (editingStopId === "__draft_stop__") {
+      editingStopId = "";
+    }
+  }
   const visibleStops = draftStop ? [...stopDocs, draftStop] : stopDocs;
-  const calculatedStops = recalculateStopTimes(visibleStops);
+  const calculatedStops = recalculateStopTimesWithExistingTravel(visibleStops);
   stopList.classList.toggle("is-scrollable", visibleStops.length > 4);
   updateAddStopButtonState();
   if (stopCountText) stopCountText.textContent = `${stopDocs.length} stops`;
@@ -924,6 +1046,7 @@ function renderStops() {
     row.querySelector(".js-edit-stop")?.addEventListener("click", function () {
       editingStopId = editingStopId === stop.document_id ? "" : stop.document_id;
       renderStops();
+      scrollToEditingStop();
     });
 
     row.querySelector(".js-cancel-stop")?.addEventListener("click", function () {
@@ -1148,10 +1271,12 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     ? await recalculateStopTimesWithOsrm(nextStops)
     : (() => {
       const localStops = recalculateStopTimesWithExistingTravel(nextStops);
+      const travelMinutes = localStops.reduce((total, stop) => total + Number(stop.travel_minutes_from_previous || 0), 0)
+        + getStoredFinalTravelMinutes(localStops);
       return {
         stops: localStops,
-        travelMinutes: localStops.reduce((total, stop) => total + Number(stop.travel_minutes_from_previous || 0), 0),
-        totalMinutes: getTotalRouteMinutes(localStops)
+        travelMinutes,
+        totalMinutes: getTotalRouteMinutes(localStops) + getStoredFinalTravelMinutes(localStops)
       };
     })();
   const farLegMessage = routeChanged ? getFarTravelLegMessage(timing) : "";
@@ -1168,8 +1293,9 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
       stop_order: stop.stop_order,
       stop_name: stop.document_id === stopDocumentId ? cleanName : stop.stop_name,
       place_id: stop.place_id || "",
-      category: stop.category || "",
-      rating: Number(stop.rating || 0),
+      address: stop.address || "",
+      category: stop.category || "Custom Stop",
+      rating: normaliseRatingForSave(stop.rating),
       latitude: Number(stop.latitude),
       longitude: Number(stop.longitude),
       arrival_time: stop.arrival_time,
@@ -1232,7 +1358,6 @@ async function deleteStop(stopDocumentId, stopName) {
   const remaining = stopDocs.filter(item => item.document_id !== stopDocumentId);
   setRouteSaveMessage(describeRouteCalculation(remaining.length));
   const timing = await recalculateStopTimesWithOsrm(remaining);
-  const farLegMessage = getFarTravelLegMessage(timing, remaining);
   const recalculatedStops = timing.stops;
   const batch = writeBatch(db);
   batch.delete(doc(db, STOP_COLLECTION, stopDocumentId));
@@ -1252,7 +1377,7 @@ async function deleteStop(stopDocumentId, stopName) {
     updated_at: serverTimestamp()
   });
   await batch.commit();
-  setRouteSaveMessage(farLegMessage || "Route timing updated.", Boolean(farLegMessage));
+  setRouteSaveMessage("Route timing updated.");
   await addActivity("stop_deleted", `${currentUser.displayName || currentUser.email || "A collaborator"} deleted ${stopName}`);
 }
 
@@ -1266,6 +1391,7 @@ async function addStop() {
   if (draftStop) {
     editingStopId = "__draft_stop__";
     renderStops();
+    scrollToEditingStop();
     return;
   }
   draftStop = {
@@ -1283,6 +1409,7 @@ async function addStop() {
   };
   editingStopId = "__draft_stop__";
   renderStops();
+  scrollToEditingStop();
 }
 
 async function createStopFromDraft(stopNumber, changes, confirmedFar = false, warningElement = null, saveButton = null) {
@@ -1319,8 +1446,9 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     stop_order: nextOrder,
     stop_name: cleanName,
     place_id: changes.place_id || "",
-    category: changes.category || "",
-    rating: Number(changes.rating || 0),
+    address: changes.address || "",
+    category: changes.category || "Custom Stop",
+    rating: normaliseRatingForSave(changes.rating),
     latitude: Number(changes.latitude),
     longitude: Number(changes.longitude),
     visit_duration_minutes: Number(changes.visit_duration_minutes || 0),
@@ -1343,8 +1471,9 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     stop_order: nextOrder,
     stop_name: cleanName,
     place_id: changes.place_id || "",
-    category: changes.category || "",
-    rating: Number(changes.rating || 0),
+    address: changes.address || "",
+    category: changes.category || "Custom Stop",
+    rating: normaliseRatingForSave(changes.rating),
     latitude: Number(changes.latitude),
     longitude: Number(changes.longitude),
     arrival_time: calculatedNewStop.arrival_time,
@@ -1513,8 +1642,13 @@ function renderComments(comments) {
   comments.forEach(comment => {
     const isOwnComment = currentUser && comment.author_id === currentUser.uid;
     const isEditing = editingCommentId === comment.document_id;
+    const isNew = hasCommentsViewedState &&
+      !isOwnComment &&
+      timestampMillis(comment.created_at) > lastCommentsViewedAt;
+    if (isNew) rememberTemporaryHighlight(temporaryCommentHighlights, comment.document_id);
+    const showNewHighlight = isNew || hasTemporaryHighlight(temporaryCommentHighlights, comment.document_id);
     const row = document.createElement("div");
-    row.className = "comment-row";
+    row.className = `comment-row ${showNewHighlight ? "is-new" : ""}`;
     row.innerHTML = `
       <div class="comment-avatar">${escapeHtml(initials(comment.author_name || comment.author_email))}</div>
       <div class="comment-body">
@@ -1569,6 +1703,23 @@ function renderComments(comments) {
   });
 }
 
+function markCommentsViewedSoon(comments) {
+  if (!ownCollaboratorDocumentId || !comments.length || !hasCommentsViewedState) return;
+  const hasUnseenComment = comments.some(comment => {
+    return comment.author_id !== currentUser?.uid &&
+      timestampMillis(comment.created_at) > lastCommentsViewedAt;
+  });
+
+  if (!hasUnseenComment) return;
+
+  clearTimeout(commentsSeenTimer);
+  commentsSeenTimer = setTimeout(function () {
+    updateDoc(doc(db, COLLABORATOR_COLLECTION, ownCollaboratorDocumentId), {
+      last_comments_viewed_at: serverTimestamp()
+    }).catch(console.error);
+  }, 2000);
+}
+
 async function addComment(text) {
   const trimmed = text.trim();
   if (!itinerary || !currentUser) return;
@@ -1619,9 +1770,12 @@ function renderActivities(activities) {
   }
 
   activityList.innerHTML = activities.map((activity, index) => {
-    const isNew = timestampMillis(activity.created_at) > lastActivityViewedAt;
+    const isOwnActivity = currentUser && activity.actor_id === currentUser.uid;
+    const isNew = !isOwnActivity && timestampMillis(activity.created_at) > lastActivityViewedAt;
+    if (isNew) rememberTemporaryHighlight(temporaryActivityHighlights, activity.document_id);
+    const showNewHighlight = isNew || hasTemporaryHighlight(temporaryActivityHighlights, activity.document_id);
     return `
-      <div class="activity-row ${isNew ? "is-new" : ""}">
+      <div class="activity-row ${showNewHighlight ? "is-new" : ""}">
         <div class="activity-number">${index + 1}</div>
         <div class="activity-body">
           <div class="activity-text">${escapeHtml(activity.message || "Itinerary updated")}</div>
@@ -1665,16 +1819,32 @@ function subscribeToData() {
   unsubscribeFns.push(onSnapshot(collaboratorQuery, snapshot => {
     collaboratorDocs = snapshot.docs.map(item => ({ document_id: item.id, ...item.data() }));
     const ownCollaborator = collaboratorDocs.find(item => item.user_id === currentUser.uid);
+    ownCollaboratorDocumentId = ownCollaborator?.document_id || "";
     lastActivityViewedAt = timestampMillis(ownCollaborator?.last_activity_viewed_at);
+    hasCommentsViewedState = Boolean(
+      ownCollaborator &&
+      Object.prototype.hasOwnProperty.call(ownCollaborator, "last_comments_viewed_at")
+    );
+    lastCommentsViewedAt = hasCommentsViewedState
+      ? timestampMillis(ownCollaborator?.last_comments_viewed_at)
+      : Date.now();
     setEditingState();
     ensureOwnerCollaborator().catch(console.error);
+    if (ownCollaboratorDocumentId && !hasCommentsViewedState) {
+      updateDoc(doc(db, COLLABORATOR_COLLECTION, ownCollaboratorDocumentId), {
+        last_comments_viewed_at: serverTimestamp()
+      }).catch(console.error);
+    }
     renderStops();
     renderCollaborators();
+    markCommentsViewedSoon(latestCommentDocs);
   }));
 
   const commentsQuery = query(collection(db, COMMENT_COLLECTION), where("itinerary_id", "==", activeItineraryId));
   unsubscribeFns.push(onSnapshot(commentsQuery, snapshot => {
-    renderComments(sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() }))).slice(0, 20));
+    latestCommentDocs = sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
+    renderComments(latestCommentDocs.slice(0, 20));
+    markCommentsViewedSoon(latestCommentDocs);
   }));
 
   subscribeToActivities();
@@ -1686,8 +1856,8 @@ function subscribeToActivities() {
     : query(collection(db, NOTIFICATION_COLLECTION), where("itinerary_id", "==", activeItineraryId));
 
   const activityUnsubscribe = onSnapshot(activityQuery, snapshot => {
-    const activities = sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
-    renderActivities(allActivityMode ? activities : activities.slice(0, 5));
+    latestActivityDocs = sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
+    renderActivities(allActivityMode ? latestActivityDocs : latestActivityDocs.slice(0, 5));
   });
 
   unsubscribeFns.push(activityUnsubscribe);

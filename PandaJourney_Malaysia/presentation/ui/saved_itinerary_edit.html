@@ -303,6 +303,18 @@
     background: #e8f7ef;
   }
 
+  .stop-suggestion-custom {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stop-suggestion-kicker {
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
   .stop-suggestion-name,
   .route-suggestion-name {
     font-size: 13px;
@@ -315,6 +327,21 @@
   .route-suggestion-sub {
     font-size: 11px;
     color: var(--fg-2);
+  }
+
+  .stop-suggestion-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: #08745c;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .stop-suggestion-meta span {
+    border-radius: 999px;
+    background: #e8f7ef;
+    padding: 3px 8px;
   }
 
   .stop-field label,
@@ -634,6 +661,11 @@
   .activity-row.is-new {
     background: #fff1f2;
     border: 1px solid #fecdd3;
+  }
+
+  .comment-row.is-new {
+    background: #fff1f2;
+    border-color: #fecdd3;
   }
 
   .activity-number {

@@ -133,14 +133,20 @@ function formatDuration(minutes) {
   return `${mins} mins`;
 }
 
-async function getStopSummary(itineraryId) {
+async function getStopSummary(itineraryId, itineraryData = {}) {
   const stopsQuery = query(collection(db, ITINERARY_STOP_COLLECTION), where("itinerary_id", "==", itineraryId));
   const snapshot = await getDocs(stopsQuery);
+  let visitMinutes = 0;
   let totalMinutes = 0;
   snapshot.forEach(stopDoc => {
     const stop = stopDoc.data();
+    visitMinutes += Number(stop.visit_duration_minutes || 0);
     totalMinutes += Number(stop.travel_minutes_from_previous || 0) + Number(stop.visit_duration_minutes || 0);
   });
+  const savedTravelMinutes = Number(itineraryData.travel_duration_minutes || 0);
+  if (savedTravelMinutes > 0) {
+    totalMinutes = savedTravelMinutes + visitMinutes;
+  }
   return {
     count: snapshot.size,
     totalMinutes
@@ -247,7 +253,7 @@ async function loadOwnedItineraries(user) {
   for (const docSnap of snapshot.docs) {
     const data = docSnap.data();
     const itinerary = normaliseItinerary(docSnap, data);
-    const stopSummary = await getStopSummary(itinerary.itinerary_id);
+    const stopSummary = await getStopSummary(itinerary.itinerary_id, data);
     itinerary.stop_count = itinerary.stop_count || stopSummary.count;
     itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
     itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;
@@ -280,7 +286,7 @@ async function loadSharedItineraries(user) {
       collaborator_document_id: collaboratorDoc.id,
       shared: true
     });
-    const stopSummary = await getStopSummary(itinerary.itinerary_id);
+    const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
     itinerary.stop_count = itinerary.stop_count || stopSummary.count;
     itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
     itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;
@@ -310,7 +316,7 @@ async function loadPendingRequests(user) {
       if (!itinerarySnap.exists()) continue;
 
       const itinerary = normaliseItinerary(itinerarySnap, itinerarySnap.data());
-      const stopSummary = await getStopSummary(itinerary.itinerary_id);
+      const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
       itinerary.stop_count = itinerary.stop_count || stopSummary.count;
       itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
       itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;

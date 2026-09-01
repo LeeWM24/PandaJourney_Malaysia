@@ -1128,6 +1128,7 @@ async function saveItinerary() {
       extractNumberFromText(travelDurationText);
 
     const totalDurationMinutes =
+      extractNumberFromText(plan.total_duration || plan.itinerary_duration || "") ||
       availableHours * 60;
 
     const selectedStops =
