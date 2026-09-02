@@ -53,9 +53,8 @@ async function getItineraryStops(itineraryId) {
     };
   });
 
-  // Arrange Itinerary Stops According to Arrival Time.
   stops.sort((a, b) => {
-    return convertTimeToMinutes(a.time) - convertTimeToMinutes(b.time);
+    return Number(a.stop_order || 0) - Number(b.stop_order || 0);
   });
 
   return stops;
@@ -312,3 +311,553 @@ async function testLoadItineraries() {
 
   console.log("First itinerary title:", itineraries[0]?.title);
 }
+
+// Load Community Photo for Each Itinerary
+async function loadCommunityPhoto(item) {
+  const carousel = document.querySelector(
+    `[data-carousel="${item.id}"]`
+  );
+
+  if (!carousel) return;
+
+  const candidateStops = (item.stopList || [])
+    .filter((stop) => {
+      const placeName = String(
+        stop.stop_name ||
+        stop.place ||
+        ""
+      ).trim();
+
+      if (!placeName) return false;
+
+      const genericLocationNames = [
+        "kuala lumpur, malaysia",
+        "federal territory of kuala lumpur, malaysia",
+        "malaysia"
+      ];
+
+      if (genericLocationNames.includes(placeName.toLowerCase())) {
+        return false;
+      }
+
+      return true;
+    });
+
+  if (!candidateStops.length) {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        No photo available
+      </div>
+    `;
+    return;
+  }
+
+  const photoCache = new Array(candidateStops.length).fill(null);
+
+  let currentIndex = 0;
+
+  // Load Photo for a Specific Stop Index
+  async function loadPhoto(index) {
+    if (photoCache[index] !== null) {
+      return photoCache[index];
+    }
+
+    const stop = candidateStops[index];
+
+    const placeName = String(
+      stop.stop_name ||
+      stop.place ||
+      ""
+    ).trim();
+
+    try {
+      const response = await fetch(
+        `/api/public-place-photo?name=${encodeURIComponent(placeName)}`
+      );
+
+      const data = await response.json();
+
+      photoCache[index] = {
+        imageUrl: data.image_url || "",
+        placeName: placeName
+      };
+
+      return photoCache[index];
+
+    } catch (error) {
+      console.error("Community photo failed:", error);
+
+      photoCache[index] = {
+        imageUrl: "",
+        placeName: placeName
+      };
+
+      return photoCache[index];
+    }
+  }
+
+  // Render the Carousel Photo for the Current Index
+  async function renderCarouselPhoto() {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        Loading photo...
+      </div>
+    `;
+
+    const photo = await loadPhoto(currentIndex);
+
+    carousel.innerHTML = `
+      ${
+        photo.imageUrl
+          ? `
+            <img
+              class="community-photo"
+              src="${photo.imageUrl}"
+              alt="${photo.placeName}"
+              loading="lazy"
+            >
+          `
+          : `
+            <div class="community-photo-placeholder">
+              No photo available
+            </div>
+          `
+      }
+
+      <div class="community-photo-label">
+        ${photo.placeName}
+      </div>
+
+      <div class="community-photo-count">
+        ${currentIndex + 1} / ${candidateStops.length}
+      </div>
+
+      ${
+        candidateStops.length > 1
+          ? `
+            <button
+              class="community-carousel-btn community-carousel-prev"
+              type="button"
+              aria-label="Previous photo"
+            >
+              ‹
+            </button>
+
+            <button
+              class="community-carousel-btn community-carousel-next"
+              type="button"
+              aria-label="Next photo"
+            >
+              ›
+            </button>
+          `
+          : ""
+      }
+    `;
+
+    if (candidateStops.length > 1) {
+      carousel
+        .querySelector(".community-carousel-prev")
+        .addEventListener("click", async (event) => {
+          event.stopPropagation();
+
+          currentIndex =
+            (currentIndex - 1 + candidateStops.length) %
+            candidateStops.length;
+
+          await renderCarouselPhoto();
+        });
+
+      carousel
+        .querySelector(".community-carousel-next")
+        .addEventListener("click", async (event) => {
+          event.stopPropagation();
+
+          currentIndex =
+            (currentIndex + 1) %
+            candidateStops.length;
+
+          await renderCarouselPhoto();
+        });
+    }
+  }
+
+  await renderCarouselPhoto();
+}
+
+async function loadDetailPhotoCarousel(item) {
+  const carousel = document.querySelector(
+    `[data-detail-carousel="${item.id}"]`
+  );
+
+  if (!carousel) return;
+
+  const candidateStops = (item.stopList || [])
+    .filter((stop) => {
+      const placeName = String(
+        stop.stop_name ||
+        stop.place ||
+        ""
+      ).trim();
+
+      if (!placeName) return false;
+
+      const genericLocationNames = [
+        "kuala lumpur, malaysia",
+        "federal territory of kuala lumpur, malaysia",
+        "malaysia"
+      ];
+
+      if (genericLocationNames.includes(placeName.toLowerCase())) {
+        return false;
+      }
+
+      return true;
+    });
+
+  if (!candidateStops.length) {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        No photo available
+      </div>
+    `;
+    return;
+  }
+
+  const photoCache =
+    new Array(candidateStops.length).fill(null);
+
+  let currentIndex = 0;
+
+  async function loadPhoto(index) {
+    if (photoCache[index] !== null) {
+      return photoCache[index];
+    }
+
+    const stop = candidateStops[index];
+
+    const placeName = String(
+      stop.stop_name ||
+      stop.place ||
+      ""
+    ).trim();
+
+    try {
+      const response = await fetch(
+        `/api/public-place-photo?name=${encodeURIComponent(placeName)}`
+      );
+
+      const data = await response.json();
+
+      photoCache[index] = {
+        imageUrl: data.image_url || "",
+        placeName: placeName
+      };
+
+      return photoCache[index];
+
+    } catch (error) {
+      console.error(
+        "Detail photo failed:",
+        error
+      );
+
+      photoCache[index] = {
+        imageUrl: "",
+        placeName: placeName
+      };
+
+      return photoCache[index];
+    }
+  }
+
+  async function renderDetailPhoto() {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        Loading photo...
+      </div>
+    `;
+
+    const photo =
+      await loadPhoto(currentIndex);
+
+    carousel.innerHTML = `
+      ${
+        photo.imageUrl
+          ? `
+            <img
+              class="detail-photo"
+              src="${photo.imageUrl}"
+              alt="${photo.placeName}"
+              loading="lazy"
+            >
+          `
+          : `
+            <div class="community-photo-placeholder">
+              No photo available
+            </div>
+          `
+      }
+
+      <div class="detail-photo-label">
+        ${photo.placeName}
+      </div>
+
+      <div class="detail-photo-count">
+        ${currentIndex + 1} / ${candidateStops.length}
+      </div>
+
+      ${
+        candidateStops.length > 1
+          ? `
+            <button
+              class="detail-carousel-btn detail-carousel-prev"
+              type="button"
+            >
+              ‹
+            </button>
+
+            <button
+              class="detail-carousel-btn detail-carousel-next"
+              type="button"
+            >
+              ›
+            </button>
+          `
+          : ""
+      }
+    `;
+
+    if (candidateStops.length > 1) {
+      carousel
+        .querySelector(".detail-carousel-prev")
+        .addEventListener("click", async (event) => {
+          event.stopPropagation();
+
+          currentIndex =
+            (currentIndex - 1 + candidateStops.length) %
+            candidateStops.length;
+
+          await renderDetailPhoto();
+        });
+
+      carousel
+        .querySelector(".detail-carousel-next")
+        .addEventListener("click", async (event) => {
+          event.stopPropagation();
+
+          currentIndex =
+            (currentIndex + 1) %
+            candidateStops.length;
+
+          await renderDetailPhoto();
+        });
+    }
+  }
+
+  await renderDetailPhoto();
+}
+
+let publicDetailMap = null;
+
+function normaliseNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getPublicStopPoint(stop) {
+  const latitude = normaliseNumber(
+    stop.latitude ??
+    stop.lat
+  );
+
+  const longitude = normaliseNumber(
+    stop.longitude ??
+    stop.lng ??
+    stop.lon
+  );
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude
+  };
+}
+
+async function renderPublicRouteMap(item) {
+  const mapElement = document.getElementById(
+    "publicDetailRouteMap"
+  );
+
+  if (!mapElement || typeof L === "undefined") {
+    return;
+  }
+
+  if (publicDetailMap) {
+    publicDetailMap.remove();
+    publicDetailMap = null;
+  }
+
+  mapElement.innerHTML = "";
+
+  const mapPoints = [];
+  console.log(
+    "[PUBLIC MAP STOP LIST]",
+    item.stopList
+  );
+
+  (item.stopList || []).forEach((stop, index) => {
+    const point = getPublicStopPoint(stop);
+
+    if (!point) return;
+
+    mapPoints.push({
+      label: `${index + 1}. ${
+        stop.stop_name ||
+        stop.place ||
+        "Stop"
+      }`,
+      latitude: point.latitude,
+      longitude: point.longitude
+    });
+  });
+
+  if (!mapPoints.length) {
+    console.log(
+      "[PUBLIC MAP POINTS]",
+      mapPoints
+    );
+    mapElement.innerHTML = `
+      <div class="community-photo-placeholder">
+        No route coordinates available
+      </div>
+    `;
+    return;
+  }
+
+  publicDetailMap = L.map(
+    "publicDetailRouteMap"
+  );
+
+  L.tileLayer(
+    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }
+  ).addTo(publicDetailMap);
+
+  const markerGroup = L.featureGroup();
+
+  mapPoints.forEach((point, index) => {
+    const isFirst = index === 0;
+    const isLast = index === mapPoints.length - 1;
+
+    const markerLabel = isFirst
+      ? "S"
+      : isLast
+        ? "E"
+        : String(index + 1);
+
+    const markerClass = isFirst
+      ? "public-map-marker start"
+      : isLast
+        ? "public-map-marker end"
+        : "public-map-marker stop";
+
+    const icon = L.divIcon({
+      className: "",
+      html: `
+        <div class="${markerClass}">
+          ${markerLabel}
+        </div>
+      `,
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+      popupAnchor: [0, -16]
+    });
+
+    const marker = L.marker(
+      [point.latitude, point.longitude],
+      { icon }
+    )
+      .bindPopup(point.label)
+      .addTo(publicDetailMap);
+
+    markerGroup.addLayer(marker);
+  });
+
+  const roadRouteGeometry =
+    await getPublicRoadRouteGeometry(mapPoints);
+
+    if (roadRouteGeometry) {
+      L.geoJSON(
+        roadRouteGeometry,
+        {
+          style: {
+            color: "#15956f",
+            weight: 5,
+            opacity: 0.85
+          }
+        }
+      ).addTo(publicDetailMap);
+    } else if (mapPoints.length > 1) {
+      const polylinePoints = mapPoints.map((point) => [point.latitude, point.longitude]);
+      L.polyline(polylinePoints, { color: "#15956f", weight: 5, opacity: 0.85 }).addTo(publicDetailMap);
+    }
+
+  if (mapPoints.length === 1) {
+    publicDetailMap.setView([mapPoints[0].latitude, mapPoints[0].longitude], 14);
+  } else {
+    publicDetailMap.fitBounds(markerGroup.getBounds(), {padding: [20, 20]});
+  }
+
+  setTimeout(() => {publicDetailMap.invalidateSize();}, 100);
+}
+
+async function getPublicRoadRouteGeometry(mapPoints) {
+  if (!mapPoints || mapPoints.length < 2) {
+    return null;
+  }
+
+  const coordinates = mapPoints
+    .map((point) => {
+      return `${point.longitude},${point.latitude}`;
+    })
+    .join(";");
+
+  const routeUrl =
+    `https://router.project-osrm.org/route/v1/driving/${coordinates}` +
+    `?overview=full&geometries=geojson`;
+
+  try {
+    const response = await fetch(routeUrl);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+
+    if (!data.routes || !data.routes.length) {
+      return null;
+    }
+
+    return data.routes[0].geometry;
+
+  } catch (error) {
+    console.error(
+      "Public route failed:",
+      error
+    );
+
+    return null;
+  }
+}
+
+window.loadCommunityPhoto = loadCommunityPhoto;
+window.loadDetailPhotoCarousel = loadDetailPhotoCarousel;
+window.renderPublicRouteMap = renderPublicRouteMap;

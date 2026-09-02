@@ -31,7 +31,7 @@ load_dotenv(BASE_DIR / ".env")
 CACHE_DB_PATH = BASE_DIR / "data" / "cache.db"
 GEOCODE_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days
 ATTRACTION_CACHE_TTL_SECONDS = 6 * 3600      # 6 hours
-
+PUBLIC_PHOTO_CACHE_TTL_SECONDS = 7 * 24 * 3600 # 7 days
 
 def _init_cache_db() -> None:
     CACHE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -173,6 +173,110 @@ def _request_json(
     response = requests.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
     return response.json()
+
+def get_public_place_photo(place_name: str) -> dict[str, Any]:
+    place_name = str(place_name or "").strip()
+
+    if not place_name:
+        return {
+            "image_url": "",
+            "place_name": ""
+        }
+
+    cache_key = f"public_photo_v3:{place_name.lower()}"
+
+    cached = cache_get(
+        cache_key,
+        PUBLIC_PHOTO_CACHE_TTL_SECONDS
+    )
+
+    if cached is not None and cached.get("image_url"):
+        return cached
+
+    api_key = os.getenv("SERPAPI_KEY", "").strip()
+
+    if not api_key:
+        return {
+            "image_url": "",
+            "place_name": place_name
+        }
+
+    try:
+        data = _request_json(
+            SERPAPI_URL,
+            params={
+                "engine": "google_maps",
+                "type": "search",
+                "q": f"{place_name}, Malaysia",
+                "hl": "en",
+                "gl": "my",
+                "api_key": api_key,
+            },
+        )
+
+    except requests.RequestException as error:
+        return {
+            "image_url": "",
+            "place_name": place_name
+        }
+
+    image_url = ""
+    photo_data_id = ""
+
+    place_result = data.get("place_results") or {}
+
+    if place_result:
+        image_url = place_result.get("thumbnail") or ""
+        photo_data_id = place_result.get("data_id") or ""
+
+    search_results = data.get("local_results", [])
+
+    for item in data.get("local_results", []):
+        thumbnail = item.get("thumbnail") or ""
+        data_id = item.get("data_id") or ""
+
+        if thumbnail:
+            image_url = thumbnail
+            break
+
+        if data_id and not photo_data_id:
+            photo_data_id = data_id
+
+        if not image_url and photo_data_id:
+            try:
+                photo_data = _request_json(
+                    SERPAPI_URL,
+                    params={
+                        "engine": "google_maps_photos",
+                        "data_id": photo_data_id,
+                        "hl": "en",
+                        "api_key": api_key,
+                    },
+                )
+
+                photos = photo_data.get("photos", [])
+
+                if photos:
+                    image_url = (
+                        photos[0].get("image")
+                        or photos[0].get("thumbnail")
+                        or ""
+                    )
+
+            except requests.RequestException as error:
+                print(
+                    f"[PUBLIC PHOTO FALLBACK ERROR] {place_name}: {error}",
+                    flush=True
+                )
+
+    result = {
+        "image_url": image_url,
+        "place_name": place_name
+    }
+
+    cache_set(cache_key, result)
+
+    return result
 
 
 def geocode_with_serpapi(query: str) -> dict[str, Any] | None:

@@ -26,6 +26,7 @@ from services.itinerary_service import (
 from services.smart_attraction import (
     build_attraction_results,
     suggest_destinations,
+    get_public_place_photo,
 )
 
 
@@ -109,6 +110,21 @@ def smart_attraction_suggest():
     query = request.args.get("q", "").strip()
     suggestions = suggest_destinations(query)
     return jsonify(suggestions)
+
+
+@app.route("/api/public-place-photo", methods=["GET"])
+def public_place_photo():
+    place_name = request.args.get("name", "").strip()
+
+    if not place_name:
+        return jsonify({
+            "image_url": "",
+            "place_name": ""
+        })
+
+    result = get_public_place_photo(place_name)
+
+    return jsonify(result)
 
 
 @app.route("/", methods=["GET", "POST"])
