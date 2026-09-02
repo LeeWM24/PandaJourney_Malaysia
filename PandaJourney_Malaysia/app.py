@@ -1,4 +1,5 @@
 import os
+import time
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 try:
@@ -26,6 +27,7 @@ from services.itinerary_service import (
 from services.smart_attraction import (
     build_attraction_results,
     suggest_destinations,
+    logger as smart_attraction_logger,
 )
 
 
@@ -54,6 +56,54 @@ def asset_version(relative_path: str) -> int:
 
 
 app.jinja_env.globals["asset_version"] = asset_version
+
+
+# ---------------------------------------------------------------------------
+# Lightweight rate limiting for the smart-attraction routes specifically —
+# these are the only routes that spend real SerpAPI credits (search) or hit
+# Nominatim's rate-limited free API (suggest) per request, and neither route
+# requires login, so without this a single user (or a bot) could rack up
+# real cost or get our Nominatim User-Agent temporarily blocked.
+#
+# This is an in-memory sliding window keyed by IP — good enough for a single
+# dev-server process. It intentionally does NOT scale to multiple worker
+# processes (e.g. gunicorn -w 4): each worker would track its own separate
+# counts, so the effective limit becomes limit * worker_count. Fine for this
+# project's current deployment; swap for Flask-Limiter with a shared Redis
+# backend before running with more than one worker.
+# ---------------------------------------------------------------------------
+
+from collections import defaultdict
+from functools import wraps
+
+_rate_limit_hits: dict[str, list[float]] = defaultdict(list)
+
+
+def rate_limit(max_calls: int, window_seconds: int):
+    def decorator(view_func):
+        @wraps(view_func)
+        def wrapped(*args, **kwargs):
+            client_id = request.remote_addr or "unknown"
+            key = f"{view_func.__name__}:{client_id}"
+            now = time.time()
+
+            hits = _rate_limit_hits[key]
+            hits[:] = [t for t in hits if now - t < window_seconds]
+
+            if len(hits) >= max_calls:
+                smart_attraction_logger.warning(
+                    f"[RATE LIMIT] {client_id} exceeded {max_calls}/{window_seconds}s on {view_func.__name__}"
+                )
+                return jsonify({
+                    "error": "Too many requests — please slow down and try again shortly."
+                }), 429
+
+            hits.append(now)
+            return view_func(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
 
 
 def get_current_user():
@@ -101,6 +151,7 @@ def logout():
 
 
 @app.route("/smart-attraction/suggest", methods=["GET"])
+@rate_limit(max_calls=30, window_seconds=60)
 def smart_attraction_suggest():
     """Type-ahead destination suggestions for the smart-attraction filter
     panel's search bar (used when no Google Maps key is configured
@@ -113,6 +164,7 @@ def smart_attraction_suggest():
 
 @app.route("/", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
+@rate_limit(max_calls=20, window_seconds=60)
 def smart_attraction():
     filters = {
         "destination": "",
@@ -219,10 +271,7 @@ def smart_attraction():
                     )
 
                 except Exception as error:
-                    print(
-                        f"[SMART ATTRACTION ERROR] {error}",
-                        flush=True
-                    )
+                    smart_attraction_logger.error(f"[SMART ATTRACTION ERROR] {error}")
 
                     flash(
                         "Unable to load attraction recommendations "
@@ -256,10 +305,7 @@ def smart_attraction():
             )
 
         except Exception as error:
-            print(
-                f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}",
-                flush=True
-            )
+            smart_attraction_logger.error(f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}")
 
             attractions = []
             source_note = (
