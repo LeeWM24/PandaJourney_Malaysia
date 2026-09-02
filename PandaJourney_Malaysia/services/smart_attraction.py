@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import sqlite3
@@ -21,6 +22,25 @@ SERPAPI_URL = "https://serpapi.com/search.json"
 BASE_DIR = Path(__file__).resolve().parents[1]
 
 load_dotenv(BASE_DIR / ".env")
+
+# ---------------------------------------------------------------------------
+# Logging — was previously a scattering of logger.info(...) calls.
+# Same visibility, but now controllable by level instead of by deleting
+# lines: set SMART_ATTRACTION_LOG_LEVEL=DEBUG in .env to see every cache
+# hit and geocode HTTP call again (useful when debugging search issues,
+# same detail as before), or leave it at the INFO default for a quieter
+# console that still shows every search + geocode fallback decision.
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger("smart_attraction")
+
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s", "%H:%M:%S"))
+    logger.addHandler(_handler)
+    logger.propagate = False
+
+logger.setLevel(os.getenv("SMART_ATTRACTION_LOG_LEVEL", "INFO").upper())
 
 # ---------------------------------------------------------------------------
 # Persistent SQLite cache — cuts down repeat SerpAPI / geocoding usage.
@@ -45,6 +65,31 @@ def _init_cache_db() -> None:
     )
     conn.commit()
     conn.close()
+    _evict_expired_cache_rows()
+
+
+# Longest-lived entries (geocode results) set the retention window — once a
+# row is older than this, no code path could still treat it as fresh, so
+# there's no reason to keep it. Without this, api_cache.db only ever grows:
+# cache_get() already ignores expired rows on read, but nothing ever
+# deletes them, so a long-running deployment's cache file would grow
+# forever. Runs once per process start, which is enough for how often this
+# app is likely to be restarted — no scheduler dependency needed.
+def _evict_expired_cache_rows() -> None:
+    cutoff = time.time() - GEOCODE_CACHE_TTL_SECONDS
+
+    try:
+        conn = sqlite3.connect(CACHE_DB_PATH)
+        deleted = conn.execute(
+            "DELETE FROM api_cache WHERE created_at < ?", (cutoff,)
+        ).rowcount
+        conn.commit()
+        conn.close()
+
+        if deleted:
+            logger.info(f"[CACHE CLEANUP] Evicted {deleted} expired row(s) from api_cache.db")
+    except sqlite3.Error as error:
+        logger.error(f"[CACHE CLEANUP ERROR] {error}")
 
 
 _init_cache_db()
@@ -59,7 +104,7 @@ def cache_get(key: str, max_age_seconds: float) -> Any | None:
         ).fetchone()
         conn.close()
     except sqlite3.Error as error:
-        print(f"[CACHE READ ERROR] {error}", flush=True)
+        logger.error(f"[CACHE READ ERROR] {error}")
         return None
 
     if not row:
@@ -71,7 +116,7 @@ def cache_get(key: str, max_age_seconds: float) -> Any | None:
         return None
 
     try:
-        print(f"[CACHE HIT] {key}", flush=True)
+        logger.debug(f"[CACHE HIT] {key}")
         return json.loads(payload)
     except (json.JSONDecodeError, TypeError):
         return None
@@ -87,7 +132,7 @@ def cache_set(key: str, value: Any) -> None:
         conn.commit()
         conn.close()
     except sqlite3.Error as error:
-        print(f"[CACHE WRITE ERROR] {error}", flush=True)
+        logger.error(f"[CACHE WRITE ERROR] {error}")
 
 USER_AGENT = os.getenv(
     "NOMINATIM_USER_AGENT",
@@ -96,7 +141,7 @@ USER_AGENT = os.getenv(
 
 NOMINATIM_EMAIL = os.getenv("NOMINATIM_EMAIL", "").strip()
 
-print(
+logger.info(
     "[NOMINATIM CONFIG] "
     f"contact email configured: {'yes' if NOMINATIM_EMAIL else 'no'} | "
     f"custom User-Agent configured: {'yes' if 'student-project@example.com' not in USER_AGENT else 'no'}"
@@ -283,7 +328,7 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
-        print("[SERPAPI GEOCODE] No SERPAPI_KEY configured.", flush=True)
+        logger.warning("[SERPAPI GEOCODE] No SERPAPI_KEY configured.")
         return None
 
     try:
@@ -299,7 +344,7 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
             },
         )
     except requests.RequestException as error:
-        print(f"[SERPAPI GEOCODE ERROR] {error}", flush=True)
+        logger.error(f"[SERPAPI GEOCODE ERROR] {error}")
         return None
 
     for item in data.get("local_results", []):
@@ -318,15 +363,14 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
             "source": "SerpApi fallback",
         }
 
-        print(
+        logger.info(
             f"[GEOCODE SERPAPI SUCCESS] {result['display_name']} "
-            f"({result['latitude']}, {result['longitude']})",
-            flush=True,
+            f"({result['latitude']}, {result['longitude']})"
         )
 
         return result
 
-    print(f"[GEOCODE SERPAPI NO RESULT] {query}", flush=True)
+    logger.warning(f"[GEOCODE SERPAPI NO RESULT] {query}")
     return None
 
 
@@ -334,7 +378,7 @@ def geocode_place(query: str) -> dict[str, Any] | None:
     key = query.strip().lower()
 
     if not key:
-        print("[GEOCODE ERROR] Empty input.", flush=True)
+        logger.error("[GEOCODE ERROR] Empty input.")
         return None
 
     # Only ever cache *successful* geocodes. Caching a failure would mean
@@ -342,7 +386,7 @@ def geocode_place(query: str) -> dict[str, Any] | None:
     # permanently blocks that exact string for the rest of the process's
     # life — even after we improve the fallback logic below.
     if key in GEOCODE_CACHE:
-        print(f"[GEOCODE MEMORY CACHE] {query}", flush=True)
+        logger.debug(f"[GEOCODE MEMORY CACHE] {query}")
         return GEOCODE_CACHE[key]
 
     db_cached = cache_get(f"geocode:{key}", GEOCODE_CACHE_TTL_SECONDS)
@@ -391,16 +435,15 @@ def geocode_place(query: str) -> dict[str, Any] | None:
                 timeout=20,
             )
 
-            print(
-                f"[GEOCODE HTTP] Status {response.status_code} | Query: {search_text}",
-                flush=True,
+            logger.debug(
+                f"[GEOCODE HTTP] Status {response.status_code} | Query: {search_text}"
             )
 
             response.raise_for_status()
             results = response.json()
 
         except requests.RequestException as error:
-            print(f"[GEOCODE ERROR] {error}", flush=True)
+            logger.error(f"[GEOCODE ERROR] {error}")
             results = []
 
         if results:
@@ -414,18 +457,16 @@ def geocode_place(query: str) -> dict[str, Any] | None:
             }
 
             if search_text != query:
-                print(
-                    f"[GEOCODE FALLBACK] '{query}' matched via reduced query '{search_text}'",
-                    flush=True,
+                logger.info(
+                    f"[GEOCODE FALLBACK] '{query}' matched via reduced query '{search_text}'"
                 )
 
             GEOCODE_CACHE[key] = result
             cache_set(f"geocode:{key}", result)
 
-            print(
+            logger.info(
                 f"[GEOCODE SUCCESS] {result['display_name']} "
-                f"({result['latitude']}, {result['longitude']})",
-                flush=True,
+                f"({result['latitude']}, {result['longitude']})"
             )
 
             return result
@@ -433,7 +474,7 @@ def geocode_place(query: str) -> dict[str, Any] | None:
         if index < len(search_queries) - 1:
             time.sleep(1.1)
 
-    print(f"[GEOCODE NO RESULT] Nominatim could not find: {query}", flush=True)
+    logger.warning(f"[GEOCODE NO RESULT] Nominatim could not find: {query}")
 
     serpapi_result = geocode_with_serpapi(query)
 
@@ -483,7 +524,7 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         response.raise_for_status()
         results = response.json()
     except requests.RequestException as error:
-        print(f"[SUGGEST ERROR] {error}", flush=True)
+        logger.error(f"[SUGGEST ERROR] {error}")
         return []
 
     suggestions = []
@@ -581,7 +622,7 @@ def get_current_weather_batch(
             },
         )
     except requests.RequestException as error:
-        print(f"[WEATHER BATCH ERROR] {error}", flush=True)
+        logger.error(f"[WEATHER BATCH ERROR] {error}")
         return [None] * len(coords)
 
     # Open-Meteo returns a list of results when multiple locations are
@@ -644,11 +685,11 @@ def _serpapi_page(
     try:
         data = _request_json(SERPAPI_URL, params=params)
     except requests.RequestException as error:
-        print(f"[SERPAPI SEARCH ERROR] {error}", flush=True)
+        logger.error(f"[SERPAPI SEARCH ERROR] {error}")
         return []
 
     if data.get("error"):
-        print(f"[SERPAPI SEARCH ERROR] API responded: {data['error']}", flush=True)
+        logger.error(f"[SERPAPI SEARCH ERROR] API responded: {data['error']}")
         return []
 
     return data.get("local_results", [])
@@ -704,7 +745,7 @@ def search_attractions_serpapi(
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
-        print("[SERPAPI SEARCH] No SERPAPI_KEY configured.", flush=True)
+        logger.warning("[SERPAPI SEARCH] No SERPAPI_KEY configured.")
         return []
 
     keyword = get_serpapi_search_keyword(interests)
@@ -717,10 +758,9 @@ def search_attractions_serpapi(
     if cached is not None:
         return cached
 
-    print(
+    logger.info(
         f"[SERPAPI SEARCH] query={keyword!r} near ({latitude}, {longitude}) "
-        f"min_rating={minimum_rating} max_pages={max_pages}",
-        flush=True,
+        f"min_rating={minimum_rating} max_pages={max_pages}"
     )
 
     raw_results: list[dict[str, Any]] = []
@@ -748,7 +788,7 @@ def search_attractions_serpapi(
         if raw_results:
             break  # found something — no need to zoom out further
 
-        print(f"[SERPAPI SEARCH] 0 results at zoom={zoom}, widening search area...", flush=True)
+        logger.info(f"[SERPAPI SEARCH] 0 results at zoom={zoom}, widening search area...")
 
     # Still nothing even at the widest zoom? Google's own min_rating filter
     # can zero out an otherwise-nonempty result set in a sparse/rural area
@@ -758,7 +798,7 @@ def search_attractions_serpapi(
     # places that actually have a rating, so unrated-but-real places can
     # still surface instead of a flat "0 results".
     if not raw_results:
-        print("[SERPAPI SEARCH] Still empty — retrying widest zoom without min_rating filter...", flush=True)
+        logger.warning("[SERPAPI SEARCH] Still empty — retrying widest zoom without min_rating filter...")
         for page in range(max_pages):
             page_results = _serpapi_page(
                 keyword, latitude, longitude, minimum_rating, api_key,
@@ -773,7 +813,7 @@ def search_attractions_serpapi(
             if len(page_results) < 20:
                 break
 
-    print(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps", flush=True)
+    logger.info(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps")
 
     seen_place_ids: set[str] = set()
     candidates = []
@@ -843,7 +883,7 @@ def search_attractions_serpapi(
             }
         )
 
-    print(f"[SERPAPI SEARCH] {len(candidates)} candidate(s) kept after filtering", flush=True)
+    logger.info(f"[SERPAPI SEARCH] {len(candidates)} candidate(s) kept after filtering")
 
     cache_set(cache_key, candidates)
 
