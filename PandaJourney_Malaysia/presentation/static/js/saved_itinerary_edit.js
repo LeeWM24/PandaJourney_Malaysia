@@ -17,6 +17,10 @@ import {
   writeBatch
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
+import {
+  validateContent
+} from "./content_filter.js";
+
 const ITINERARY_COLLECTION = "Itinerary";
 const STOP_COLLECTION = "itinerary_stops";
 const COLLABORATOR_COLLECTION = "collaborators";
@@ -1727,6 +1731,18 @@ async function addComment(text) {
     setCommentMessage("Comment cannot be empty.", true);
     return;
   }
+  if (trimmed.length > 500) {
+    setCommentMessage("Comment cannot exceed 500 characters.",  true);
+    return;
+  }
+  const validation = validateContent(trimmed);
+  if (!validation.isValid) {
+    setCommentMessage(
+      validation.message,
+      true
+    );
+    return;
+  }
   setCommentMessage("");
   await addDoc(collection(db, COMMENT_COLLECTION), {
     itinerary_id: activeItineraryId,
@@ -1745,6 +1761,18 @@ async function updateComment(commentDocumentId, text) {
   if (!currentUser) return;
   if (!trimmed) {
     setCommentMessage("Comment cannot be empty.", true);
+    return;
+  }
+  if (trimmed.length > 500) {
+    setCommentMessage("Comment cannot exceed 500 characters.",  true);
+    return;
+  }
+  const validation = validateContent(trimmed);
+  if (!validation.isValid) {
+    setCommentMessage(
+      validation.message,
+      true
+    );
     return;
   }
   setCommentMessage("");
