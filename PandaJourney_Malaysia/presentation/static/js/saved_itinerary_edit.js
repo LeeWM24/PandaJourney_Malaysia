@@ -20,6 +20,10 @@ import {
   endAt
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
+import {
+  validateContent
+} from "./content_filter.js";
+
 const ITINERARY_COLLECTION = "Itinerary";
 const STOP_COLLECTION = "itinerary_stops";
 const COLLABORATOR_COLLECTION = "collaborators";
@@ -107,11 +111,6 @@ const NEW_HIGHLIGHT_MS = 60 * 1000;
 const temporaryActivityHighlights = new Map();
 const temporaryCommentHighlights = new Map();
 const userProfileCache = new Map();
-const BLOCKED_COMMENT_TERMS = [
-  "asshole", "bastard", "bitch", "bullshit", "crap", "damn",
-  "dick", "fuck", "fucking", "motherfucker", "piss", "shit",
-  "slut", "whore", "bodoh", "bangsat", "sial"
-];
 
 function normaliseRatingForSave(value) {
   if (value === "Not available") return "Not available";
@@ -119,20 +118,6 @@ function normaliseRatingForSave(value) {
   return Number.isFinite(numberValue) && numberValue > 0
     ? numberValue
     : "Not available";
-}
-
-function containsBlockedCommentLanguage(text) {
-  const normalised = String(text || "")
-    .toLowerCase()
-    .replace(/0/g, "o")
-    .replace(/@/g, "a")
-    .replace(/[1!|]/g, "i")
-    .replace(/[$5]/g, "s");
-
-  return BLOCKED_COMMENT_TERMS.some(term => {
-    const pattern = new RegExp(`(^|[^a-z])${term}($|[^a-z])`, "i");
-    return pattern.test(normalised);
-  });
 }
 
 function showError() {
@@ -1913,8 +1898,13 @@ async function addComment(text) {
     setCommentMessage("Comment cannot be empty.", true);
     return false;
   }
-  if (containsBlockedCommentLanguage(trimmed)) {
-    setCommentMessage("Please keep comments respectful and remove inappropriate language.", true);
+  if (trimmed.length > 500) {
+    setCommentMessage("Comment cannot exceed 500 characters.", true);
+    return false;
+  }
+  const validation = validateContent(trimmed);
+  if (!validation.isValid) {
+    setCommentMessage(validation.message, true);
     return false;
   }
   setCommentMessage("");
@@ -1939,8 +1929,13 @@ async function updateComment(commentDocumentId, text) {
     setCommentMessage("Comment cannot be empty.", true);
     return;
   }
-  if (containsBlockedCommentLanguage(trimmed)) {
-    setCommentMessage("Please keep comments respectful and remove inappropriate language.", true);
+  if (trimmed.length > 500) {
+    setCommentMessage("Comment cannot exceed 500 characters.", true);
+    return;
+  }
+  const validation = validateContent(trimmed);
+  if (!validation.isValid) {
+    setCommentMessage(validation.message, true);
     return;
   }
   setCommentMessage("");
