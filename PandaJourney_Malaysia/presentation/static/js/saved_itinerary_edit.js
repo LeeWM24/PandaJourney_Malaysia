@@ -895,7 +895,7 @@ async function runBusyAction(action, buttonElement, busyText, callback) {
   updateAddStopButtonState();
 
   try {
-    await callback();
+    return await callback();
   } finally {
     if (buttonElement) {
       buttonElement.disabled = false;
