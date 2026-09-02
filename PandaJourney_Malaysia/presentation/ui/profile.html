@@ -653,6 +653,7 @@
             <img
               id="avatar-image"
               src=""
+              style="display: none;"
               alt="Profile picture">
 
             <span id="avatar-letter"></span>
@@ -1302,6 +1303,6 @@
 {% block extra_scripts %}
 <script
   type="module"
-  src="{{ url_for('static', filename='js/profile.js') }}">
+  src="{{ url_for('static', filename='js/profile.js') }}?v={{ asset_version('js/profile.js') }}">
 </script>
 {% endblock %}

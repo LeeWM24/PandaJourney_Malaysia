@@ -128,12 +128,14 @@ let isEditing = false;
 let selectedAvatarType = "";
 let selectedAvatar = "";
 let selectedAvatarUrl = "";
+let selectedGoogleAvatarChosen = false;
 let isAvatarProcessing = false;
 
 let originalDisplayName = "";
 let originalAvatarType = "";
 let originalAvatar = "";
 let originalAvatarUrl = "";
+let originalGoogleAvatarChosen = false;
 let originalInterests = [];
 let pendingFavouriteRemoval = null;
 
@@ -182,7 +184,19 @@ function renderAvatar({
   avatarImage.style.display = "none";
   avatarLetter.style.display = "flex";
   avatarLetter.textContent =
-    name.charAt(0).toUpperCase();
+    firstInitial(name);
+}
+
+function isGoogleUser(user, profile = {}) {
+  if (profile.authProvider === "password") {
+    return false;
+  }
+
+  return user?.providerData?.some(provider => provider.providerId === "google.com");
+}
+
+function firstInitial(value) {
+  return String(value || "?").trim().charAt(0).toUpperCase() || "?";
 }
 
 
@@ -214,6 +228,9 @@ function restoreOriginalAvatar() {
   selectedAvatarUrl =
     originalAvatarUrl;
 
+  selectedGoogleAvatarChosen =
+    originalGoogleAvatarChosen;
+
   renderAvatar({
     type:
       originalAvatarType,
@@ -225,11 +242,12 @@ function restoreOriginalAvatar() {
       originalAvatarUrl,
 
     googleUrl:
-      auth.currentUser
-        ?.photoURL || "",
+      originalGoogleAvatarChosen && isGoogleUser(auth.currentUser)
+        ? auth.currentUser?.photoURL || ""
+        : "",
 
     name:
-      originalDisplayName
+      auth.currentUser?.email || originalDisplayName
   });
 
   updateAvatarSelectedStyle();
@@ -320,11 +338,19 @@ onAuthStateChanged(auth, async user => {
       let storedType =
         data.avatarType || "";
 
+      if (storedType === "google" && !isGoogleUser(user)) {
+        storedType = "";
+      }
+
       if (!storedType && data.avatar) {
         storedType = "emoji";
       }
 
-      if (!storedType && user.photoURL) {
+      const googleProfileUrl = isGoogleUser(user, data)
+        ? user.photoURL || data.profilePictureUrl || ""
+        : "";
+
+      if (!storedType && googleProfileUrl) {
         storedType = "google";
       }
 
@@ -337,6 +363,9 @@ onAuthStateChanged(auth, async user => {
       originalAvatarUrl =
         data.avatarUrl || "";
 
+      originalGoogleAvatarChosen =
+        storedType === "google";
+
       selectedAvatarType =
         originalAvatarType;
 
@@ -346,12 +375,15 @@ onAuthStateChanged(auth, async user => {
       selectedAvatarUrl =
         originalAvatarUrl;
 
+      selectedGoogleAvatarChosen =
+        originalGoogleAvatarChosen;
+
       renderAvatar({
         type: selectedAvatarType,
         emoji: selectedAvatar,
         uploadUrl: selectedAvatarUrl,
-        googleUrl: user.photoURL || "",
-        name: originalDisplayName
+        googleUrl: googleProfileUrl,
+        name: data.email || user.email || originalDisplayName
       });
 
       updateAvatarSelectedStyle();
@@ -552,6 +584,8 @@ if (useGoogleAvatarBtn) {
         selectedAvatar = "";
 
         selectedAvatarUrl = "";
+
+        selectedGoogleAvatarChosen = true;
 
         renderAvatar({
           type: "google",
@@ -814,6 +848,8 @@ if (avatarFileInput) {
         selectedAvatarUrl =
           compressedDataUrl;
 
+        selectedGoogleAvatarChosen = false;
+
         renderAvatar({
           type: "upload",
           uploadUrl:
@@ -876,6 +912,8 @@ avatarOptions.forEach(option => {
         option.dataset.avatar || "";
 
       selectedAvatarUrl = "";
+
+      selectedGoogleAvatarChosen = false;
 
       renderAvatar({
         type: "emoji",
@@ -1072,6 +1110,9 @@ async function () {
       avatarUrl:
         selectedAvatarUrl || "",
 
+      googleAvatarChosen:
+        selectedAvatarType === "google" && selectedGoogleAvatarChosen,
+
       interests:
         selectedInterests,
 
@@ -1108,6 +1149,9 @@ async function () {
     originalAvatarUrl =
       selectedAvatarUrl || "";
 
+    originalGoogleAvatarChosen =
+      selectedAvatarType === "google" && selectedGoogleAvatarChosen;
+
     originalInterests =
       [...selectedInterests];
 
@@ -1122,10 +1166,12 @@ async function () {
         originalAvatarUrl,
 
       googleUrl:
-        user.photoURL || "",
+        originalGoogleAvatarChosen && isGoogleUser(user)
+          ? user.photoURL || ""
+          : "",
 
       name:
-        newDisplayName
+        user.email || newDisplayName
     });
 
     if (identityName) {

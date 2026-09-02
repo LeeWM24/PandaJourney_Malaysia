@@ -9,12 +9,15 @@ import {
   getDocs,
   limit,
   onSnapshot,
+  orderBy,
   query,
   serverTimestamp,
   setDoc,
+  startAt,
   updateDoc,
   where,
-  writeBatch
+  writeBatch,
+  endAt
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const ITINERARY_COLLECTION = "Itinerary";
@@ -51,6 +54,7 @@ const inviteForm = document.getElementById("invite-form");
 const inviteEmailInput = document.getElementById("invite-email-input");
 const inviteMessage = document.getElementById("invite-message");
 const inviteOptions = document.getElementById("invite-options");
+const inviteSuggestions = document.getElementById("invite-suggestions");
 const sendJoinEmailButton = document.getElementById("send-join-email-btn");
 const copyJoinLinkButton = document.getElementById("copy-join-link-btn");
 const commentsList = document.getElementById("comments-list");
@@ -82,6 +86,7 @@ let ownCollaboratorDocumentId = "";
 let hasCommentsViewedState = false;
 let pendingInviteLink = "";
 let pendingInviteEmail = "";
+let inviteSearchTimer = null;
 let unsubscribeFns = [];
 let titleSaveTimer = null;
 let draggedStopId = "";
@@ -101,6 +106,12 @@ let latestActivityDocs = [];
 const NEW_HIGHLIGHT_MS = 60 * 1000;
 const temporaryActivityHighlights = new Map();
 const temporaryCommentHighlights = new Map();
+const userProfileCache = new Map();
+const BLOCKED_COMMENT_TERMS = [
+  "asshole", "bastard", "bitch", "bullshit", "crap", "damn",
+  "dick", "fuck", "fucking", "motherfucker", "piss", "shit",
+  "slut", "whore", "bodoh", "bangsat", "sial"
+];
 
 function normaliseRatingForSave(value) {
   if (value === "Not available") return "Not available";
@@ -108,6 +119,20 @@ function normaliseRatingForSave(value) {
   return Number.isFinite(numberValue) && numberValue > 0
     ? numberValue
     : "Not available";
+}
+
+function containsBlockedCommentLanguage(text) {
+  const normalised = String(text || "")
+    .toLowerCase()
+    .replace(/0/g, "o")
+    .replace(/@/g, "a")
+    .replace(/[1!|]/g, "i")
+    .replace(/[$5]/g, "s");
+
+  return BLOCKED_COMMENT_TERMS.some(term => {
+    const pattern = new RegExp(`(^|[^a-z])${term}($|[^a-z])`, "i");
+    return pattern.test(normalised);
+  });
 }
 
 function showError() {
@@ -161,6 +186,8 @@ function normaliseEmail(value) {
 }
 
 function displayNameFromCollaborator(collaborator) {
+  const profile = getCachedUserProfile(collaborator.user_id);
+  if (profile?.displayName) return profile.displayName;
   const savedName = String(collaborator.display_name || "").trim();
   const email = String(collaborator.email || "").trim();
   if (savedName && savedName !== email) return savedName;
@@ -170,6 +197,160 @@ function displayNameFromCollaborator(collaborator) {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/\b\w/g, letter => letter.toUpperCase()) || "Collaborator";
+}
+
+function getCachedUserProfile(userId) {
+  return userId ? userProfileCache.get(userId) || null : null;
+}
+
+function displayNameFromUserSnapshot(snapshot, fallbackName, fallbackEmail = "") {
+  const profile = getCachedUserProfile(snapshot?.user_id || snapshot?.author_id || snapshot?.actor_id);
+  const profileName = String(profile?.displayName || "").trim();
+  if (profileName) return profileName;
+
+  const savedName = String(fallbackName || "").trim();
+  const email = String(fallbackEmail || "").trim();
+  if (savedName && savedName !== email) return savedName;
+
+  const localPart = email.split("@")[0] || "Collaborator";
+  return localPart
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, letter => letter.toUpperCase()) || "Collaborator";
+}
+
+function avatarHtmlForUser(userId, fallbackName, className) {
+  const profile = getCachedUserProfile(userId);
+  const displayName = String(profile?.displayName || fallbackName || "Collaborator").trim();
+  const avatarType = String(profile?.avatarType || "").trim();
+  const avatarEmoji = String(profile?.avatar || "").trim();
+  const uploadedAvatarUrl = String(profile?.avatarUrl || "").trim();
+  const googleAvatarUrl = profile?.authProvider === "google"
+    ? String(profile?.profilePictureUrl || "").trim()
+    : "";
+  const fallbackInitials = escapeHtml(initials(profile?.email || displayName));
+
+  if (avatarType === "emoji" && avatarEmoji) {
+    return `<div class="${className}">${escapeHtml(avatarEmoji)}</div>`;
+  }
+
+  if (avatarType === "upload" && uploadedAvatarUrl) {
+    return `
+      <div class="${className}">
+        <img src="${escapeHtml(uploadedAvatarUrl)}" alt="" onerror="this.remove();">
+      </div>
+    `;
+  }
+
+  if (googleAvatarUrl) {
+    return `
+      <div class="${className}">
+        <img src="${escapeHtml(googleAvatarUrl)}" alt="" onerror="this.remove();">
+      </div>
+    `;
+  }
+
+  return `<div class="${className}"><span>${fallbackInitials}</span></div>`;
+}
+
+function clearInviteSuggestions() {
+  if (!inviteSuggestions) return;
+  inviteSuggestions.innerHTML = "";
+  inviteSuggestions.classList.remove("show");
+}
+
+function renderInviteSuggestions(users) {
+  if (!inviteSuggestions) return;
+  const eligibleUsers = users.filter(user => {
+    const email = normaliseEmail(user.email);
+    return email && user.id !== currentUser?.uid &&
+      !collaboratorDocs.some(collaborator => normaliseEmail(collaborator.email) === email);
+  });
+
+  if (!eligibleUsers.length) {
+    clearInviteSuggestions();
+    return;
+  }
+
+  inviteSuggestions.innerHTML = "";
+  eligibleUsers.forEach(user => {
+    userProfileCache.set(user.id, user);
+    const name = String(user.displayName || user.email || "PandaJourney user").trim();
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "invite-suggestion";
+    option.innerHTML = `
+      ${avatarHtmlForUser(user.id, name, "invite-suggestion-avatar")}
+      <span class="invite-suggestion-details">
+        <span class="invite-suggestion-name">${escapeHtml(name)}</span>
+        <span class="invite-suggestion-email">${escapeHtml(user.email || "")}</span>
+      </span>
+    `;
+    option.addEventListener("click", function () {
+      if (inviteEmailInput) inviteEmailInput.value = normaliseEmail(user.email);
+      clearInviteSuggestions();
+      inviteEmailInput?.focus();
+    });
+    inviteSuggestions.appendChild(option);
+  });
+  inviteSuggestions.classList.add("show");
+}
+
+async function searchRegisteredUsers(searchTerm) {
+  const prefix = normaliseEmail(searchTerm);
+  if (!isOwner || prefix.length < 2) {
+    clearInviteSuggestions();
+    return;
+  }
+
+  try {
+    const usersQuery = query(
+      collection(db, USER_COLLECTION),
+      orderBy("email"),
+      startAt(prefix),
+      endAt(`${prefix}\uf8ff`),
+      limit(6)
+    );
+    const snapshot = await getDocs(usersQuery);
+    if (prefix !== normaliseEmail(inviteEmailInput?.value)) return;
+    renderInviteSuggestions(snapshot.docs.map(item => ({ id: item.id, ...item.data() })));
+  } catch (error) {
+    console.error("User search failed:", error);
+    clearInviteSuggestions();
+  }
+}
+
+async function loadUserProfilesForIds(userIds) {
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  const missingIds = uniqueIds.filter(userId => !userProfileCache.has(userId));
+
+  await Promise.all(missingIds.map(async userId => {
+    try {
+      const snapshot = await getDoc(doc(db, USER_COLLECTION, userId));
+      userProfileCache.set(userId, snapshot.exists() ? snapshot.data() : null);
+    } catch (error) {
+      console.error("Failed to load user profile:", error);
+      userProfileCache.set(userId, null);
+    }
+  }));
+}
+
+function currentUserDisplayName() {
+  const profileName = String(getCachedUserProfile(currentUser?.uid)?.displayName || "").trim();
+  return profileName || currentUser?.displayName || currentUser?.email || "A collaborator";
+}
+
+function applyCurrentProfileToMessage(activity) {
+  const name = displayNameFromUserSnapshot(activity, activity.actor_name, "");
+  const message = String(activity.message || "Itinerary updated");
+  const oldName = String(activity.actor_name || "").trim();
+
+  if (oldName && name && message.startsWith(oldName)) {
+    return `${name}${message.slice(oldName.length)}`;
+  }
+
+  return message;
 }
 
 function timestampMillis(value) {
@@ -692,9 +873,7 @@ function formatRelativeTime(value) {
 
 function initials(nameOrEmail) {
   const text = String(nameOrEmail || "?").trim();
-  const parts = text.split(/[\s._-]+/).filter(Boolean);
-  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-  return text.slice(0, 2).toUpperCase();
+  return text.charAt(0).toUpperCase() || "?";
 }
 
 function setInviteMessage(message, isError = false) {
@@ -870,6 +1049,7 @@ async function ensureOwnerCollaborator() {
   const alreadyExists = collaboratorDocs.some(item => item.role === "owner" && item.user_id === currentUser.uid);
   if (alreadyExists) return;
 
+  const ownerName = currentUserDisplayName();
   const ownerRef = doc(collection(db, COLLABORATOR_COLLECTION));
   await setDoc(ownerRef, {
     collaborator_id: ownerRef.id,
@@ -877,7 +1057,7 @@ async function ensureOwnerCollaborator() {
     itinerary_document_id: itinerary.document_id,
     user_id: currentUser.uid,
     email: normaliseEmail(currentUser.email),
-    display_name: currentUser.displayName || currentUser.email || "Owner",
+    display_name: ownerName,
     role: "owner",
     status: "accepted",
     last_activity_viewed_at: serverTimestamp(),
@@ -889,11 +1069,12 @@ async function ensureOwnerCollaborator() {
 
 async function addActivity(type, message) {
   if (!itinerary || !currentUser) return;
+  const actorName = currentUserDisplayName();
   await addDoc(collection(db, NOTIFICATION_COLLECTION), {
     itinerary_id: activeItineraryId,
     itinerary_document_id: itinerary.document_id,
     actor_id: currentUser.uid,
-    actor_name: currentUser.displayName || currentUser.email || "A collaborator",
+    actor_name: actorName,
     type,
     message,
     created_at: serverTimestamp()
@@ -1103,7 +1284,7 @@ async function updateStop(stopDocumentId, changes, activityText) {
     ...changes,
     updated_at: serverTimestamp()
   });
-  await addActivity("stop_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} ${activityText}`);
+  await addActivity("stop_updated", `${currentUserDisplayName()} ${activityText}`);
 }
 
 function getRoutePlace(fieldName, inputElement, currentName, latitudeKey, longitudeKey) {
@@ -1227,7 +1408,7 @@ async function saveRouteDetails() {
     await batch.commit();
     selectedRoutePlaces = {};
     setRouteSaveMessage("Route details saved.");
-    await addActivity("route_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} updated the route details`);
+    await addActivity("route_updated", `${currentUserDisplayName()} updated the route details`);
   } catch (error) {
     itinerary = previousItinerary;
     console.error("Route details save failed:", error);
@@ -1317,7 +1498,7 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     routeChanged ? "Route timing updated." : "Visit time saved.",
     false
   );
-  await addActivity("stop_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} updated stop ${stopNumber}`);
+  await addActivity("stop_updated", `${currentUserDisplayName()} updated stop ${stopNumber}`);
 }
 
 async function reorderStops(sourceId, targetId) {
@@ -1350,7 +1531,7 @@ async function reorderStops(sourceId, targetId) {
   });
   await batch.commit();
   setRouteSaveMessage(farLegMessage || "Route timing updated.", Boolean(farLegMessage));
-  await addActivity("stops_reordered", `${currentUser.displayName || currentUser.email || "A collaborator"} reordered stops`);
+  await addActivity("stops_reordered", `${currentUserDisplayName()} reordered stops`);
 }
 
 async function deleteStop(stopDocumentId, stopName) {
@@ -1378,7 +1559,7 @@ async function deleteStop(stopDocumentId, stopName) {
   });
   await batch.commit();
   setRouteSaveMessage("Route timing updated.");
-  await addActivity("stop_deleted", `${currentUser.displayName || currentUser.email || "A collaborator"} deleted ${stopName}`);
+  await addActivity("stop_deleted", `${currentUserDisplayName()} deleted ${stopName}`);
 }
 
 async function addStop() {
@@ -1493,7 +1674,7 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
   draftStop = null;
   editingStopId = "";
   setRouteSaveMessage("Route timing updated.");
-  await addActivity("stop_added", `${currentUser.displayName || currentUser.email || "A collaborator"} added ${cleanName}`);
+  await addActivity("stop_added", `${currentUserDisplayName()} added ${cleanName}`);
 }
 
 function renderCollaborators() {
@@ -1517,7 +1698,7 @@ function renderCollaborators() {
     const canChangeRole = isOwner && collaborator.role !== "owner" && collaborator.status === "accepted";
     const canRemove = isOwner && collaborator.role !== "owner";
     row.innerHTML = `
-      <div class="collaborator-avatar">${escapeHtml(initials(name))}</div>
+      ${avatarHtmlForUser(collaborator.user_id, name, "collaborator-avatar")}
       <div class="collaborator-info">
         <div class="collaborator-name">${escapeHtml(name)}</div>
         <div class="collaborator-email">${escapeHtml(collaborator.email || "")}</div>
@@ -1567,13 +1748,13 @@ async function updateCollaboratorRole(collaboratorDocumentId, role, email) {
     role,
     updated_at: serverTimestamp()
   });
-  await addActivity("role_changed", `${currentUser.displayName || currentUser.email || "Owner"} changed ${email} to ${role}`);
+  await addActivity("role_changed", `${currentUserDisplayName()} changed ${email} to ${role}`);
 }
 
 async function removeCollaborator(collaboratorDocumentId, email) {
   if (!isOwner) return;
   await deleteDoc(doc(db, COLLABORATOR_COLLECTION, collaboratorDocumentId));
-  await addActivity("collaborator_removed", `${currentUser.displayName || currentUser.email || "Owner"} removed ${email}`);
+  await addActivity("collaborator_removed", `${currentUserDisplayName()} removed ${email}`);
 }
 
 async function findRegisteredUserByEmail(email) {
@@ -1592,7 +1773,11 @@ async function inviteCollaborator(email) {
   }
 
   const registeredUser = await findRegisteredUserByEmail(email);
+  if (registeredUser?.id) {
+    userProfileCache.set(registeredUser.id, registeredUser);
+  }
   const collaboratorRef = doc(collection(db, COLLABORATOR_COLLECTION));
+  const inviterName = currentUserDisplayName();
   const baseInvite = {
     collaborator_id: collaboratorRef.id,
     itinerary_id: activeItineraryId,
@@ -1600,7 +1785,7 @@ async function inviteCollaborator(email) {
     owner_id: itinerary.user_id,
     owner_email: normaliseEmail(currentUser.email),
     invited_by: currentUser.uid,
-    invited_by_name: currentUser.displayName || currentUser.email || "Owner",
+    invited_by_name: inviterName,
     email,
     role: "viewer",
     status: registeredUser ? "pending" : "pending_registration",
@@ -1613,7 +1798,7 @@ async function inviteCollaborator(email) {
     user_id: registeredUser ? registeredUser.id : ""
   });
 
-  await addActivity("invite_sent", `${currentUser.displayName || currentUser.email || "Owner"} invited ${email}`);
+  await addActivity("invite_sent", `${inviterName} invited ${email}`);
 
   if (registeredUser) {
     setInviteMessage("Invitation request sent. It will show as pending until accepted.");
@@ -1641,6 +1826,7 @@ function renderComments(comments) {
 
   comments.forEach(comment => {
     const isOwnComment = currentUser && comment.author_id === currentUser.uid;
+    const authorName = displayNameFromUserSnapshot(comment, comment.author_name, comment.author_email);
     const isEditing = editingCommentId === comment.document_id;
     const isNew = hasCommentsViewedState &&
       !isOwnComment &&
@@ -1650,19 +1836,19 @@ function renderComments(comments) {
     const row = document.createElement("div");
     row.className = `comment-row ${showNewHighlight ? "is-new" : ""}`;
     row.innerHTML = `
-      <div class="comment-avatar">${escapeHtml(initials(comment.author_name || comment.author_email))}</div>
+      ${avatarHtmlForUser(comment.author_id, authorName, "comment-avatar")}
       <div class="comment-body">
-        <div class="comment-name">${escapeHtml(comment.author_name || comment.author_email || "Collaborator")}</div>
+        <div class="comment-name">${escapeHtml(authorName)}</div>
         <div class="comment-time">${escapeHtml(formatRelativeTime(comment.created_at))}</div>
         ${isEditing
           ? `<textarea class="comment-edit-input js-comment-edit-input" maxlength="500">${escapeHtml(comment.text || "")}</textarea>`
           : `<div class="comment-text">${escapeHtml(comment.text || "")}</div>`}
       </div>
-      ${isOwnComment
+      ${isOwnComment || isOwner
         ? `<div class="comment-actions">
-            ${isEditing
+            ${isOwnComment && isEditing
               ? `<button type="button" class="btn btn-primary btn-sm js-save-comment">Save</button><button type="button" class="btn btn-secondary btn-sm js-cancel-comment">Cancel</button>`
-              : `<button type="button" class="btn btn-secondary btn-sm js-edit-comment">Edit</button>
+              : `${isOwnComment ? `<button type="button" class="btn btn-secondary btn-sm js-edit-comment">Edit</button>` : ""}
                  <button type="button" class="icon-trash-btn js-delete-comment" aria-label="Delete comment" title="Delete comment">
                    <svg viewBox="0 0 24 24" aria-hidden="true">
                      <path d="M3 6h18"></path>
@@ -1725,19 +1911,25 @@ async function addComment(text) {
   if (!itinerary || !currentUser) return;
   if (!trimmed) {
     setCommentMessage("Comment cannot be empty.", true);
-    return;
+    return false;
+  }
+  if (containsBlockedCommentLanguage(trimmed)) {
+    setCommentMessage("Please keep comments respectful and remove inappropriate language.", true);
+    return false;
   }
   setCommentMessage("");
+  const authorName = currentUserDisplayName();
   await addDoc(collection(db, COMMENT_COLLECTION), {
     itinerary_id: activeItineraryId,
     itinerary_document_id: itinerary.document_id,
     author_id: currentUser.uid,
-    author_name: currentUser.displayName || currentUser.email || "Collaborator",
+    author_name: authorName,
     author_email: normaliseEmail(currentUser.email),
     text: trimmed,
     created_at: serverTimestamp()
   });
-  await addActivity("comment_added", `${currentUser.displayName || currentUser.email || "A collaborator"} added a comment`);
+  await addActivity("comment_added", `${authorName} added a comment`);
+  return true;
 }
 
 async function updateComment(commentDocumentId, text) {
@@ -1747,19 +1939,23 @@ async function updateComment(commentDocumentId, text) {
     setCommentMessage("Comment cannot be empty.", true);
     return;
   }
+  if (containsBlockedCommentLanguage(trimmed)) {
+    setCommentMessage("Please keep comments respectful and remove inappropriate language.", true);
+    return;
+  }
   setCommentMessage("");
   await updateDoc(doc(db, COMMENT_COLLECTION, commentDocumentId), {
     text: trimmed,
     edited_at: serverTimestamp()
   });
   editingCommentId = "";
-  await addActivity("comment_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} edited a comment`);
+  await addActivity("comment_updated", `${currentUserDisplayName()} edited a comment`);
 }
 
 async function deleteComment(commentDocumentId) {
   if (!currentUser || !commentDocumentId) return;
   await deleteDoc(doc(db, COMMENT_COLLECTION, commentDocumentId));
-  await addActivity("comment_deleted", `${currentUser.displayName || currentUser.email || "A collaborator"} deleted a comment`);
+  await addActivity("comment_deleted", `${currentUserDisplayName()} deleted a comment`);
 }
 
 function renderActivities(activities) {
@@ -1778,7 +1974,7 @@ function renderActivities(activities) {
       <div class="activity-row ${showNewHighlight ? "is-new" : ""}">
         <div class="activity-number">${index + 1}</div>
         <div class="activity-body">
-          <div class="activity-text">${escapeHtml(activity.message || "Itinerary updated")}</div>
+          <div class="activity-text">${escapeHtml(applyCurrentProfileToMessage(activity))}</div>
           <div class="activity-time">${escapeHtml(formatRelativeTime(activity.created_at))}</div>
         </div>
       </div>
@@ -1816,8 +2012,9 @@ function subscribeToData() {
   }));
 
   const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", activeItineraryId));
-  unsubscribeFns.push(onSnapshot(collaboratorQuery, snapshot => {
+  unsubscribeFns.push(onSnapshot(collaboratorQuery, async snapshot => {
     collaboratorDocs = snapshot.docs.map(item => ({ document_id: item.id, ...item.data() }));
+    await loadUserProfilesForIds(collaboratorDocs.map(item => item.user_id));
     const ownCollaborator = collaboratorDocs.find(item => item.user_id === currentUser.uid);
     ownCollaboratorDocumentId = ownCollaborator?.document_id || "";
     lastActivityViewedAt = timestampMillis(ownCollaborator?.last_activity_viewed_at);
@@ -1841,8 +2038,9 @@ function subscribeToData() {
   }));
 
   const commentsQuery = query(collection(db, COMMENT_COLLECTION), where("itinerary_id", "==", activeItineraryId));
-  unsubscribeFns.push(onSnapshot(commentsQuery, snapshot => {
+  unsubscribeFns.push(onSnapshot(commentsQuery, async snapshot => {
     latestCommentDocs = sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
+    await loadUserProfilesForIds(latestCommentDocs.map(item => item.author_id));
     renderComments(latestCommentDocs.slice(0, 20));
     markCommentsViewedSoon(latestCommentDocs);
   }));
@@ -1855,8 +2053,9 @@ function subscribeToActivities() {
     ? query(collection(db, NOTIFICATION_COLLECTION), where("itinerary_id", "==", activeItineraryId))
     : query(collection(db, NOTIFICATION_COLLECTION), where("itinerary_id", "==", activeItineraryId));
 
-  const activityUnsubscribe = onSnapshot(activityQuery, snapshot => {
+  const activityUnsubscribe = onSnapshot(activityQuery, async snapshot => {
     latestActivityDocs = sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
+    await loadUserProfilesForIds(latestActivityDocs.map(item => item.actor_id));
     renderActivities(allActivityMode ? latestActivityDocs : latestActivityDocs.slice(0, 5));
   });
 
@@ -1865,6 +2064,7 @@ function subscribeToActivities() {
 
 async function loadInitial(user) {
   currentUser = user;
+  await loadUserProfilesForIds([user.uid]);
   const itinerarySnap = await getDoc(doc(db, ITINERARY_COLLECTION, itineraryDocumentId));
   if (!itinerarySnap.exists()) {
     showError();
@@ -1901,7 +2101,7 @@ titleInput?.addEventListener("input", function () {
       title,
       updated_at: serverTimestamp()
     });
-    await addActivity("title_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} updated the itinerary name`);
+    await addActivity("title_updated", `${currentUserDisplayName()} updated the itinerary name`);
   }, 700);
 });
 
@@ -1911,7 +2111,7 @@ dateInput?.addEventListener("change", async function () {
     travel_date: dateInput.value || "",
     updated_at: serverTimestamp()
   });
-  await addActivity("date_updated", `${currentUser.displayName || currentUser.email || "A collaborator"} updated the itinerary date`);
+  await addActivity("date_updated", `${currentUserDisplayName()} updated the itinerary date`);
 });
 
 setupRoutePlaceAutocomplete(routeStartInput, routeStartSuggestions, "start");
@@ -1938,6 +2138,20 @@ addStopButton?.addEventListener("click", function (event) {
   ).catch(console.error);
 });
 
+inviteEmailInput?.addEventListener("input", function () {
+  clearTimeout(inviteSearchTimer);
+  const value = inviteEmailInput.value;
+  inviteSearchTimer = setTimeout(function () {
+    searchRegisteredUsers(value);
+  }, 250);
+});
+
+document.addEventListener("click", function (event) {
+  if (!event.target.closest(".invite-search-wrap")) {
+    clearInviteSuggestions();
+  }
+});
+
 inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
   const submitButton = inviteForm.querySelector('button[type="submit"]');
@@ -1961,7 +2175,7 @@ sendJoinEmailButton?.addEventListener("click", function () {
   const email = pendingInviteEmail || normaliseEmail(inviteEmailInput?.value);
   const tripTitle = itinerary?.title || titleInput?.value || "PandaJourney trip";
   const tripDate = itinerary?.travel_date ? formatDate(itinerary.travel_date) : "a planned travel date";
-  const inviterName = currentUser?.displayName || currentUser?.email || "A PandaJourney user";
+  const inviterName = currentUserDisplayName();
   const subject = encodeURIComponent(`Invitation: ${tripTitle}`);
   const body = encodeURIComponent(
     `Hi,\n\n${inviterName} invited you to collaborate on a PandaJourney itinerary.\n\n` +
@@ -2015,8 +2229,8 @@ commentForm?.addEventListener("submit", function (event) {
     "Sending...",
     () => addComment(text)
   )
-    .then(() => {
-      if (commentInput) commentInput.value = "";
+    .then(commentWasAdded => {
+      if (commentWasAdded && commentInput) commentInput.value = "";
     })
     .catch(console.error);
 });

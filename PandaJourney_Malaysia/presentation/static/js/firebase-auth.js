@@ -88,6 +88,7 @@ if (googleLogin) {
             email: user.email,
             displayName: user.displayName || "",
             profilePictureUrl: user.photoURL || null,
+            authProvider: "google",
 
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -96,6 +97,8 @@ if (googleLogin) {
     } else {
 
         await setDoc(userRef, {
+            authProvider: "google",
+            profilePictureUrl: user.photoURL || null,
             updatedAt: serverTimestamp()
         }, { merge: true });
 
@@ -138,6 +141,7 @@ if (googleSignup) {
           email: user.email,
           displayName: user.displayName || "",
           profilePictureUrl: user.photoURL || null,
+          authProvider: "google",
           updatedAt: serverTimestamp()
         },
         { merge: true }
@@ -269,15 +273,30 @@ if (loginForm && document.getElementById("email")) {
         console.log("Email Login successful!");
         console.log("UID:", user.uid);
 
+        const existingProfileSnapshot = await getDoc(
+          doc(db, "users", user.uid)
+        );
+        const existingProfile = existingProfileSnapshot.exists()
+          ? existingProfileSnapshot.data()
+          : {};
+        const loginProfile = {
+          uid: user.uid,
+          email: user.email,
+          authProvider: "password",
+          profilePictureUrl: null,
+          updatedAt: serverTimestamp()
+        };
+
+        // A password login keeps any avatar selected inside PandaJourney.
+        if (existingProfile.avatarType === "google") {
+          loginProfile.avatarType = "";
+          loginProfile.avatar = "";
+          loginProfile.avatarUrl = "";
+        }
+
         await setDoc(
           doc(db, "users", user.uid),
-          {
-            uid: user.uid,
-            email: user.email,
-            displayName: user.displayName || "",
-            profilePictureUrl: user.photoURL || null,
-            updatedAt: serverTimestamp()
-          },
+          loginProfile,
           { merge: true }
         );
 
@@ -353,6 +372,7 @@ if (registerForm) {
           email: user.email,
           displayName: name,
           profilePictureUrl: null,
+          authProvider: "password",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         },

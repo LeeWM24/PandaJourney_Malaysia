@@ -138,6 +138,7 @@ async function loadDashboardUser(user) {
   let avatarType = "";
   let avatar = "";
   let avatarUrl = "";
+  let authProvider = "";
 
   try {
     const userRef =
@@ -167,11 +168,15 @@ async function loadDashboardUser(user) {
       avatarUrl =
         data.avatarUrl || "";
 
+      authProvider =
+        data.authProvider || "";
+
       if (!avatarType && avatar) {
         avatarType = "emoji";
       }
 
       if (
+        authProvider === "google" &&
         !avatarType &&
         user.photoURL
       ) {
@@ -206,8 +211,8 @@ async function loadDashboardUser(user) {
     type: avatarType,
     emoji: avatar,
     uploadUrl: avatarUrl,
-    googleUrl: user.photoURL || "",
-    name
+    googleUrl: authProvider === "google" ? user.photoURL || "" : "",
+    name: user.email || name
   });
 }
 

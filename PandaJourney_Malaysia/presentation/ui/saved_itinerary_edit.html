@@ -459,6 +459,90 @@
     gap: 8px;
   }
 
+  .invite-search-wrap {
+    position: relative;
+  }
+
+  .invite-suggestions {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    display: none;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(15, 69, 52, .14);
+  }
+
+  .invite-suggestions.show {
+    display: block;
+  }
+
+  .invite-suggestion {
+    width: 100%;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: #fff;
+    color: var(--fg);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .invite-suggestion:last-child {
+    border-bottom: 0;
+  }
+
+  .invite-suggestion:hover,
+  .invite-suggestion:focus-visible {
+    background: #eefaf6;
+    outline: none;
+  }
+
+  .invite-suggestion-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .invite-suggestion-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .invite-suggestion-details {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .invite-suggestion-name,
+  .invite-suggestion-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .invite-suggestion-name { font-size: 13px; font-weight: 800; }
+  .invite-suggestion-email { color: var(--fg-2); font-size: 12px; }
+
   .collaborator-list,
   .activity-list,
   .comments-list {
@@ -517,7 +601,27 @@
     align-items: center;
     justify-content: center;
     font-weight: 900;
+    font-size: 14px;
+    line-height: 1;
     flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .collaborator-avatar span,
+  .comment-avatar span {
+    position: relative;
+    z-index: 1;
+  }
+
+  .collaborator-avatar img,
+  .comment-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
   }
 
   .collaborator-info,
@@ -911,10 +1015,13 @@
             <div class="edit-section-subtitle">Invite people and manage their authority.</div>
           </div>
         </div>
-        <form id="invite-form" class="invite-row">
-          <input id="invite-email-input" class="invite-input" type="email" placeholder="Search by email">
-          <button type="submit" class="btn btn-primary btn-md">Invite</button>
-        </form>
+        <div class="invite-search-wrap">
+          <form id="invite-form" class="invite-row">
+            <input id="invite-email-input" class="invite-input" type="email" placeholder="Search by email" autocomplete="off">
+            <button type="submit" class="btn btn-primary btn-md">Invite</button>
+          </form>
+          <div id="invite-suggestions" class="invite-suggestions" role="listbox"></div>
+        </div>
         <div id="invite-message" class="edit-meta" style="margin-top:8px;"></div>
         <div id="invite-options" class="invite-options">
           <div class="edit-meta" style="margin-bottom:10px;">This email is not registered yet.</div>
@@ -953,5 +1060,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script type="module" src="{{ url_for('static', filename='js/saved_itinerary_edit.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/saved_itinerary_edit.js') }}?v={{ asset_version('js/saved_itinerary_edit.js') }}"></script>
 {% endblock %}
