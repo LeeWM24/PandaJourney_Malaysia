@@ -84,6 +84,10 @@
     justify-content: flex-end;
   }
 
+  .saved-status-badge {
+    vertical-align: middle;
+  }
+
   .saved-topbar-actions {
     position: relative;
     display: flex;
@@ -103,7 +107,20 @@
     cursor: pointer;
   }
 
-  .request-count-badge {
+  .activity-bell-btn {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    border: 1px solid #fde68a;
+    background: #fff7df;
+    color: #8a4a00;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .request-count-badge,
+  .activity-count-badge {
     position: absolute;
     top: -5px;
     right: -5px;
@@ -120,7 +137,8 @@
     padding: 0 5px;
   }
 
-  .request-panel {
+  .request-panel,
+  .activity-panel {
     position: absolute;
     top: 50px;
     right: 0;
@@ -131,14 +149,41 @@
     border-radius: 16px;
     box-shadow: 0 18px 45px rgba(18, 43, 32, .16);
     padding: 14px;
-    z-index: 40;
+    z-index: 10020;
   }
 
   .request-panel.show {
     display: block;
   }
 
-  .request-panel-title {
+  .activity-panel.show {
+    display: block;
+  }
+
+  .saved-row {
+    position: relative;
+  }
+
+  .row-activity-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .row-activity-wrap .activity-panel {
+    top: 40px;
+    right: 0;
+  }
+
+  .row-activity-wrap .activity-panel.is-floating {
+    position: fixed;
+    top: auto;
+    right: auto;
+    max-height: min(360px, calc(100vh - 24px));
+    overflow-y: auto;
+  }
+
+  .request-panel-title,
+  .activity-panel-title {
     font-weight: 900;
     margin-bottom: 10px;
   }
@@ -168,6 +213,184 @@
     display: flex;
     gap: 8px;
     margin-top: 10px;
+  }
+
+  .activity-item {
+    padding: 12px 0;
+    border-top: 1px solid #eaf3ee;
+  }
+
+  .activity-item:first-child {
+    border-top: 0;
+  }
+
+  .activity-title {
+    color: var(--fg);
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .activity-title.is-unread {
+    color: #8a4a00;
+  }
+
+  .saved-invite-form {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  .saved-invite-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .saved-invite-input {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0 14px;
+    color: var(--fg);
+  }
+
+  .saved-invite-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(15, 138, 103, .10);
+  }
+
+  .saved-invite-message {
+    min-height: 20px;
+    margin-top: 10px;
+    color: var(--fg-2);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .saved-invite-message.error {
+    color: var(--danger);
+  }
+
+  .saved-invite-options {
+    display: none;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #fcfffd;
+  }
+
+  .saved-invite-options.show {
+    display: block;
+  }
+
+  .saved-invite-suggestions {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 10005;
+    display: none;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 14px 34px rgba(18, 43, 32, .18);
+    text-align: left;
+  }
+
+  .saved-invite-suggestions.show {
+    display: block;
+  }
+
+  .saved-invite-suggestion {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid #edf5ef;
+    background: #ffffff;
+    color: var(--fg);
+    cursor: pointer;
+    padding: 11px 13px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .saved-invite-suggestion:last-child {
+    border-bottom: 0;
+  }
+
+  .saved-invite-suggestion:hover,
+  .saved-invite-suggestion:focus-visible {
+    background: #eefaf6;
+    outline: none;
+  }
+
+  .saved-invite-suggestion-name {
+    font-weight: 900;
+  }
+
+  .saved-invite-suggestion-email {
+    color: var(--fg-2);
+    font-size: 12px;
+  }
+
+  .people-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+    text-align: left;
+  }
+
+  .people-row {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid #edf5ef;
+    border-radius: 14px;
+    background: #fbfefd;
+  }
+
+  .people-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: var(--primary);
+    color: #ffffff;
+    font-weight: 900;
+  }
+
+  .people-info {
+    min-width: 0;
+  }
+
+  .people-name {
+    font-weight: 900;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .people-email {
+    color: var(--fg-2);
+    font-size: 12px;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  .people-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
   }
 
   @media (max-width: 768px) {
@@ -354,6 +577,79 @@
 
         <button type="button" id="confirm-delete-btn" class="btn btn-danger btn-md custom-modal-danger">
           Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="invite-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+      <div class="custom-modal-icon">+</div>
+
+      <div class="custom-modal-title" id="invite-title">
+        Invite people
+      </div>
+
+      <div class="custom-modal-message">
+        Add a collaborator by email. They will receive a request in PandaJourney if registered.
+      </div>
+
+      <form id="saved-invite-form" class="saved-invite-form">
+        <div class="saved-invite-field">
+          <input
+            id="saved-invite-email"
+            class="saved-invite-input"
+            type="email"
+            placeholder="friend@example.com"
+            autocomplete="off"
+            required
+          >
+          <div id="saved-invite-suggestions" class="saved-invite-suggestions" role="listbox"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-md">Invite</button>
+      </form>
+
+      <div id="saved-invite-message" class="saved-invite-message" aria-live="polite"></div>
+
+      <div id="saved-invite-options" class="saved-invite-options">
+        <div class="request-meta" style="margin-bottom:10px;">
+          This email is not registered yet.
+        </div>
+        <div class="custom-modal-actions">
+          <button type="button" id="saved-send-invite-email" class="btn btn-secondary btn-sm">
+            Send email joining link
+          </button>
+          <button type="button" id="saved-copy-invite-link" class="btn btn-secondary btn-sm">
+            Copy link
+          </button>
+        </div>
+      </div>
+
+      <div class="custom-modal-actions" style="margin-top:16px;">
+        <button type="button" id="close-invite-btn" class="btn btn-secondary btn-md">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="people-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="people-title">
+      <div class="custom-modal-icon">i</div>
+
+      <div class="custom-modal-title" id="people-title">
+        People
+      </div>
+
+      <div class="custom-modal-message">
+        Joined collaborators and pending invite requests for this itinerary.
+      </div>
+
+      <div id="people-list" class="people-list"></div>
+
+      <div class="custom-modal-actions" style="margin-top:16px;">
+        <button type="button" id="close-people-btn" class="btn btn-secondary btn-md">
+          Close
         </button>
       </div>
     </div>

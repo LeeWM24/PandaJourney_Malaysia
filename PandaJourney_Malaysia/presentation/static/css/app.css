@@ -423,6 +423,8 @@ button, input, select, textarea { font: inherit; }
 .timeline-card { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; background: #fcfffd; box-shadow: 0 3px 10px rgba(15, 61, 42, .05); }
 .timeline-card strong { display: block; margin-bottom: 4px; }
 .timeline-card small { color: var(--muted-fg); }
+.timeline-route-marker .timeline-card { background: var(--primary-soft); border-color: #bfe7cf; }
+.timeline-route-marker .timeline-card strong { color: var(--primary-dark); }
 .detail-footer { border-top: 1px solid rgba(172, 211, 194, 0.55); padding: 14px 18px; display: flex; gap: 10px; }
 .detail-footer .btn { flex: 1; }
 .btn-primary.active { background: var(--primary-dark); }

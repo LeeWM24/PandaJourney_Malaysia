@@ -348,6 +348,205 @@ Explore community favorites, search destinations, and save routes in a tap.
       `;
     }
 
+    function formatPublicDate(value) {
+      if (!value) return 'No date';
+      const date = new Date(`${value}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: '2-digit' });
+    }
+
+    function getTripDays(item) {
+      const days = Math.round(Number(item.trip_days || item.day_count || 1));
+      return Math.min(30, Math.max(1, Number.isFinite(days) ? days : 1));
+    }
+
+    function normaliseDayNumber(item, value) {
+      const dayNumber = Math.round(Number(value || 1));
+      return Math.min(getTripDays(item), Math.max(1, Number.isFinite(dayNumber) ? dayNumber : 1));
+    }
+
+    function addDaysToDate(dateText, daysToAdd) {
+      if (!dateText) return '';
+      const date = new Date(`${dateText}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return '';
+      date.setDate(date.getDate() + daysToAdd);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatTripDateRange(item) {
+      const days = getTripDays(item);
+      const startDate = item.travel_date || item.date || '';
+      const endDate = addDaysToDate(startDate, days - 1);
+      if (days <= 1) return formatPublicDate(startDate);
+      if (!startDate || !endDate) return `${days} days`;
+      return `${formatPublicDate(startDate)} - ${formatPublicDate(endDate)} (${days} days)`;
+    }
+
+    function getDayStartTimes(item) {
+      const savedTimes = item.day_start_times && typeof item.day_start_times === 'object'
+        ? item.day_start_times
+        : {};
+      const fallbackTime = item.start_time || '09:00';
+      const result = {};
+      for (let dayNumber = 1; dayNumber <= getTripDays(item); dayNumber += 1) {
+        result[String(dayNumber)] = savedTimes[String(dayNumber)] || fallbackTime;
+      }
+      return result;
+    }
+
+    function parseClockMinutes(value) {
+      const text = String(value || '').trim();
+      if (!text) return 9 * 60;
+      const amPmMatch = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (amPmMatch) {
+        let hour = Number(amPmMatch[1]);
+        const minute = Number(amPmMatch[2]);
+        const period = amPmMatch[3].toUpperCase();
+        if (period === 'PM' && hour !== 12) hour += 12;
+        if (period === 'AM' && hour === 12) hour = 0;
+        return hour * 60 + minute;
+      }
+      const timeMatch = text.match(/^(\d{1,2}):(\d{2})$/);
+      if (timeMatch) return Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+      return 9 * 60;
+    }
+
+    function formatClockMinutes(value) {
+      const total = ((Math.round(Number(value || 0)) % 1440) + 1440) % 1440;
+      const hour24 = Math.floor(total / 60);
+      const minute = total % 60;
+      const period = hour24 >= 12 ? 'PM' : 'AM';
+      const hour12 = hour24 % 12 || 12;
+      return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+    }
+
+    function getPublicMeta(item) {
+      return `${escapeHtml(formatTripDateRange(item))} - ${escapeHtml(item.duration)} - ${item.stops} stops`;
+    }
+
+    function getStopPoint(stop) {
+      const latitude = Number(stop.latitude ?? stop.lat);
+      const longitude = Number(stop.longitude ?? stop.lng ?? stop.lon);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { latitude, longitude };
+    }
+
+    function distanceKm(pointA, pointB) {
+      if (!pointA || !pointB) return 0;
+      const lat1 = Number(pointA.latitude) * Math.PI / 180;
+      const lat2 = Number(pointB.latitude) * Math.PI / 180;
+      const deltaLat = (Number(pointB.latitude) - Number(pointA.latitude)) * Math.PI / 180;
+      const deltaLng = (Number(pointB.longitude) - Number(pointA.longitude)) * Math.PI / 180;
+      const a = Math.sin(deltaLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function estimateTravelMinutes(pointA, pointB) {
+      const km = distanceKm(pointA, pointB);
+      return km ? Math.max(5, Math.round((km / 35) * 60)) : 0;
+    }
+
+    function getPublicFinalTravelMinutes(item) {
+      const stops = item.stopList || [];
+      const savedTravelMinutes = Number(item.travel_duration_minutes || 0);
+      const stopTravelMinutes = stops.reduce((total, stop) => {
+        return total + Number(stop.travel_minutes_from_previous || 0);
+      }, 0);
+      if (savedTravelMinutes > stopTravelMinutes) return savedTravelMinutes - stopTravelMinutes;
+      const lastStop = stops.length ? stops[stops.length - 1] : null;
+      const endPoint = {
+        latitude: Number(item.end_latitude),
+        longitude: Number(item.end_longitude)
+      };
+      return estimateTravelMinutes(getStopPoint(lastStop), endPoint);
+    }
+
+    function renderPublicTimeline(item) {
+      const stops = [...(item.stopList || [])].sort((a, b) => {
+        const dayDifference = Number(a.day_number || 1) - Number(b.day_number || 1);
+        if (dayDifference) return dayDifference;
+        return Number(a.stop_order || 0) - Number(b.stop_order || 0);
+      });
+      let lastDayNumber = 0;
+      const rows = [];
+      const startName = item.start_location_name || 'Start Location';
+      const endName = item.end_location_name || item.destination || 'End Location';
+      const startTime = item.start_time
+        ? formatClockMinutes(parseClockMinutes(item.start_time))
+        : '';
+
+      if (startName || stops.length || endName) {
+        rows.push(`
+          <div class="timeline-day-divider">
+            <span>Day 1</span>
+          </div>
+        `);
+        lastDayNumber = 1;
+      }
+
+      if (startName) {
+        rows.push(`
+          <div class="timeline-item timeline-route-marker">
+            <div class="timeline-time">${escapeHtml(startTime)}</div>
+            <div class="timeline-card">
+              <strong>${escapeHtml(startName)}</strong>
+              <small>Starting location</small>
+            </div>
+          </div>
+        `);
+      }
+
+      stops.forEach((stop) => {
+        const dayNumber = normaliseDayNumber(item, stop.day_number || stop.day || 1);
+        const divider = dayNumber !== lastDayNumber
+          ? `
+            <div class="timeline-day-divider">
+              <span>Day ${dayNumber}</span>
+            </div>
+          `
+          : '';
+        lastDayNumber = dayNumber;
+        rows.push(`
+          ${divider}
+          <div class="timeline-item">
+            <div class="timeline-time">
+              ${escapeHtml(stop.time || stop.arrival_time || '')}
+            </div>
+            <div class="timeline-card">
+              <strong>${escapeHtml(stop.place || stop.stop_name || 'Unknown Stop')}</strong>
+              <small>${escapeHtml(stop.note || stop.category || '')}</small>
+            </div>
+          </div>
+        `);
+      });
+
+      if (endName) {
+        const lastStop = stops.length ? stops[stops.length - 1] : null;
+        const finalMinutes = getPublicFinalTravelMinutes(item);
+        const lastStopEnd = lastStop
+          ? parseClockMinutes(lastStop.departure_time || lastStop.time || lastStop.arrival_time || '')
+          : 0;
+        const endTime = lastStop
+          ? formatClockMinutes(lastStopEnd + finalMinutes)
+          : '';
+        rows.push(`
+          <div class="timeline-item timeline-route-marker">
+            <div class="timeline-time">${escapeHtml(endTime)}</div>
+            <div class="timeline-card">
+              <strong>${escapeHtml(endName)}</strong>
+              <small>Ending location</small>
+            </div>
+          </div>
+        `);
+      }
+
+      return rows.join('') || '<div class="empty-state">No stops available.</div>';
+    }
+
     // Render Popular Picks and Community List
     function renderBrowse(list) {
       const popular = list.slice(0, 3);
@@ -381,6 +580,7 @@ Explore community favorites, search destinations, and save routes in a tap.
                 <div class="medal">${index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
                 <div class="card-content">
                   <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${getPublicMeta(item)}</div>
                   <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
                   <div class="pill-stack">
                     <span class="tag">${item.views.toLocaleString()} views</span>
@@ -408,6 +608,7 @@ Explore community favorites, search destinations, and save routes in a tap.
               <article class="list-card card">
                 <div class="list-card-content">
                   <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${getPublicMeta(item)}</div>
                   <div class="meta-line">
                     ${escapeHtml(item.interest || 'General')} •
                     ${escapeHtml(item.duration)} •
@@ -455,6 +656,7 @@ Explore community favorites, search destinations, and save routes in a tap.
           <article class="list-card card">
             <div class="list-card-content">
               <div class="card-title">${escapeHtml(item.title)}</div>
+              <div class="meta-line">${getPublicMeta(item)}</div>
               <div class="meta-line">
                 ${escapeHtml(item.interest || 'General')} •
                 ${escapeHtml(item.duration)} •
@@ -530,6 +732,7 @@ Explore community favorites, search destinations, and save routes in a tap.
 
         <div class="detail-body">
           <h3 class="detail-title">${escapeHtml(item.title)}</h3>
+          <div class="meta-line">${getPublicMeta(item)}</div>
           <div class="meta-strip">
             <span class="tag">${escapeHtml(item.interest || 'General')}</span>
             <span class="tag">${escapeHtml(item.duration)}</span>
@@ -543,102 +746,7 @@ Explore community favorites, search destinations, and save routes in a tap.
           </div>
           <p style="margin: 14px 0 0; color: var(--fg-2); line-height: 1.7;">${escapeHtml(item.description)}</p>
           <div class="timeline">
-            ${(() => {
-              function timeToMinutes(value) {
-                const match = String(value || "").trim().match(
-                  /^(\d{1,2}):(\d{2})\s*(AM|PM)$/i
-                );
-
-                if (!match) return null;
-
-                let hours = Number(match[1]);
-                const minutes = Number(match[2]);
-                const period = match[3].toUpperCase();
-
-                if (period === "PM" && hours !== 12) {
-                  hours += 12;
-                }
-
-                if (period === "AM" && hours === 12) {
-                  hours = 0;
-                }
-
-                return hours * 60 + minutes;
-              }
-
-              // Check if the itinerary goes to the next day
-              let hasNextDay = false;
-              let checkPrevious = null;
-
-              for (const stop of item.stopList) {
-                const current = timeToMinutes(stop.time);
-
-                if (
-                  checkPrevious !== null &&
-                  current !== null &&
-                  current < checkPrevious
-                ) {
-                  hasNextDay = true;
-                  break;
-                }
-
-                if (current !== null) {
-                  checkPrevious = current;
-                }
-              }
-
-              let previousMinutes = null;
-              let dayNumber = 1;
-
-              return item.stopList.map((stop, index) => {
-                const currentMinutes = timeToMinutes(stop.time);
-
-                let divider = "";
-
-                // If the itinerary involves to next day, show "Day 1" divider
-                if (index === 0 && hasNextDay) {
-                  divider = `
-                    <div class="timeline-day-divider">
-                      <span>Day 1</span>
-                    </div>
-                  `;
-                }
-
-                // Compare for next day divider based on time comparison
-                if (
-                  previousMinutes !== null &&
-                  currentMinutes !== null &&
-                  currentMinutes < previousMinutes
-                ) {
-                  dayNumber += 1;
-
-                  divider += `
-                    <div class="timeline-day-divider">
-                      <span>Day ${dayNumber}</span>
-                    </div>
-                  `;
-                }
-
-                if (currentMinutes !== null) {
-                  previousMinutes = currentMinutes;
-                }
-
-                return `
-                  ${divider}
-
-                  <div class="timeline-item">
-                    <div class="timeline-time">
-                      ${escapeHtml(stop.time)}
-                    </div>
-
-                    <div class="timeline-card">
-                      <strong>${escapeHtml(stop.place)}</strong>
-                      <small>${escapeHtml(stop.note)}</small>
-                    </div>
-                  </div>
-                `;
-              }).join("");
-            })()}
+            ${renderPublicTimeline(item)}
           </div>
 
           <div class="public-route-map-section">

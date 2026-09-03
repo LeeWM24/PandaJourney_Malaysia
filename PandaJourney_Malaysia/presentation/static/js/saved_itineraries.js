@@ -4,8 +4,12 @@ import {
   collection,
   query,
   where,
+  orderBy,
+  startAt,
+  endAt,
   getDoc,
   getDocs,
+  limit,
   deleteDoc,
   doc,
   updateDoc,
@@ -38,6 +42,20 @@ const requestButton = document.getElementById("request-bell-btn");
 const requestBadge = document.getElementById("request-count-badge");
 const requestPanel = document.getElementById("request-panel");
 const requestList = document.getElementById("request-list");
+const inviteModal = document.getElementById("invite-modal");
+const inviteTitle = document.getElementById("invite-title");
+const inviteForm = document.getElementById("saved-invite-form");
+const inviteEmailInput = document.getElementById("saved-invite-email");
+const inviteMessage = document.getElementById("saved-invite-message");
+const inviteOptions = document.getElementById("saved-invite-options");
+const inviteSuggestions = document.getElementById("saved-invite-suggestions");
+const sendInviteEmailButton = document.getElementById("saved-send-invite-email");
+const copyInviteLinkButton = document.getElementById("saved-copy-invite-link");
+const closeInviteButton = document.getElementById("close-invite-btn");
+const peopleModal = document.getElementById("people-modal");
+const peopleTitle = document.getElementById("people-title");
+const peopleList = document.getElementById("people-list");
+const closePeopleButton = document.getElementById("close-people-btn");
 
 let currentUser = null;
 let pastVisible = false;
@@ -48,6 +66,12 @@ let sharedPlanCount = 0;
 let sharedPastPlanCount = 0;
 let pendingDeleteDocumentId = null;
 let pendingDeleteItineraryId = null;
+let pendingInviteItinerary = null;
+let pendingInviteLink = "";
+let pendingInviteEmail = "";
+let inviteSearchTimer = null;
+let activityCollaboratorDocs = [];
+const userProfileCache = new Map();
 
 function hideLoading() {
   if (loadingElement) loadingElement.style.display = "none";
@@ -133,6 +157,31 @@ function formatDuration(minutes) {
   return `${mins} mins`;
 }
 
+function timestampMillis(value) {
+  if (!value) return 0;
+  if (value.toMillis) return value.toMillis();
+  if (value.toDate) return value.toDate().getTime();
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function formatRelativeTime(value) {
+  const time = timestampMillis(value);
+  if (!time) return "";
+
+  const seconds = Math.max(1, Math.floor((Date.now() - time) / 1000));
+  if (seconds < 60) return "Just now";
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
 async function getStopSummary(itineraryId, itineraryData = {}) {
   const stopsQuery = query(collection(db, ITINERARY_STOP_COLLECTION), where("itinerary_id", "==", itineraryId));
   const snapshot = await getDocs(stopsQuery);
@@ -157,6 +206,61 @@ async function getCollaboratorCount(itineraryId) {
   const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", itineraryId));
   const snapshot = await getDocs(collaboratorQuery);
   return snapshot.size;
+}
+
+async function getUserProfile(userId) {
+  if (!userId) return null;
+  if (userProfileCache.has(userId)) return userProfileCache.get(userId);
+
+  try {
+    const snapshot = await getDoc(doc(db, "users", userId));
+    const profile = snapshot.exists() ? snapshot.data() : null;
+    userProfileCache.set(userId, profile);
+    return profile;
+  } catch (error) {
+    console.error("Failed to load user profile:", error);
+    userProfileCache.set(userId, null);
+    return null;
+  }
+}
+
+async function getCollaboratorDetails(itineraryId, ownerId) {
+  const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", itineraryId));
+  const snapshot = await getDocs(collaboratorQuery);
+  const collaborators = [];
+
+  snapshot.forEach(item => {
+    collaborators.push({
+      document_id: item.id,
+      ...item.data()
+    });
+  });
+
+  await Promise.all(collaborators.map(async function (collaborator) {
+    if (!collaborator.user_id) return;
+    const profile = await getUserProfile(collaborator.user_id);
+    if (!profile) return;
+
+    collaborator.display_name = collaborator.display_name || profile.displayName || profile.display_name || profile.name || "";
+    collaborator.email = collaborator.email || profile.email || "";
+  }));
+
+  const hasOwnerCollaborator = collaborators.some(item => {
+    return item.user_id === ownerId || item.role === "owner";
+  });
+
+  if (!hasOwnerCollaborator && ownerId) {
+    const profile = await getUserProfile(ownerId);
+    collaborators.unshift({
+      user_id: ownerId,
+      email: profile?.email || "",
+      display_name: profile?.displayName || profile?.display_name || profile?.name || "Owner",
+      role: "owner",
+      status: "accepted"
+    });
+  }
+
+  return collaborators;
 }
 
 function normaliseItinerary(docSnap, data, extra = {}) {
@@ -230,6 +334,167 @@ function closeDeleteConfirmModal() {
   modal.setAttribute("aria-hidden", "true");
 }
 
+function normaliseEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function currentUserDisplayName() {
+  return currentUser?.displayName || currentUser?.email || "A collaborator";
+}
+
+function setInviteMessage(message, isError = false) {
+  if (!inviteMessage) return;
+  inviteMessage.textContent = message || "";
+  inviteMessage.classList.toggle("error", Boolean(isError));
+}
+
+function clearInviteSuggestions() {
+  if (!inviteSuggestions) return;
+  inviteSuggestions.innerHTML = "";
+  inviteSuggestions.classList.remove("show");
+}
+
+function renderInviteSuggestions(users) {
+  if (!inviteSuggestions) return;
+
+  const eligibleUsers = users.filter(user => {
+    const email = normaliseEmail(user.email);
+    return email && email !== normaliseEmail(currentUser?.email);
+  });
+
+  if (!eligibleUsers.length) {
+    clearInviteSuggestions();
+    return;
+  }
+
+  inviteSuggestions.innerHTML = "";
+  eligibleUsers.forEach(user => {
+    const name = String(user.displayName || user.email || "PandaJourney user").trim();
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "saved-invite-suggestion";
+    option.innerHTML = `
+      <span class="saved-invite-suggestion-name">${escapeHtml(name)}</span>
+      <span class="saved-invite-suggestion-email">${escapeHtml(user.email || "")}</span>
+    `;
+    option.addEventListener("click", function () {
+      if (inviteEmailInput) inviteEmailInput.value = normaliseEmail(user.email);
+      clearInviteSuggestions();
+      inviteEmailInput?.focus();
+    });
+    inviteSuggestions.appendChild(option);
+  });
+  inviteSuggestions.classList.add("show");
+}
+
+async function searchInviteUsers(searchTerm) {
+  const prefix = normaliseEmail(searchTerm);
+
+  if (prefix.length < 2) {
+    clearInviteSuggestions();
+    return;
+  }
+
+  try {
+    const usersQuery = query(
+      collection(db, "users"),
+      orderBy("email"),
+      startAt(prefix),
+      endAt(`${prefix}\uf8ff`),
+      limit(6)
+    );
+    const snapshot = await getDocs(usersQuery);
+
+    if (prefix !== normaliseEmail(inviteEmailInput?.value)) return;
+
+    renderInviteSuggestions(snapshot.docs.map(item => ({
+      id: item.id,
+      ...item.data()
+    })));
+  } catch (error) {
+    console.error("Invite user search failed:", error);
+    clearInviteSuggestions();
+  }
+}
+
+function openInviteModal(itinerary) {
+  pendingInviteItinerary = itinerary;
+  pendingInviteLink = "";
+  pendingInviteEmail = "";
+  if (inviteTitle) inviteTitle.textContent = `Invite people to ${itinerary.title || "this itinerary"}`;
+  if (inviteEmailInput) inviteEmailInput.value = "";
+  if (inviteOptions) inviteOptions.classList.remove("show");
+  clearInviteSuggestions();
+  setInviteMessage("");
+  inviteModal?.classList.add("show");
+  inviteModal?.setAttribute("aria-hidden", "false");
+  inviteEmailInput?.focus();
+}
+
+function closeInviteModal() {
+  pendingInviteItinerary = null;
+  pendingInviteLink = "";
+  pendingInviteEmail = "";
+  clearInviteSuggestions();
+  inviteModal?.classList.remove("show");
+  inviteModal?.setAttribute("aria-hidden", "true");
+}
+
+function collaboratorName(collaborator) {
+  const savedName = String(collaborator.display_name || "").trim();
+  const email = String(collaborator.email || "").trim();
+
+  if (savedName && savedName !== email) return savedName;
+  return email ? email.split("@")[0] : "Invited person";
+}
+
+function getPeopleStatusLabel(status) {
+  if (status === "pending_registration") return "Waiting to join";
+  if (status === "pending") return "Request sent";
+  if (status === "accepted") return "Joined";
+  if (status === "declined") return "Declined";
+  return status || "Unknown";
+}
+
+function openPeopleModal(itinerary) {
+  if (peopleTitle) peopleTitle.textContent = `People in ${itinerary.title || "this itinerary"}`;
+
+  const collaborators = itinerary.collaborators || [];
+
+  if (peopleList) {
+    if (!collaborators.length) {
+      peopleList.innerHTML = `<div class="request-empty">No people found.</div>`;
+    } else {
+      peopleList.innerHTML = collaborators.map(collaborator => {
+        const role = String(collaborator.role || "viewer").toLowerCase();
+        const status = String(collaborator.status || "accepted").toLowerCase();
+        return `
+          <div class="people-row">
+            <div class="people-avatar">${escapeHtml(collaboratorName(collaborator).charAt(0).toUpperCase() || "?")}</div>
+            <div class="people-info">
+              <div class="people-name">${escapeHtml(collaboratorName(collaborator))}</div>
+              <div class="people-email">${escapeHtml(collaborator.email || "")}</div>
+            </div>
+            <div class="people-tags">
+              <span class="badge badge-muted">${escapeHtml(role)}</span>
+              <span class="badge ${status === "accepted" ? "badge-success" : status === "declined" ? "badge-muted" : "badge-warning"}">${escapeHtml(getPeopleStatusLabel(status))}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  peopleModal?.classList.add("show");
+  peopleModal?.setAttribute("aria-hidden", "false");
+  closePeopleButton?.focus();
+}
+
+function closePeopleModal() {
+  peopleModal?.classList.remove("show");
+  peopleModal?.setAttribute("aria-hidden", "true");
+}
+
 function initModalEvents() {
   document.getElementById("status-success-ok")?.addEventListener("click", closeStatusSuccessModal);
   document.getElementById("cancel-delete-btn")?.addEventListener("click", closeDeleteConfirmModal);
@@ -242,6 +507,14 @@ function initModalEvents() {
       console.error("Failed to delete itinerary:", error);
       openStatusSuccessModal("Delete Failed", "The itinerary could not be deleted.", "!");
     });
+  });
+  closeInviteButton?.addEventListener("click", closeInviteModal);
+  inviteModal?.addEventListener("click", function (event) {
+    if (event.target === inviteModal) closeInviteModal();
+  });
+  closePeopleButton?.addEventListener("click", closePeopleModal);
+  peopleModal?.addEventListener("click", function (event) {
+    if (event.target === peopleModal) closePeopleModal();
   });
 }
 
@@ -256,11 +529,89 @@ async function loadOwnedItineraries(user) {
     const stopSummary = await getStopSummary(itinerary.itinerary_id, data);
     itinerary.stop_count = itinerary.stop_count || stopSummary.count;
     itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
-    itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;
+    itinerary.collaborators = await getCollaboratorDetails(itinerary.itinerary_id, itinerary.owner_id);
+    itinerary.collaborator_count = itinerary.collaborators.length || 1;
     itineraries.push(itinerary);
   }
 
   return itineraries;
+}
+
+async function findRegisteredUserByEmail(email) {
+  const userQuery = query(
+    collection(db, "users"),
+    where("email", "==", email),
+    limit(1)
+  );
+  const snapshot = await getDocs(userQuery);
+  if (snapshot.empty) return null;
+  return {
+    id: snapshot.docs[0].id,
+    ...snapshot.docs[0].data()
+  };
+}
+
+async function inviteCollaboratorFromList(email) {
+  if (!currentUser || !pendingInviteItinerary) return;
+
+  const itinerary = pendingInviteItinerary;
+  const existingQuery = query(
+    collection(db, COLLABORATOR_COLLECTION),
+    where("itinerary_id", "==", itinerary.itinerary_id),
+    where("email", "==", email)
+  );
+  const existingSnapshot = await getDocs(existingQuery);
+
+  if (!existingSnapshot.empty) {
+    setInviteMessage("This person is already invited or added.", true);
+    return;
+  }
+
+  const registeredUser = await findRegisteredUserByEmail(email);
+  const collaboratorRef = doc(collection(db, COLLABORATOR_COLLECTION));
+  const inviterName = currentUserDisplayName();
+
+  await setDoc(collaboratorRef, {
+    collaborator_id: collaboratorRef.id,
+    itinerary_id: itinerary.itinerary_id,
+    itinerary_document_id: itinerary.id,
+    owner_id: itinerary.owner_id,
+    owner_email: normaliseEmail(currentUser.email),
+    invited_by: currentUser.uid,
+    invited_by_name: inviterName,
+    email,
+    display_name: registeredUser?.displayName || registeredUser?.display_name || registeredUser?.name || "",
+    role: "viewer",
+    status: registeredUser ? "pending" : "pending_registration",
+    user_id: registeredUser ? registeredUser.id : "",
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp()
+  });
+
+  const notificationRef = doc(collection(db, NOTIFICATION_COLLECTION));
+  await setDoc(notificationRef, {
+    notification_id: notificationRef.id,
+    itinerary_id: itinerary.itinerary_id,
+    itinerary_document_id: itinerary.id,
+    actor_id: currentUser.uid,
+    actor_name: inviterName,
+    type: "invite_sent",
+    message: `${inviterName} invited ${email}`,
+    created_at: serverTimestamp()
+  });
+
+  if (registeredUser) {
+    setInviteMessage("Invitation request sent. It will show in their requests.");
+    if (inviteOptions) inviteOptions.classList.remove("show");
+  } else {
+    pendingInviteEmail = email;
+    pendingInviteLink = `${window.location.origin}/saved-itineraries/${encodeURIComponent(itinerary.id)}/edit?invite=${encodeURIComponent(collaboratorRef.id)}`;
+    setInviteMessage("This email is not registered yet. Send or copy the joining link.");
+    if (inviteOptions) inviteOptions.classList.add("show");
+  }
+
+  showLoading();
+  await loadSavedItineraries(currentUser);
 }
 
 async function loadSharedItineraries(user) {
@@ -289,7 +640,8 @@ async function loadSharedItineraries(user) {
     const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
     itinerary.stop_count = itinerary.stop_count || stopSummary.count;
     itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
-    itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;
+    itinerary.collaborators = await getCollaboratorDetails(itinerary.itinerary_id, itinerary.owner_id);
+    itinerary.collaborator_count = itinerary.collaborators.length || 1;
     shared.push(itinerary);
   }
 
@@ -327,6 +679,62 @@ async function loadPendingRequests(user) {
   return requests;
 }
 
+async function loadActivityNotifications(ownedItineraries, sharedItineraries) {
+  const accessibleItineraries = [...ownedItineraries, ...sharedItineraries];
+
+  activityCollaboratorDocs = [];
+
+  const collaboratorQuery = query(
+    collection(db, COLLABORATOR_COLLECTION),
+    where("user_id", "==", currentUser.uid),
+    where("status", "==", "accepted")
+  );
+  const collaboratorSnapshot = await getDocs(collaboratorQuery);
+
+  collaboratorSnapshot.forEach(item => {
+    activityCollaboratorDocs.push({
+      document_id: item.id,
+      ...item.data()
+    });
+  });
+
+  for (const itinerary of accessibleItineraries) {
+    const notificationQuery = query(
+      collection(db, NOTIFICATION_COLLECTION),
+      where("itinerary_id", "==", itinerary.itinerary_id)
+    );
+    const notificationSnapshot = await getDocs(notificationQuery);
+    const collaborator = activityCollaboratorDocs.find(item => {
+      return item.itinerary_id === itinerary.itinerary_id;
+    });
+    const lastViewedAt = collaborator
+      ? timestampMillis(collaborator.last_activity_viewed_at)
+      : Date.now();
+
+    const activityItems = [];
+
+    notificationSnapshot.forEach(item => {
+      const notification = {
+        document_id: item.id,
+        itinerary_title: itinerary.title,
+        last_viewed_at: lastViewedAt,
+        ...item.data()
+      };
+
+      if (notification.actor_id !== currentUser.uid) {
+        activityItems.push(notification);
+      }
+    });
+
+    itinerary.activity_notifications = activityItems
+      .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at))
+      .slice(0, 10);
+    itinerary.unread_activity_count = itinerary.activity_notifications.filter(item => {
+      return timestampMillis(item.created_at) > Number(item.last_viewed_at || 0);
+    }).length;
+  }
+}
+
 async function loadSavedItineraries(user) {
   resetView();
   const [ownedItineraries, sharedItineraries, requests] = await Promise.all([
@@ -337,6 +745,7 @@ async function loadSavedItineraries(user) {
 
   hideLoading();
   renderRequests(requests);
+  await loadActivityNotifications(ownedItineraries, sharedItineraries);
 
   const upcomingPlans = ownedItineraries.filter(item => !isPastPlan(item.date)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   const pastPlans = ownedItineraries.filter(item => isPastPlan(item.date)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -383,6 +792,7 @@ function renderItineraries(itineraries, targetElement, listType) {
     const status = listType === "shared" ? "Shared" : itinerary.status;
     const canEdit = listType === "owned" || ["owner", "editor"].includes(String(itinerary.role || "").toLowerCase());
     const badgeClass = getBadgeClass(status);
+    const unreadActivityCount = Number(itinerary.unread_activity_count || 0);
     const row = document.createElement("div");
     row.className = "saved-row";
     row.innerHTML = `
@@ -390,9 +800,10 @@ function renderItineraries(itineraries, targetElement, listType) {
       <div class="saved-info">
         <div class="saved-title">
           ${escapeHtml(itinerary.title)}
-          <span class="badge ${badgeClass}">${escapeHtml(status)}</span>
         </div>
         <div class="saved-meta">
+          <span class="badge ${badgeClass} saved-status-badge">${escapeHtml(status)}</span>
+          &nbsp;-&nbsp;
           ${escapeHtml(formatDate(itinerary.date))}
           &nbsp;-&nbsp; ${escapeHtml(formatDuration(itinerary.duration_minutes))}
           &nbsp;-&nbsp; ${escapeHtml(itinerary.stop_count)} stops
@@ -400,8 +811,20 @@ function renderItineraries(itineraries, targetElement, listType) {
         </div>
       </div>
       <div class="saved-actions">
+        <span class="row-activity-wrap">
+          <button type="button" class="activity-bell-btn js-row-activity" aria-label="Activity for ${escapeHtml(itinerary.title)}">
+            *
+            <span class="activity-count-badge" style="${unreadActivityCount ? "display:inline-flex;" : ""}">${unreadActivityCount}</span>
+          </button>
+          <div class="activity-panel" aria-label="Recent activity for ${escapeHtml(itinerary.title)}">
+            <div class="activity-panel-title">Recent Activity</div>
+            ${activityPanelHtml(itinerary)}
+          </div>
+        </span>
         <a href="/saved-itineraries/${encodeURIComponent(itinerary.id)}" class="btn btn-secondary btn-sm">View</a>
         ${canEdit ? `<a href="/saved-itineraries/${encodeURIComponent(itinerary.id)}/edit" class="btn btn-secondary btn-sm">Edit</a>` : ""}
+        <button type="button" class="btn btn-secondary btn-sm js-people-itinerary">People</button>
+        ${listType === "owned" ? `<button type="button" class="btn btn-secondary btn-sm js-invite-itinerary">Invite</button>` : ""}
         ${listType === "owned" ? `<button type="button" class="btn btn-warning btn-sm js-toggle-publish">${itinerary.status === "Published" ? "Unpublish" : "Publish"}</button>` : ""}
         ${listType === "owned" ? `<button type="button" class="btn btn-danger btn-sm js-delete-itinerary">Delete</button>` : ""}
       </div>
@@ -416,6 +839,33 @@ function renderItineraries(itineraries, targetElement, listType) {
 
     row.querySelector(".js-delete-itinerary")?.addEventListener("click", function () {
       openDeleteConfirmModal(itinerary.id, itinerary.itinerary_id, itinerary.title || "this itinerary");
+    });
+
+    row.querySelector(".js-invite-itinerary")?.addEventListener("click", function () {
+      openInviteModal(itinerary);
+    });
+
+    row.querySelector(".js-people-itinerary")?.addEventListener("click", function () {
+      openPeopleModal(itinerary);
+    });
+
+    row.querySelector(".js-row-activity")?.addEventListener("click", function (event) {
+      event.stopPropagation();
+      document.querySelectorAll(".row-activity-wrap .activity-panel.show").forEach(panel => {
+        if (!row.contains(panel)) closeRowActivityPanel(panel);
+      });
+      const panel = row.querySelector(".row-activity-wrap .activity-panel");
+      const shouldOpen = panel && !panel.classList.contains("show");
+
+      if (panel && shouldOpen) {
+        panel.classList.add("show");
+        positionRowActivityPanel(event.currentTarget, panel);
+        markItineraryActivityViewed(itinerary, row).catch(error => {
+          console.error("Failed to mark itinerary activity viewed:", error);
+        });
+      } else if (panel) {
+        closeRowActivityPanel(panel);
+      }
     });
 
     targetElement.appendChild(row);
@@ -465,10 +915,95 @@ function renderRequests(requests) {
   });
 }
 
+function activityPanelHtml(itinerary) {
+  const notifications = itinerary.activity_notifications || [];
+
+  if (!notifications.length) {
+    return `<div class="request-empty">No recent activity.</div>`;
+  }
+
+  return notifications.map(item => {
+    const isUnread = timestampMillis(item.created_at) > Number(item.last_viewed_at || 0);
+    return `
+      <div class="activity-item">
+        <div class="activity-title ${isUnread ? "is-unread" : ""}">
+          ${escapeHtml(item.message || "Itinerary updated")}
+        </div>
+        <div class="request-meta">
+          ${escapeHtml(item.itinerary_title || "Itinerary")} - ${escapeHtml(formatRelativeTime(item.created_at))}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function positionRowActivityPanel(button, panel) {
+  if (!button || !panel) return;
+
+  panel.classList.add("is-floating");
+  panel.style.visibility = "hidden";
+  panel.style.left = "0px";
+  panel.style.top = "0px";
+
+  const buttonRect = button.getBoundingClientRect();
+  const panelRect = panel.getBoundingClientRect();
+  const padding = 12;
+  const left = Math.min(
+    Math.max(padding, buttonRect.right - panelRect.width),
+    window.innerWidth - panelRect.width - padding
+  );
+  const preferredTop = buttonRect.bottom + 8;
+  const top = preferredTop + panelRect.height + padding > window.innerHeight
+    ? Math.max(padding, buttonRect.top - panelRect.height - 8)
+    : preferredTop;
+
+  panel.style.left = `${left}px`;
+  panel.style.top = `${top}px`;
+  panel.style.visibility = "";
+}
+
+function closeRowActivityPanel(panel) {
+  panel.classList.remove("show", "is-floating");
+  panel.style.left = "";
+  panel.style.top = "";
+  panel.style.visibility = "";
+}
+
+async function markItineraryActivityViewed(itinerary, row) {
+  if (!currentUser || !itinerary) return;
+
+  const collaborator = activityCollaboratorDocs.find(item => {
+    return item.itinerary_id === itinerary.itinerary_id;
+  });
+
+  if (collaborator?.document_id) {
+    await updateDoc(doc(db, COLLABORATOR_COLLECTION, collaborator.document_id), {
+      last_activity_viewed_at: serverTimestamp()
+    });
+  }
+
+  itinerary.activity_notifications = (itinerary.activity_notifications || []).map(item => ({
+    ...item,
+    last_viewed_at: Date.now()
+  }));
+  itinerary.unread_activity_count = 0;
+
+  const badge = row?.querySelector(".activity-count-badge");
+  if (badge) {
+    badge.textContent = "0";
+    badge.style.display = "none";
+  }
+
+  row?.querySelectorAll(".activity-title.is-unread").forEach(element => {
+    element.classList.remove("is-unread");
+  });
+}
+
 async function acceptRequest(request) {
   await updateDoc(doc(db, COLLABORATOR_COLLECTION, request.id), {
     user_id: currentUser.uid,
     email: String(currentUser.email || "").toLowerCase(),
+    display_name: currentUser.displayName || "",
     status: "accepted",
     accepted_at: serverTimestamp(),
     updated_at: serverTimestamp()
@@ -522,6 +1057,9 @@ toggleSharedPastButton?.addEventListener("click", function () {
 if (requestButton && requestPanel) {
   requestButton.addEventListener("click", function () {
     requestPanel.classList.toggle("show");
+    document.querySelectorAll(".row-activity-wrap .activity-panel.show").forEach(panel => {
+      closeRowActivityPanel(panel);
+    });
   });
   document.addEventListener("click", function (event) {
     if (!requestPanel.contains(event.target) && !requestButton.contains(event.target)) {
@@ -529,6 +1067,87 @@ if (requestButton && requestPanel) {
     }
   });
 }
+
+document.addEventListener("click", function (event) {
+  if (!event.target.closest(".row-activity-wrap")) {
+    document.querySelectorAll(".row-activity-wrap .activity-panel.show").forEach(panel => {
+      closeRowActivityPanel(panel);
+    });
+  }
+});
+
+
+inviteForm?.addEventListener("submit", function (event) {
+  event.preventDefault();
+  const email = normaliseEmail(inviteEmailInput?.value);
+
+  if (!email || !email.includes("@")) {
+    setInviteMessage("Enter a valid email address.", true);
+    return;
+  }
+
+  const submitButton = inviteForm.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Inviting...";
+  }
+
+  inviteCollaboratorFromList(email)
+    .catch(error => {
+      console.error("Invite failed:", error);
+      setInviteMessage("Could not send the invite.", true);
+    })
+    .finally(() => {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "Invite";
+      }
+    });
+});
+
+inviteEmailInput?.addEventListener("input", function () {
+  clearTimeout(inviteSearchTimer);
+  const value = inviteEmailInput.value;
+  inviteSearchTimer = setTimeout(function () {
+    searchInviteUsers(value);
+  }, 250);
+});
+
+inviteEmailInput?.addEventListener("focus", function () {
+  if (inviteSuggestions?.innerHTML.trim()) {
+    inviteSuggestions.classList.add("show");
+  }
+});
+
+document.addEventListener("click", function (event) {
+  if (!event.target.closest(".saved-invite-field")) {
+    clearInviteSuggestions();
+  }
+});
+
+sendInviteEmailButton?.addEventListener("click", function () {
+  if (!pendingInviteLink || !pendingInviteEmail || !pendingInviteItinerary) return;
+  const subject = encodeURIComponent(`Invitation: ${pendingInviteItinerary.title}`);
+  const body = encodeURIComponent(
+    `Hi,\n\n${currentUserDisplayName()} invited you to collaborate on a PandaJourney itinerary.\n\n` +
+    `Itinerary: ${pendingInviteItinerary.title}\n` +
+    `Travel date: ${formatDate(pendingInviteItinerary.date)}\n` +
+    `Default access: Viewer\n\n` +
+    `Open this link to join or create your account:\n${pendingInviteLink}\n\n` +
+    `Thank you,\nPandaJourney`
+  );
+  window.open(
+    `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(pendingInviteEmail)}&su=${subject}&body=${body}`,
+    "_blank",
+    "noopener,noreferrer"
+  );
+});
+
+copyInviteLinkButton?.addEventListener("click", async function () {
+  if (!pendingInviteLink) return;
+  await navigator.clipboard.writeText(pendingInviteLink);
+  setInviteMessage("Joining link copied.");
+});
 
 async function togglePublishStatus(documentId, currentStatus) {
   const nextStatus = currentStatus === "Published" ? "Draft" : "Published";

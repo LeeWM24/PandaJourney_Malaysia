@@ -26,6 +26,7 @@ const errorElement = document.getElementById("detail-error");
 const contentElement = document.getElementById("detail-content");
 
 let detailMap = null;
+const placePhotoCache = new Map();
 
 // ================================
 // Itinerary ID
@@ -118,6 +119,37 @@ function formatDate(dateText) {
   });
 }
 
+function getTripDays(itinerary) {
+  const days = Math.round(Number(itinerary?.trip_days || itinerary?.day_count || 1));
+  return Math.min(30, Math.max(1, Number.isFinite(days) ? days : 1));
+}
+
+function normaliseDayNumber(itinerary, value) {
+  const dayNumber = Math.round(Number(value || 1));
+  return Math.min(getTripDays(itinerary), Math.max(1, Number.isFinite(dayNumber) ? dayNumber : 1));
+}
+
+function addDaysToDate(dateText, daysToAdd) {
+  if (!dateText) return "";
+  const date = new Date(`${dateText}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setDate(date.getDate() + daysToAdd);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatTripDateRange(itinerary) {
+  const days = getTripDays(itinerary);
+  const startDate = itinerary?.travel_date || "";
+  const endDate = addDaysToDate(startDate, days - 1);
+
+  if (days <= 1) return formatDate(startDate);
+  if (!startDate || !endDate) return `${days} days`;
+  return `${formatDate(startDate)} - ${formatDate(endDate)} (${days} days)`;
+}
+
 function formatMinutes(minutes) {
   const value = Number(minutes || 0);
 
@@ -135,6 +167,78 @@ function formatMinutes(minutes) {
   }
 
   return `${hours} hr ${remainder} min`;
+}
+
+function getDayStartTimes(itinerary) {
+  const savedTimes = itinerary?.day_start_times && typeof itinerary.day_start_times === "object"
+    ? itinerary.day_start_times
+    : {};
+  const fallbackTime = itinerary?.start_time || "09:00";
+  const result = {};
+
+  for (let dayNumber = 1; dayNumber <= getTripDays(itinerary); dayNumber += 1) {
+    result[String(dayNumber)] = savedTimes[String(dayNumber)] || fallbackTime;
+  }
+
+  return result;
+}
+
+function getDayStartTime(itinerary, dayNumber) {
+  const safeDayNumber = normaliseDayNumber(itinerary, dayNumber);
+  return getDayStartTimes(itinerary)[String(safeDayNumber)] || itinerary?.start_time || "09:00";
+}
+
+function formatRouteSummary(itinerary) {
+  const startName = getStartLocationName(itinerary);
+  const endName = getEndLocationName(itinerary);
+
+  if (startName && endName) {
+    return `${startName} -> ${endName}`;
+  }
+
+  return endName || startName || itinerary?.destination || "Malaysia";
+}
+
+function parseClockMinutes(value) {
+  const text = String(value || "").trim();
+  if (!text) return 9 * 60;
+
+  const amPmMatch = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (amPmMatch) {
+    let hour = Number(amPmMatch[1]);
+    const minute = Number(amPmMatch[2]);
+    const period = amPmMatch[3].toUpperCase();
+    if (period === "PM" && hour !== 12) hour += 12;
+    if (period === "AM" && hour === 12) hour = 0;
+    return hour * 60 + minute;
+  }
+
+  const twentyFourHourMatch = text.match(/^(\d{1,2}):(\d{2})$/);
+  if (twentyFourHourMatch) {
+    return Number(twentyFourHourMatch[1]) * 60 + Number(twentyFourHourMatch[2]);
+  }
+
+  return 9 * 60;
+}
+
+function formatClockMinutes(value) {
+  const total = ((Math.round(Number(value || 0)) % 1440) + 1440) % 1440;
+  const hour24 = Math.floor(total / 60);
+  const minute = total % 60;
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = hour24 % 12 || 12;
+  return `${hour12}:${String(minute).padStart(2, "0")} ${period}`;
+}
+
+function formatAvailableHours(itinerary) {
+  if (
+    itinerary.available_hours_unlimited ||
+    String(itinerary.available_hours || "").toLowerCase() === "unlimited"
+  ) {
+    return "No time limit";
+  }
+
+  return itinerary.available_hours ? `${itinerary.available_hours} hrs` : "Estimated";
 }
 
 function getBadgeClass(status) {
@@ -175,6 +279,53 @@ function getFirstValue(object, keys) {
 
 function isCurrentLocationName(value) {
   return String(value || "").trim().toLowerCase() === "current location";
+}
+
+function isGenericLocationName(value) {
+  const name = String(value || "").trim().toLowerCase();
+  return [
+    "kuala lumpur, malaysia",
+    "federal territory of kuala lumpur, malaysia",
+    "malaysia"
+  ].includes(name);
+}
+
+function getStopPlaceName(stop) {
+  return String(stop.stop_name || stop.place || "").trim();
+}
+
+function getPhotoStops(stops) {
+  return (stops || []).filter(function (stop) {
+    const placeName = getStopPlaceName(stop);
+    return placeName && !isGenericLocationName(placeName);
+  });
+}
+
+async function getPlacePhoto(placeName) {
+  if (placePhotoCache.has(placeName)) {
+    return placePhotoCache.get(placeName);
+  }
+
+  try {
+    const response = await fetch(
+      `/api/public-place-photo?name=${encodeURIComponent(placeName)}`
+    );
+    const data = await response.json();
+    const photo = {
+      imageUrl: data.image_url || "",
+      placeName
+    };
+    placePhotoCache.set(placeName, photo);
+    return photo;
+  } catch (error) {
+    console.error("Saved detail photo failed:", error);
+    const photo = {
+      imageUrl: "",
+      placeName
+    };
+    placePhotoCache.set(placeName, photo);
+    return photo;
+  }
 }
 
 function getStartLocationName(itinerary) {
@@ -262,6 +413,10 @@ function getStopPoint(stop) {
   };
 }
 
+function getRouteSegmentLabel(fromMarker, toMarker) {
+  return `Google Maps ${fromMarker} -> ${toMarker}`;
+}
+
 function isUsableStop(stop) {
   const stopName = String(stop.stop_name || "").trim().toLowerCase();
 
@@ -304,6 +459,47 @@ function buildCoordinateText(point) {
   }
 
   return `${latitude.toFixed(7)},${longitude.toFixed(7)}`;
+}
+
+function distanceKm(pointA, pointB) {
+  if (!pointA || !pointB) return 0;
+  const latA = normaliseNumber(pointA.latitude);
+  const lngA = normaliseNumber(pointA.longitude);
+  const latB = normaliseNumber(pointB.latitude);
+  const lngB = normaliseNumber(pointB.longitude);
+
+  if (latA === null || lngA === null || latB === null || lngB === null) {
+    return 0;
+  }
+
+  const lat1 = latA * Math.PI / 180;
+  const lat2 = latB * Math.PI / 180;
+  const deltaLat = (latB - latA) * Math.PI / 180;
+  const deltaLng = (lngB - lngA) * Math.PI / 180;
+  const a = Math.sin(deltaLat / 2) ** 2
+    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function estimateTravelMinutes(pointA, pointB) {
+  const km = distanceKm(pointA, pointB);
+  return km ? Math.max(5, Math.round((km / 35) * 60)) : 0;
+}
+
+function getStoredFinalTravelMinutes(itinerary, stops) {
+  const savedTravelMinutes = Number(itinerary?.travel_duration_minutes || 0);
+  const stopTravelMinutes = stops.reduce((total, stop) => {
+    return total + Number(stop.travel_minutes_from_previous || 0);
+  }, 0);
+
+  if (savedTravelMinutes > stopTravelMinutes) {
+    return Math.max(0, savedTravelMinutes - stopTravelMinutes);
+  }
+
+  const lastStopPoint = getLastStopPoint(stops);
+  const endPoint = getEndPoint(itinerary);
+  return estimateTravelMinutes(lastStopPoint, endPoint);
 }
 
 function buildGoogleMapsUrl(originPoint, destinationPoint, useLiveCurrentLocation = false) {
@@ -531,28 +727,34 @@ async function getItinerary(user) {
   };
 }
 
-async function getItineraryStops(targetItineraryId) {
-  const stopsQuery = query(
-    collection(db, ITINERARY_STOP_COLLECTION),
-    where("itinerary_id", "==", targetItineraryId)
-  );
+async function getItineraryStops(targetItineraryIds) {
+  const ids = Array.from(new Set(
+    (Array.isArray(targetItineraryIds) ? targetItineraryIds : [targetItineraryIds])
+      .filter(Boolean)
+  ));
+  const mergedStops = new Map();
 
-  const snapshot = await getDocs(stopsQuery);
+  for (const targetItineraryId of ids) {
+    const stopsQuery = query(
+      collection(db, ITINERARY_STOP_COLLECTION),
+      where("itinerary_id", "==", targetItineraryId)
+    );
 
-  const stops = [];
+    const snapshot = await getDocs(stopsQuery);
 
-  snapshot.forEach(function (docSnap) {
-    stops.push({
-      document_id: docSnap.id,
-      ...docSnap.data()
+    snapshot.forEach(function (docSnap) {
+      mergedStops.set(docSnap.id, {
+        document_id: docSnap.id,
+        ...docSnap.data()
+      });
     });
-  });
+  }
 
-  stops.sort(function (a, b) {
+  return Array.from(mergedStops.values()).sort(function (a, b) {
+    const dayDifference = Number(a.day_number || 1) - Number(b.day_number || 1);
+    if (dayDifference) return dayDifference;
     return Number(a.stop_order || 0) - Number(b.stop_order || 0);
   });
-
-  return stops;
 }
 
 async function loadDetail(user) {
@@ -563,14 +765,19 @@ async function loadDetail(user) {
     return;
   }
 
-  const targetItineraryId =
-    itinerary.itinerary_id ||
-    itinerary.document_id;
+  const targetItineraryIds = [
+    itinerary.itinerary_id,
+    itinerary.document_id,
+    itineraryId
+  ];
 
-  const stops = (await getItineraryStops(targetItineraryId)).filter(isUsableStop);
+  const stops = (await getItineraryStops(targetItineraryIds)).filter(isUsableStop);
 
   renderItinerary(itinerary, stops);
-  renderStops(itinerary, stops);
+  renderDetailStops(itinerary, stops);
+  renderPhotoCarousel(stops).catch(function (error) {
+    console.error("Failed to render itinerary photos:", error);
+  });
 
   showContent();
 
@@ -592,11 +799,11 @@ function renderItinerary(itinerary, stops) {
     0;
 
   setText("detail-title", itinerary.title || "Untitled Trip");
-  setText("detail-destination", itinerary.destination || "Malaysia");
-  setText("detail-date", formatDate(itinerary.travel_date));
+  setText("detail-destination", formatRouteSummary(itinerary));
+  setText("detail-date", formatTripDateRange(itinerary));
   setText("detail-start", getStartLocationName(itinerary));
   setText("detail-end", getEndLocationName(itinerary));
-  setText("detail-hours", itinerary.available_hours ? `${itinerary.available_hours} hrs` : "Estimated");
+  setText("detail-hours", formatAvailableHours(itinerary));
 
   if (Array.isArray(itinerary.interests) && itinerary.interests.length) {
     setText("detail-interest", itinerary.interests.join(", "));
@@ -614,6 +821,81 @@ function renderItinerary(itinerary, stops) {
 
   renderFullGoogleRouteAction(fullRouteUrl);
   renderEndLocationAction(itinerary, stops);
+}
+
+async function renderPhotoCarousel(stops) {
+  const carousel = document.getElementById("saved-detail-photo-carousel");
+
+  if (!carousel) return;
+
+  const photoStops = getPhotoStops(stops);
+
+  if (!photoStops.length) {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        No photo available
+      </div>
+    `;
+    return;
+  }
+
+  let currentIndex = 0;
+
+  async function renderPhoto() {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        Loading photo...
+      </div>
+    `;
+
+    const placeName = getStopPlaceName(photoStops[currentIndex]);
+    const photo = await getPlacePhoto(placeName);
+
+    carousel.innerHTML = `
+      ${
+        photo.imageUrl
+          ? `
+            <img
+              class="saved-detail-photo"
+              src="${escapeHtml(photo.imageUrl)}"
+              alt="${escapeHtml(photo.placeName)}"
+              loading="lazy"
+            >
+          `
+          : `
+            <div class="community-photo-placeholder">
+              No photo available
+            </div>
+          `
+      }
+      <div class="saved-detail-photo-label">
+        ${escapeHtml(photo.placeName)}
+      </div>
+      <div class="saved-detail-photo-count">
+        ${currentIndex + 1} / ${photoStops.length}
+      </div>
+      ${
+        photoStops.length > 1
+          ? `
+            <button class="saved-detail-carousel-btn saved-detail-carousel-prev" type="button" aria-label="Previous photo">&lsaquo;</button>
+            <button class="saved-detail-carousel-btn saved-detail-carousel-next" type="button" aria-label="Next photo">&rsaquo;</button>
+          `
+          : ""
+      }
+    `;
+
+    carousel.querySelector(".saved-detail-carousel-prev")?.addEventListener("click", function () {
+      currentIndex = (currentIndex - 1 + photoStops.length) % photoStops.length;
+      renderPhoto().catch(console.error);
+    });
+
+    carousel.querySelector(".saved-detail-carousel-next")?.addEventListener("click", function () {
+      currentIndex = (currentIndex + 1) % photoStops.length;
+      renderPhoto().catch(console.error);
+    });
+  }
+
+  await renderPhoto();
 }
 
 function renderFullGoogleRouteAction(url) {
@@ -696,6 +978,198 @@ function renderEndLocationAction(itinerary, stops) {
   `;
 
   endCard.appendChild(actionWrapper);
+}
+
+function renderDetailStops(itinerary, stops) {
+  const stopList = document.getElementById("detail-stop-list");
+
+  if (!stopList) return;
+
+  stopList.innerHTML = "";
+
+  const routeRows = [];
+  const startName = getStartLocationName(itinerary);
+  const endName = getEndLocationName(itinerary);
+  const dayStartTimes = getDayStartTimes(itinerary);
+  const startTime = formatClockMinutes(parseClockMinutes(dayStartTimes["1"] || itinerary.start_time || "09:00"));
+  const lastStop = stops.length ? stops[stops.length - 1] : null;
+  const finalTravelMinutes = getStoredFinalTravelMinutes(itinerary, stops);
+  const lastStopEndMinutes = lastStop
+    ? parseClockMinutes(lastStop.departure_time || lastStop.arrival_time || "")
+    : 0;
+  const endTime = lastStop && finalTravelMinutes
+    ? formatClockMinutes(lastStopEndMinutes + finalTravelMinutes)
+    : lastStop?.departure_time || lastStop?.arrival_time || "";
+
+  if (startName) {
+    routeRows.push({
+      type: "marker",
+      marker: "S",
+      label: "Start",
+      title: startName,
+      meta: `Starting location - Start time: ${startTime}`
+    });
+  }
+
+  let lastDayNumber = 0;
+
+  stops.forEach(function (stop, index) {
+    const dayNumber = normaliseDayNumber(itinerary, stop.day_number || stop.day || 1);
+
+    if (dayNumber !== lastDayNumber) {
+      routeRows.push({
+        type: "day",
+        dayNumber,
+        title: `Day ${dayNumber}`,
+        meta: `Starts ${formatClockMinutes(parseClockMinutes(getDayStartTime(itinerary, dayNumber)))}`
+      });
+      lastDayNumber = dayNumber;
+    }
+
+    routeRows.push({
+      type: "stop",
+      marker: String(index + 1),
+      stop,
+      index,
+      dayNumber
+    });
+  });
+
+  if (endName) {
+    routeRows.push({
+      type: "marker",
+      marker: "E",
+      label: "End",
+      title: endName,
+      meta: endTime
+        ? `Ending location - End time: ${endTime}`
+        : "Ending location"
+    });
+  }
+
+  if (!routeRows.length) {
+    stopList.innerHTML = `
+      <div class="empty-state" style="padding:28px;">
+        <div class="empty-title">No stops found</div>
+        <div class="empty-sub">This saved itinerary has no stop record.</div>
+      </div>
+    `;
+    return;
+  }
+
+  routeRows.forEach(function (routeRow) {
+    const row = document.createElement("div");
+    row.className = `detail-stop-row ${routeRow.type === "marker" ? "detail-route-marker-row" : ""} ${routeRow.type === "day" ? "detail-day-row" : ""}`;
+
+    if (routeRow.type === "day") {
+      row.innerHTML = `
+        <div class="detail-day-divider">
+          <span>${escapeHtml(routeRow.title)} - ${escapeHtml(routeRow.meta)}</span>
+        </div>
+      `;
+
+      stopList.appendChild(row);
+      return;
+    }
+
+    if (routeRow.type === "marker") {
+      row.innerHTML = `
+        <div class="detail-stop-number">${escapeHtml(routeRow.marker)}</div>
+        <div class="detail-stop-content">
+          <div class="detail-route-marker-label">${escapeHtml(routeRow.label)}</div>
+          <div class="detail-stop-title">${escapeHtml(routeRow.title)}</div>
+          <div class="detail-stop-meta">${escapeHtml(routeRow.meta)}</div>
+        </div>
+      `;
+
+      stopList.appendChild(row);
+      return;
+    }
+
+    const stop = routeRow.stop;
+    const index = routeRow.index;
+    const arrivalTime = stop.arrival_time || "";
+    const departureTime = stop.departure_time || "";
+    const timeText = departureTime
+      ? `${arrivalTime} - ${departureTime}`
+      : arrivalTime || "Time not available";
+    const originPoint = index === 0
+      ? getStartPoint(itinerary)
+      : getStopPoint(stops[index - 1]);
+    const useLiveCurrentLocation =
+      index === 0 &&
+      isCurrentLocationName(itinerary.start_location_name);
+    const originLabel = index === 0
+      ? useLiveCurrentLocation
+        ? "Current Location"
+        : getStartLocationName(itinerary)
+      : stops[index - 1].stop_name || "Previous Stop";
+    const destinationPoint = getStopPoint(stop);
+    const googleMapsUrl = buildGoogleMapsUrl(
+      originPoint,
+      destinationPoint,
+      useLiveCurrentLocation
+    );
+    const segmentLabel = getRouteSegmentLabel(
+      index === 0 ? "S" : String(index),
+      String(index + 1)
+    );
+    let googleMapsButton = googleMapsUrl
+      ? `
+        <a
+          href="${escapeHtml(googleMapsUrl)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="btn btn-secondary btn-sm"
+          title="Google Maps: ${escapeHtml(originLabel)} -> ${escapeHtml(stop.stop_name || "Stop")}"
+        >
+          ${escapeHtml(segmentLabel)}
+        </a>
+      `
+      : "";
+
+    if (index === stops.length - 1) {
+      const endPoint = getEndPoint(itinerary);
+      const endMapsUrl = buildGoogleMapsUrl(destinationPoint, endPoint);
+
+      if (endMapsUrl) {
+        const returnSegmentLabel = getRouteSegmentLabel(String(index + 1), "E");
+
+        googleMapsButton += `
+          <a
+            href="${escapeHtml(endMapsUrl)}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary btn-sm"
+            title="Google Maps: ${escapeHtml(stop.stop_name || "Stop")} -> ${escapeHtml(getEndLocationName(itinerary))}"
+          >
+            ${escapeHtml(returnSegmentLabel)}
+          </a>
+        `;
+      }
+    }
+
+    row.innerHTML = `
+      <div class="detail-stop-number">${escapeHtml(routeRow.marker)}</div>
+      <div class="detail-stop-content">
+        <div class="detail-stop-title">${escapeHtml(stop.stop_name || "Unnamed Stop")}</div>
+        <div class="detail-stop-meta">
+          ${escapeHtml(timeText)}
+          <br>
+          Rating: ${escapeHtml(stop.rating || "-")}
+          &nbsp;·&nbsp;
+          Category: ${escapeHtml(stop.category || "-")}
+          &nbsp;·&nbsp;
+          Visit: ${escapeHtml(formatMinutes(stop.visit_duration_minutes))}
+        </div>
+        <div class="detail-stop-action-row detail-stop-actions">
+          ${googleMapsButton}
+        </div>
+      </div>
+    `;
+
+    stopList.appendChild(row);
+  });
 }
 
 function renderStops(itinerary, stops) {

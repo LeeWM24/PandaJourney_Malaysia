@@ -5,6 +5,8 @@
 {% block page_subtitle %}Edit stops, comments, collaborators and activity{% endblock %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
 <style>
   .edit-layout {
     display: grid;
@@ -60,6 +62,74 @@
       #ffffff;
   }
 
+  .edit-trip-photo {
+    position: relative;
+    height: 220px;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: linear-gradient(135deg, #edf8f3, #dff3ec);
+  }
+
+  .edit-trip-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .edit-trip-photo-label {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .42);
+    color: #fff;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .edit-route-action {
+    display: none;
+    margin-top: 12px;
+  }
+
+  .edit-route-map {
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    height: 320px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    background: #eef8f3;
+  }
+
+  .edit-map-marker {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 3px solid #15956f;
+    color: #075c49;
+    font-size: 12px;
+    font-weight: 900;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, .18);
+  }
+
+  .edit-map-marker.start,
+  .edit-map-marker.end {
+    background: #15956f;
+    color: #ffffff;
+  }
+
   .edit-title-input {
     width: 100%;
     border: 1px solid transparent;
@@ -79,6 +149,79 @@
     margin-top: 6px;
   }
 
+  .edit-trip-days-input {
+    width: 86px;
+    min-height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--fg);
+    font-weight: 700;
+  }
+
+  .day-start-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .day-start-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .74);
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .day-start-control input {
+    width: 104px;
+    min-height: 30px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0 8px;
+    background: var(--primary-soft);
+    color: var(--fg);
+    font-weight: 900;
+    cursor: text;
+    outline: none;
+  }
+
+  .day-start-control input:focus {
+    border-color: var(--primary);
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(15, 138, 103, .12);
+  }
+
+  .day-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 100%;
+    margin: 2px 0 2px 46px;
+    color: var(--primary-dark);
+    font-weight: 900;
+  }
+
+  .day-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--border);
+  }
+
+  .day-divider span {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+  }
+
   .route-fields {
     display: grid;
     grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
@@ -87,8 +230,24 @@
   }
 
   .route-fields.compact {
-    grid-template-columns: 120px minmax(140px, 1fr) auto;
+    grid-template-columns: 150px minmax(140px, 1fr) auto;
     align-items: end;
+  }
+
+  .unlimited-hours-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .unlimited-hours-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
   }
 
   .edit-date-input {
@@ -147,15 +306,44 @@
     position: relative;
   }
 
-  .stop-list.is-scrollable {
-    max-height: 380px;
-    overflow-y: auto;
-    padding-right: 8px;
-  }
-
   .edit-stop-row {
     padding: 0 0 16px;
     position: relative;
+    flex-wrap: wrap;
+  }
+
+  .stop-day-select {
+    min-height: 38px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--fg);
+    font-weight: 800;
+  }
+
+  .edit-stop-row.route-marker-row .stop-number {
+    background: #dff3ec;
+    color: var(--primary-dark);
+    cursor: default;
+  }
+
+  .edit-stop-row.route-marker-row .stop-title {
+    color: var(--primary-dark);
+  }
+
+  .route-marker-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 0 8px;
+    margin-bottom: 5px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
   }
 
   .edit-stop-row:last-child {
@@ -200,13 +388,13 @@
   }
 
   .stop-display {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) auto;
     gap: 12px;
     align-items: flex-start;
   }
 
-  .stop-display > div:first-child {
+  .stop-text {
     min-width: 0;
   }
 
@@ -214,7 +402,10 @@
     font-weight: 900;
     color: var(--fg);
     margin-bottom: 3px;
-    overflow-wrap: anywhere;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .stop-subtitle {
@@ -301,6 +492,63 @@
   .stop-suggestion-item:hover,
   .route-suggestion-item:hover {
     background: #e8f7ef;
+  }
+
+  .stop-photo {
+    width: 74px;
+    height: 64px;
+    border-radius: 14px;
+    overflow: hidden;
+    flex: 0 0 74px;
+    background: linear-gradient(135deg, #edf8f3, #dff3ec);
+    border: 1px solid #d7e9df;
+    cursor: pointer;
+    padding: 0;
+    box-shadow: 0 3px 10px rgba(15, 61, 42, .06);
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+
+  .stop-photo:hover,
+  .stop-photo:focus-visible,
+  .stop-photo.is-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(15, 138, 103, .12);
+  }
+
+  .stop-photo:hover {
+    transform: translateY(-1px);
+  }
+
+  .stop-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .stop-photo-placeholder {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--muted-fg);
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+    padding: 6px;
+  }
+
+  .stop-route-action {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 9px;
+  }
+
+  .stop-route-action .btn {
+    max-width: min(100%, 440px);
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .stop-suggestion-custom {
@@ -557,18 +805,15 @@
     padding-right: 8px;
   }
 
-  .stop-list.is-scrollable::-webkit-scrollbar,
   .comments-list.is-scrollable::-webkit-scrollbar {
     width: 8px;
   }
 
-  .stop-list.is-scrollable::-webkit-scrollbar-track,
   .comments-list.is-scrollable::-webkit-scrollbar-track {
     background: #eef8f2;
     border-radius: 999px;
   }
 
-  .stop-list.is-scrollable::-webkit-scrollbar-thumb,
   .comments-list.is-scrollable::-webkit-scrollbar-thumb {
     background: #b9ddcd;
     border-radius: 999px;
@@ -868,6 +1113,14 @@
       flex-direction: column;
     }
 
+    .stop-display {
+      grid-template-columns: 74px minmax(0, 1fr);
+    }
+
+    .stop-actions-inline {
+      grid-column: 2;
+    }
+
     .edit-pills {
       justify-content: flex-start;
     }
@@ -918,17 +1171,26 @@
   <div id="edit-content" class="edit-layout" style="display:none;">
     <div class="edit-stack">
       <section class="card card-p edit-card edit-hero">
+        <div id="edit-trip-photo" class="edit-trip-photo">
+          <div class="stop-photo-placeholder">Loading photo...</div>
+        </div>
+
         <div class="edit-header-row">
           <div style="flex:1;">
             <input id="itinerary-title-input" class="edit-title-input" type="text" maxlength="120" aria-label="Itinerary title">
             <div class="edit-meta">
               <span>Travel date</span>
               <input id="itinerary-date-input" class="edit-date-input" type="date" aria-label="Travel date">
+              <span>Days</span>
+              <input id="itinerary-days-input" class="edit-trip-days-input" type="number" min="1" max="30" step="1" aria-label="Trip days">
+              <span>-</span>
+              <span id="itinerary-date-range">1 day</span>
               <span>-</span>
               <span id="itinerary-stop-count">0 stops</span>
               <span>-</span>
               <span id="itinerary-hours-text">Estimated</span>
             </div>
+            <div id="day-start-grid" class="day-start-grid"></div>
           </div>
           <div class="edit-pills">
             <span id="editor-role-badge" class="people-count">Viewer</span>
@@ -955,7 +1217,11 @@
         <div class="route-fields compact">
           <div class="route-field">
             <label>Available hours</label>
-            <input id="route-hours-input" class="route-input" type="number" min="1" max="24" step="1" aria-label="Available hours">
+            <input id="route-hours-input" class="route-input" type="number" min="1" step="1" aria-label="Available hours">
+            <label class="unlimited-hours-toggle">
+              <input id="route-hours-unlimited-input" type="checkbox">
+              No time limit
+            </label>
           </div>
           <div class="route-field">
             <label>Interests</label>
@@ -982,9 +1248,29 @@
               </label>
             </div>
           </div>
-          <button type="button" id="save-route-details-btn" class="btn btn-primary btn-md">Save route details</button>
+          <button type="button" id="save-route-details-btn" class="btn btn-primary btn-md">Save trip details</button>
         </div>
         <div id="route-save-message" class="route-save-message" aria-live="polite"></div>
+      </section>
+
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Stops</div>
+            <div class="edit-section-subtitle">Adjust stop order, assign days and open each route leg in Google Maps.</div>
+          </div>
+        </div>
+        <div id="edit-full-route-action" class="edit-route-action">
+          <a
+            href="#"
+            id="edit-google-full-route-link"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-secondary btn-sm"
+          >
+            View Full Route in Google Maps
+          </a>
+        </div>
 
         <div id="stop-list" class="stop-list" style="margin-top:16px;"></div>
         <button type="button" id="add-stop-btn" class="btn btn-secondary btn-md" style="width:100%; margin-top:12px;">+ Add a stop</button>
@@ -1008,6 +1294,15 @@
     </div>
 
     <div class="edit-stack">
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Route Map</div>
+          </div>
+        </div>
+        <div id="editRouteMap" class="edit-route-map"></div>
+      </section>
+
       <section class="card card-p edit-card">
         <div class="edit-section-header">
           <div>
@@ -1060,5 +1355,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script type="module" src="{{ url_for('static', filename='js/saved_itinerary_edit.js') }}?v={{ asset_version('js/saved_itinerary_edit.js') }}"></script>
 {% endblock %}

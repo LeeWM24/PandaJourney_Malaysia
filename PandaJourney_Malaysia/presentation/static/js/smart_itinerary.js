@@ -1118,6 +1118,8 @@ async function saveItinerary() {
 
     const availableHours = Number(getFormValue("available_hours", 6));
     const minimumRating = Number(getFormValue("minimum_rating", 4.0));
+    const travelDate = getFormValue("trip_date");
+    const startTime = getFormValue("start_time");
 
     const travelDurationText =
       plan.travel_duration ||
@@ -1151,8 +1153,8 @@ async function saveItinerary() {
       end_latitude: normaliseCoordinate(endPoint.latitude),
       end_longitude: normaliseCoordinate(endPoint.longitude),
 
-      travel_date: getFormValue("trip_date"),
-      start_time: getFormValue("start_time"),
+      travel_date: travelDate,
+      start_time: startTime,
 
       available_hours: availableHours,
       minimum_rating: minimumRating,
@@ -1185,6 +1187,7 @@ async function saveItinerary() {
 
         place_id: stop.id || stop.place_id || "",
         stop_order: index + 1,
+        day_number: 1,
 
         stop_name: stop.name || "Unnamed Stop",
         category: stop.category || stop.type || getSelectedInterests()[0] || "culture",

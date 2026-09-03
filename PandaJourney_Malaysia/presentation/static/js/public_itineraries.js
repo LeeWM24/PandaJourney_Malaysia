@@ -33,27 +33,38 @@ async function getAuthorName(userId) {
 }
 
 // Load All Stops and Prepare Information for Display at Selected Itinerary
-async function getItineraryStops(itineraryId) {
-  const stopsQuery = query(
-    collection(db, "itinerary_stops"),
-    where("itinerary_id", "==", itineraryId)
-  );
+async function getItineraryStops(itineraryIds) {
+  const ids = Array.from(new Set(
+    (Array.isArray(itineraryIds) ? itineraryIds : [itineraryIds]).filter(Boolean)
+  ));
+  const mergedStops = new Map();
 
-  const snapshot = await getDocs(stopsQuery);
+  for (const itineraryId of ids) {
+    const stopsQuery = query(
+      collection(db, "itinerary_stops"),
+      where("itinerary_id", "==", itineraryId)
+    );
 
-  const stops = snapshot.docs.map((doc) => {
-    const data = doc.data();
+    const snapshot = await getDocs(stopsQuery);
 
-    return {
-      id: doc.id,
-      ...data,
-      time: data.arrival_time ?? "",
-      place: data.stop_name ?? "Unknown Stop",
-      note: data.category ?? ""
-    };
-  });
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+
+      mergedStops.set(doc.id, {
+        id: doc.id,
+        ...data,
+        time: data.arrival_time ?? "",
+        place: data.stop_name ?? "Unknown Stop",
+        note: data.category ?? ""
+      });
+    });
+  }
+
+  const stops = Array.from(mergedStops.values());
 
   stops.sort((a, b) => {
+    const dayDifference = Number(a.day_number || 1) - Number(b.day_number || 1);
+    if (dayDifference) return dayDifference;
     return Number(a.stop_order || 0) - Number(b.stop_order || 0);
   });
 
@@ -286,7 +297,7 @@ async function testLoadItineraries() {
 
       // Retrieve Supporting Information for Each Itinerary
       const authorName = await getAuthorName(data.user_id);
-      const stopList = await getItineraryStops(doc.id);
+      const stopList = await getItineraryStops([doc.id, data.itinerary_id]);
 
       return {
         id: doc.id,
@@ -299,7 +310,7 @@ async function testLoadItineraries() {
         description: data.description ?? "",
         author: authorName,
         duration: `${Math.floor((data.total_duration_minutes ?? 0) / 60)} hr ${(data.total_duration_minutes ?? 0) % 60} min`,
-        stops: data.stop_count ?? 0,
+        stops: stopList.length || data.stop_count || 0,
         stopList: stopList
       };
     })
@@ -687,6 +698,20 @@ function getPublicStopPoint(stop) {
   };
 }
 
+function getPublicItineraryPoint(item, prefix) {
+  const latitude = normaliseNumber(item?.[`${prefix}_latitude`]);
+  const longitude = normaliseNumber(item?.[`${prefix}_longitude`]);
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  return {
+    latitude,
+    longitude
+  };
+}
+
 async function renderPublicRouteMap(item) {
   const mapElement = document.getElementById(
     "publicDetailRouteMap"
@@ -709,6 +734,19 @@ async function renderPublicRouteMap(item) {
     item.stopList
   );
 
+  const startPoint = getPublicItineraryPoint(item, "start");
+  const endPoint = getPublicItineraryPoint(item, "end");
+
+  if (startPoint) {
+    mapPoints.push({
+      label: `Start: ${item.start_location_name || "Start Location"}`,
+      latitude: startPoint.latitude,
+      longitude: startPoint.longitude,
+      type: "start",
+      markerLabel: "S"
+    });
+  }
+
   (item.stopList || []).forEach((stop, index) => {
     const point = getPublicStopPoint(stop);
 
@@ -721,9 +759,21 @@ async function renderPublicRouteMap(item) {
         "Stop"
       }`,
       latitude: point.latitude,
-      longitude: point.longitude
+      longitude: point.longitude,
+      type: "stop",
+      markerLabel: String(index + 1)
     });
   });
+
+  if (endPoint) {
+    mapPoints.push({
+      label: `End: ${item.end_location_name || item.destination || "End Location"}`,
+      latitude: endPoint.latitude,
+      longitude: endPoint.longitude,
+      type: "end",
+      markerLabel: "E"
+    });
+  }
 
   if (!mapPoints.length) {
     console.log(
@@ -753,20 +803,10 @@ async function renderPublicRouteMap(item) {
   const markerGroup = L.featureGroup();
 
   mapPoints.forEach((point, index) => {
-    const isFirst = index === 0;
-    const isLast = index === mapPoints.length - 1;
-
-    const markerLabel = isFirst
-      ? "S"
-      : isLast
-        ? "E"
-        : String(index + 1);
-
-    const markerClass = isFirst
-      ? "public-map-marker start"
-      : isLast
-        ? "public-map-marker end"
-        : "public-map-marker stop";
+    const markerLabel = point.markerLabel || String(index + 1);
+    const markerClass = point.type === "start" || point.type === "end"
+      ? `public-map-marker ${point.type}`
+      : "public-map-marker stop";
 
     const icon = L.divIcon({
       className: "",
