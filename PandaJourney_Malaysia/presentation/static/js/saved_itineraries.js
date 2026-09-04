@@ -183,29 +183,42 @@ function formatRelativeTime(value) {
 }
 
 async function getStopSummary(itineraryId, itineraryData = {}) {
-  const stopsQuery = query(collection(db, ITINERARY_STOP_COLLECTION), where("itinerary_id", "==", itineraryId));
-  const snapshot = await getDocs(stopsQuery);
-  let visitMinutes = 0;
-  let totalMinutes = 0;
-  snapshot.forEach(stopDoc => {
-    const stop = stopDoc.data();
-    visitMinutes += Number(stop.visit_duration_minutes || 0);
-    totalMinutes += Number(stop.travel_minutes_from_previous || 0) + Number(stop.visit_duration_minutes || 0);
-  });
-  const savedTravelMinutes = Number(itineraryData.travel_duration_minutes || 0);
-  if (savedTravelMinutes > 0) {
-    totalMinutes = savedTravelMinutes + visitMinutes;
+  try {
+    const stopsQuery = query(collection(db, ITINERARY_STOP_COLLECTION), where("itinerary_id", "==", itineraryId));
+    const snapshot = await getDocs(stopsQuery);
+    let visitMinutes = 0;
+    let totalMinutes = 0;
+    snapshot.forEach(stopDoc => {
+      const stop = stopDoc.data();
+      visitMinutes += Number(stop.visit_duration_minutes || 0);
+      totalMinutes += Number(stop.travel_minutes_from_previous || 0) + Number(stop.visit_duration_minutes || 0);
+    });
+    const savedTravelMinutes = Number(itineraryData.travel_duration_minutes || 0);
+    if (savedTravelMinutes > 0) {
+      totalMinutes = savedTravelMinutes + visitMinutes;
+    }
+    return {
+      count: snapshot.size,
+      totalMinutes
+    };
+  } catch (error) {
+    console.warn("Could not load stop summary:", error);
+    return {
+      count: Number(itineraryData.stop_count || 0),
+      totalMinutes: Number(itineraryData.total_duration_minutes || 0)
+    };
   }
-  return {
-    count: snapshot.size,
-    totalMinutes
-  };
 }
 
 async function getCollaboratorCount(itineraryId) {
-  const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", itineraryId));
-  const snapshot = await getDocs(collaboratorQuery);
-  return snapshot.size;
+  try {
+    const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", itineraryId));
+    const snapshot = await getDocs(collaboratorQuery);
+    return snapshot.size;
+  } catch (error) {
+    console.warn("Could not load collaborator count:", error);
+    return 1;
+  }
 }
 
 async function getUserProfile(userId) {
@@ -225,8 +238,14 @@ async function getUserProfile(userId) {
 }
 
 async function getCollaboratorDetails(itineraryId, ownerId) {
-  const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", itineraryId));
-  const snapshot = await getDocs(collaboratorQuery);
+  let snapshot;
+  try {
+    const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", itineraryId));
+    snapshot = await getDocs(collaboratorQuery);
+  } catch (error) {
+    console.warn("Could not load collaborator details:", error);
+    snapshot = { forEach: function () {} };
+  }
   const collaborators = [];
 
   snapshot.forEach(item => {
@@ -261,6 +280,33 @@ async function getCollaboratorDetails(itineraryId, ownerId) {
   }
 
   return collaborators;
+}
+
+async function getItineraryByReferenceIds(referenceIds) {
+  const uniqueIds = [...new Set(referenceIds.filter(Boolean))];
+
+  for (const referenceId of uniqueIds) {
+    try {
+      const directSnap = await getDoc(doc(db, ITINERARY_COLLECTION, referenceId));
+      if (directSnap.exists()) return directSnap;
+    } catch (error) {
+      console.warn("Direct itinerary lookup failed:", error);
+    }
+
+    try {
+      const itineraryQuery = query(
+        collection(db, ITINERARY_COLLECTION),
+        where("itinerary_id", "==", referenceId),
+        limit(1)
+      );
+      const querySnap = await getDocs(itineraryQuery);
+      if (!querySnap.empty) return querySnap.docs[0];
+    } catch (error) {
+      console.warn("Itinerary id lookup failed:", error);
+    }
+  }
+
+  return null;
 }
 
 function normaliseItinerary(docSnap, data, extra = {}) {
@@ -615,34 +661,46 @@ async function inviteCollaboratorFromList(email) {
 }
 
 async function loadSharedItineraries(user) {
-  const collaboratorQuery = query(
-    collection(db, COLLABORATOR_COLLECTION),
-    where("user_id", "==", user.uid),
-    where("status", "==", "accepted")
-  );
-  const collaboratorSnapshot = await getDocs(collaboratorQuery);
+  let collaboratorSnapshot;
+  try {
+    const collaboratorQuery = query(
+      collection(db, COLLABORATOR_COLLECTION),
+      where("user_id", "==", user.uid),
+      where("status", "==", "accepted")
+    );
+    collaboratorSnapshot = await getDocs(collaboratorQuery);
+  } catch (error) {
+    console.warn("Could not load shared itinerary records:", error);
+    return [];
+  }
   const shared = [];
 
   for (const collaboratorDoc of collaboratorSnapshot.docs) {
-    const collaborator = collaboratorDoc.data();
-    if (collaborator.owner_id === user.uid || collaborator.role === "owner") continue;
+    try {
+      const collaborator = collaboratorDoc.data();
+      if (collaborator.owner_id === user.uid || collaborator.role === "owner") continue;
 
-    const itineraryDocId = collaborator.itinerary_document_id || collaborator.itinerary_id;
-    const itinerarySnap = await getDoc(doc(db, ITINERARY_COLLECTION, itineraryDocId));
-    if (!itinerarySnap.exists()) continue;
-    if (itinerarySnap.data().user_id === user.uid) continue;
+      const itinerarySnap = await getItineraryByReferenceIds([
+        collaborator.itinerary_document_id,
+        collaborator.itinerary_id
+      ]);
+      if (!itinerarySnap || !itinerarySnap.exists()) continue;
+      if (itinerarySnap.data().user_id === user.uid) continue;
 
-    const itinerary = normaliseItinerary(itinerarySnap, itinerarySnap.data(), {
-      role: collaborator.role || "viewer",
-      collaborator_document_id: collaboratorDoc.id,
-      shared: true
-    });
-    const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
-    itinerary.stop_count = itinerary.stop_count || stopSummary.count;
-    itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
-    itinerary.collaborators = await getCollaboratorDetails(itinerary.itinerary_id, itinerary.owner_id);
-    itinerary.collaborator_count = itinerary.collaborators.length || 1;
-    shared.push(itinerary);
+      const itinerary = normaliseItinerary(itinerarySnap, itinerarySnap.data(), {
+        role: collaborator.role || "viewer",
+        collaborator_document_id: collaboratorDoc.id,
+        shared: true
+      });
+      const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
+      itinerary.stop_count = itinerary.stop_count || stopSummary.count;
+      itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
+      itinerary.collaborators = await getCollaboratorDetails(itinerary.itinerary_id, itinerary.owner_id);
+      itinerary.collaborator_count = itinerary.collaborators.length || 1;
+      shared.push(itinerary);
+    } catch (error) {
+      console.warn("Skipping unreadable shared itinerary:", error);
+    }
   }
 
   return shared;
@@ -650,29 +708,41 @@ async function loadSharedItineraries(user) {
 
 async function loadPendingRequests(user) {
   const email = String(user.email || "").toLowerCase();
-  const snapshots = await Promise.all(["pending", "pending_registration"].map(status => {
-    const requestQuery = query(
-      collection(db, COLLABORATOR_COLLECTION),
-      where("email", "==", email),
-      where("status", "==", status)
-    );
-    return getDocs(requestQuery);
-  }));
+  let snapshots;
+  try {
+    snapshots = await Promise.all(["pending", "pending_registration"].map(status => {
+      const requestQuery = query(
+        collection(db, COLLABORATOR_COLLECTION),
+        where("email", "==", email),
+        where("status", "==", status)
+      );
+      return getDocs(requestQuery);
+    }));
+  } catch (error) {
+    console.warn("Could not load pending itinerary requests:", error);
+    return [];
+  }
   const requests = [];
 
   for (const snapshot of snapshots) {
     for (const requestDoc of snapshot.docs) {
-      const request = requestDoc.data();
-      const itineraryDocId = request.itinerary_document_id || request.itinerary_id;
-      const itinerarySnap = await getDoc(doc(db, ITINERARY_COLLECTION, itineraryDocId));
-      if (!itinerarySnap.exists()) continue;
+      try {
+        const request = requestDoc.data();
+        const itinerarySnap = await getItineraryByReferenceIds([
+          request.itinerary_document_id,
+          request.itinerary_id
+        ]);
+        if (!itinerarySnap || !itinerarySnap.exists()) continue;
 
-      const itinerary = normaliseItinerary(itinerarySnap, itinerarySnap.data());
-      const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
-      itinerary.stop_count = itinerary.stop_count || stopSummary.count;
-      itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
-      itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;
-      requests.push({ id: requestDoc.id, ...request, itinerary });
+        const itinerary = normaliseItinerary(itinerarySnap, itinerarySnap.data());
+        const stopSummary = await getStopSummary(itinerary.itinerary_id, itinerarySnap.data());
+        itinerary.stop_count = itinerary.stop_count || stopSummary.count;
+        itinerary.duration_minutes = stopSummary.totalMinutes || itinerary.duration_minutes;
+        itinerary.collaborator_count = await getCollaboratorCount(itinerary.itinerary_id) || 1;
+        requests.push({ id: requestDoc.id, ...request, itinerary });
+      } catch (error) {
+        console.warn("Skipping unreadable itinerary request:", error);
+      }
     }
   }
 
@@ -684,64 +754,79 @@ async function loadActivityNotifications(ownedItineraries, sharedItineraries) {
 
   activityCollaboratorDocs = [];
 
-  const collaboratorQuery = query(
-    collection(db, COLLABORATOR_COLLECTION),
-    where("user_id", "==", currentUser.uid),
-    where("status", "==", "accepted")
-  );
-  const collaboratorSnapshot = await getDocs(collaboratorQuery);
+  try {
+    const collaboratorQuery = query(
+      collection(db, COLLABORATOR_COLLECTION),
+      where("user_id", "==", currentUser.uid),
+      where("status", "==", "accepted")
+    );
+    const collaboratorSnapshot = await getDocs(collaboratorQuery);
 
-  collaboratorSnapshot.forEach(item => {
-    activityCollaboratorDocs.push({
-      document_id: item.id,
-      ...item.data()
+    collaboratorSnapshot.forEach(item => {
+      activityCollaboratorDocs.push({
+        document_id: item.id,
+        ...item.data()
+      });
     });
-  });
+  } catch (error) {
+    console.warn("Could not load activity collaborator records:", error);
+  }
 
   for (const itinerary of accessibleItineraries) {
-    const notificationQuery = query(
-      collection(db, NOTIFICATION_COLLECTION),
-      where("itinerary_id", "==", itinerary.itinerary_id)
-    );
-    const notificationSnapshot = await getDocs(notificationQuery);
-    const collaborator = activityCollaboratorDocs.find(item => {
-      return item.itinerary_id === itinerary.itinerary_id;
-    });
-    const lastViewedAt = collaborator
-      ? timestampMillis(collaborator.last_activity_viewed_at)
-      : Date.now();
+    try {
+      const notificationQuery = query(
+        collection(db, NOTIFICATION_COLLECTION),
+        where("itinerary_id", "==", itinerary.itinerary_id)
+      );
+      const notificationSnapshot = await getDocs(notificationQuery);
+      const collaborator = activityCollaboratorDocs.find(item => {
+        return item.itinerary_id === itinerary.itinerary_id;
+      });
+      const lastViewedAt = collaborator
+        ? timestampMillis(collaborator.last_activity_viewed_at)
+        : Date.now();
 
-    const activityItems = [];
+      const activityItems = [];
 
-    notificationSnapshot.forEach(item => {
-      const notification = {
-        document_id: item.id,
-        itinerary_title: itinerary.title,
-        last_viewed_at: lastViewedAt,
-        ...item.data()
-      };
+      notificationSnapshot.forEach(item => {
+        const notification = {
+          document_id: item.id,
+          itinerary_title: itinerary.title,
+          last_viewed_at: lastViewedAt,
+          ...item.data()
+        };
 
-      if (notification.actor_id !== currentUser.uid) {
-        activityItems.push(notification);
-      }
-    });
+        if (notification.actor_id !== currentUser.uid) {
+          activityItems.push(notification);
+        }
+      });
 
-    itinerary.activity_notifications = activityItems
-      .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at))
-      .slice(0, 10);
-    itinerary.unread_activity_count = itinerary.activity_notifications.filter(item => {
-      return timestampMillis(item.created_at) > Number(item.last_viewed_at || 0);
-    }).length;
+      itinerary.activity_notifications = activityItems
+        .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at))
+        .slice(0, 10);
+      itinerary.unread_activity_count = itinerary.activity_notifications.filter(item => {
+        return timestampMillis(item.created_at) > Number(item.last_viewed_at || 0);
+      }).length;
+    } catch (error) {
+      console.warn("Could not load activity notifications:", error);
+      itinerary.activity_notifications = [];
+      itinerary.unread_activity_count = 0;
+    }
   }
 }
 
 async function loadSavedItineraries(user) {
   resetView();
-  const [ownedItineraries, sharedItineraries, requests] = await Promise.all([
+  const results = await Promise.allSettled([
     loadOwnedItineraries(user),
     loadSharedItineraries(user),
     loadPendingRequests(user)
   ]);
+  const [ownedItineraries, sharedItineraries, requests] = results.map((result, index) => {
+    if (result.status === "fulfilled") return result.value;
+    console.warn(["Owned", "Shared", "Request"][index] + " itinerary load failed:", result.reason);
+    return [];
+  });
 
   hideLoading();
   renderRequests(requests);
