@@ -71,7 +71,12 @@
     </nav>
 
     <div class="sidebar-footer">
-      <a href="{{ url_for('profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
+      <a
+        id="profile-nav-link"
+        href="{{ url_for('profile') }}"
+        class="{% if active_page == 'profile' %}active{% endif %}"
+        style="display: none !important;"
+      >
         <span class="nav-icon">👤</span>
         <span>Profile</span>
       </a>
@@ -212,7 +217,7 @@
 
 <script
   type="module"
-  src="{{ url_for('static', filename='js/auth-guard.js') }}">
+  src="{{ url_for('static', filename='js/auth-guard.js') }}?v={{ asset_version('js/auth-guard.js') }}">
 </script>
 {% block extra_scripts %}{% endblock %}
 

@@ -384,6 +384,14 @@ function normaliseEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function collaboratorDocumentId(itineraryDocumentId, userId) {
+  return `${itineraryDocumentId}_${userId}`;
+}
+
+function pendingInviteDocumentId(itineraryDocumentId, email) {
+  return `${itineraryDocumentId}_invite_${normaliseEmail(email)}`;
+}
+
 function currentUserDisplayName() {
   return currentUser?.displayName || currentUser?.email || "A collaborator";
 }
@@ -614,8 +622,18 @@ async function inviteCollaboratorFromList(email) {
   }
 
   const registeredUser = await findRegisteredUserByEmail(email);
-  const collaboratorRef = doc(collection(db, COLLABORATOR_COLLECTION));
-  const inviterName = currentUserDisplayName();
+
+const collaboratorId = registeredUser
+  ? collaboratorDocumentId(itinerary.id, registeredUser.id)
+  : pendingInviteDocumentId(itinerary.id, email);
+
+const collaboratorRef = doc(
+  db,
+  COLLABORATOR_COLLECTION,
+  collaboratorId
+);
+
+const inviterName = currentUserDisplayName();
 
   await setDoc(collaboratorRef, {
     collaborator_id: collaboratorRef.id,
@@ -898,7 +916,7 @@ function renderItineraries(itineraries, targetElement, listType) {
       <div class="saved-actions">
         <span class="row-activity-wrap">
           <button type="button" class="activity-bell-btn js-row-activity" aria-label="Activity for ${escapeHtml(itinerary.title)}">
-            *
+            🔔
             <span class="activity-count-badge" style="${unreadActivityCount ? "display:inline-flex;" : ""}">${unreadActivityCount}</span>
           </button>
           <div class="activity-panel" aria-label="Recent activity for ${escapeHtml(itinerary.title)}">
@@ -1085,16 +1103,65 @@ async function markItineraryActivityViewed(itinerary, row) {
 }
 
 async function acceptRequest(request) {
-  await updateDoc(doc(db, COLLABORATOR_COLLECTION, request.id), {
+  const itineraryDocumentId =
+    request.itinerary_document_id ||
+    request.itinerary.id;
+
+  const acceptedId = collaboratorDocumentId(
+    itineraryDocumentId,
+    currentUser.uid
+  );
+
+  const acceptedData = {
+    collaborator_id: acceptedId,
+    itinerary_id: request.itinerary_id,
+    itinerary_document_id: itineraryDocumentId,
+    owner_id: request.owner_id,
+    owner_email: request.owner_email || "",
+    invited_by: request.invited_by,
+    invited_by_name: request.invited_by_name || "",
     user_id: currentUser.uid,
-    email: String(currentUser.email || "").toLowerCase(),
+    email: normaliseEmail(currentUser.email),
     display_name: currentUser.displayName || "",
+    role: request.role || "viewer",
     status: "accepted",
+    created_at:
+      request.created_at ||
+      serverTimestamp(),
     accepted_at: serverTimestamp(),
     updated_at: serverTimestamp()
-  });
+  };
 
-  const notificationRef = doc(collection(db, NOTIFICATION_COLLECTION));
+  if (request.id === acceptedId) {
+    await updateDoc(
+      doc(
+        db,
+        COLLABORATOR_COLLECTION,
+        request.id
+      ),
+      acceptedData
+    );
+  } else {
+    await setDoc(
+      doc(
+        db,
+        COLLABORATOR_COLLECTION,
+        acceptedId
+      ),
+      acceptedData
+    );
+
+    await deleteDoc(
+      doc(
+        db,
+        COLLABORATOR_COLLECTION,
+        request.id
+      )
+    );
+  }
+
+  const notificationRef =
+    doc(collection(db, NOTIFICATION_COLLECTION));
   await setDoc(notificationRef, {
     notification_id: notificationRef.id,
     itinerary_id: request.itinerary.itinerary_id,
@@ -1166,8 +1233,16 @@ inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
   const email = normaliseEmail(inviteEmailInput?.value);
 
-  if (!email || !email.includes("@")) {
-    setInviteMessage("Enter a valid email address.", true);
+  if (
+    !email ||
+    !email.includes("@") ||
+    email.includes("/")
+  ) {
+    setInviteMessage(
+      "Enter a valid email address.",
+      true
+    );
+
     return;
   }
 

@@ -281,6 +281,14 @@ function normaliseEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function collaboratorDocumentId(itineraryDocumentId, userId) {
+  return `${itineraryDocumentId}_${userId}`;
+}
+
+function pendingInviteDocumentId(itineraryDocumentId, email) {
+  return `${itineraryDocumentId}_invite_${normaliseEmail(email)}`;
+}
+
 function displayNameFromCollaborator(collaborator) {
   const profile = getCachedUserProfile(collaborator.user_id);
   if (profile?.displayName) return profile.displayName;
@@ -1611,12 +1619,34 @@ function scrollToEditingStop() {
 }
 
 async function ensureOwnerCollaborator() {
-  if (!itinerary || !currentUser || !isOwner) return;
-  const alreadyExists = collaboratorDocs.some(item => item.role === "owner" && item.user_id === currentUser.uid);
-  if (alreadyExists) return;
+  if (!itinerary || !currentUser || !isOwner) {
+    return;
+  }
 
-  const ownerName = currentUserDisplayName();
-  const ownerRef = doc(collection(db, COLLABORATOR_COLLECTION));
+  const ownerDocumentId =
+    collaboratorDocumentId(
+      itinerary.document_id,
+      currentUser.uid
+    );
+
+  const alreadyExists =
+    collaboratorDocs.some(
+      item =>
+        item.document_id === ownerDocumentId
+    );
+
+  if (alreadyExists) {
+    return;
+  }
+
+  const ownerName =
+    currentUserDisplayName();
+
+  const ownerRef = doc(
+    db,
+    COLLABORATOR_COLLECTION,
+    ownerDocumentId
+  );
   await setDoc(ownerRef, {
     collaborator_id: ownerRef.id,
     itinerary_id: activeItineraryId,
@@ -2738,8 +2768,24 @@ async function inviteCollaborator(email) {
   if (registeredUser?.id) {
     userProfileCache.set(registeredUser.id, registeredUser);
   }
-  const collaboratorRef = doc(collection(db, COLLABORATOR_COLLECTION));
-  const inviterName = currentUserDisplayName();
+  const collaboratorId = registeredUser
+  ? collaboratorDocumentId(
+      itinerary.document_id,
+      registeredUser.id
+    )
+  : pendingInviteDocumentId(
+      itinerary.document_id,
+      email
+    );
+
+  const collaboratorRef = doc(
+    db,
+    COLLABORATOR_COLLECTION,
+    collaboratorId
+  );
+
+  const inviterName =
+    currentUserDisplayName();
   const baseInvite = {
     collaborator_id: collaboratorRef.id,
     itinerary_id: activeItineraryId,
@@ -3187,8 +3233,16 @@ inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
   const submitButton = inviteForm.querySelector('button[type="submit"]');
   const email = normaliseEmail(inviteEmailInput?.value);
-  if (!email || !email.includes("@")) {
-    setInviteMessage("Enter a valid email address.", true);
+  if (
+    !email ||
+    !email.includes("@") ||
+    email.includes("/")
+  ) {
+    setInviteMessage(
+      "Enter a valid email address.",
+      true
+    );
+
     return;
   }
   runBusyAction(

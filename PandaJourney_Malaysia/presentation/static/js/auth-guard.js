@@ -20,6 +20,9 @@ const authNavIcon =
 const authNavText =
   document.getElementById("auth-nav-text");
 
+const profileNavLink =
+  document.getElementById("profile-nav-link");
+
 onAuthStateChanged(auth, user => {
   updateAuthNavigation(user);
 
@@ -36,6 +39,14 @@ onAuthStateChanged(auth, user => {
 });
 
 function updateAuthNavigation(user) {
+  if (profileNavLink) {
+    profileNavLink.style.setProperty(
+      "display",
+      user ? "flex" : "none",
+      "important"
+    );
+  }
+
   if (!authNavButton) {
     return;
   }
