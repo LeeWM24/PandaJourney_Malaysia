@@ -54,10 +54,38 @@ const upcomingDateElement =
 const recentListElement =
   document.getElementById("dashboard-recent-list");
 
+const dashboardErrorElement =
+  document.getElementById("dashboard-error");
+
 
 // =================================
 // Utility Functions
 // =================================
+
+function showDashboardLoadError() {
+  if (!dashboardErrorElement) {
+    return;
+  }
+
+  dashboardErrorElement.innerHTML = `
+    <span aria-hidden="true">⚠️</span>
+    <span>
+      Unable to load this information. Please try again.
+    </span>
+  `;
+
+  dashboardErrorElement.hidden = false;
+}
+
+
+function hideDashboardLoadError() {
+  if (!dashboardErrorElement) {
+    return;
+  }
+
+  dashboardErrorElement.hidden = true;
+}
+
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -188,6 +216,8 @@ async function loadDashboardUser(user) {
       "Failed to load dashboard profile:",
       error
     );
+
+    showDashboardLoadError();
   }
 
   if (dashboardName) {
@@ -211,7 +241,10 @@ async function loadDashboardUser(user) {
     type: avatarType,
     emoji: avatar,
     uploadUrl: avatarUrl,
-    googleUrl: authProvider === "google" ? user.photoURL || "" : "",
+    googleUrl:
+      authProvider === "google"
+        ? user.photoURL || ""
+        : "",
     name: user.email || name
   });
 }
@@ -325,7 +358,9 @@ async function loadFavouriteCount(user) {
     );
 
     favouriteCountElement.textContent =
-      "0";
+      "—";
+
+    showDashboardLoadError();
   }
 }
 
@@ -369,19 +404,21 @@ async function loadItineraryData(user) {
       error
     );
 
+    showDashboardLoadError();
+
     if (savedCountElement) {
       savedCountElement.textContent =
-        "0";
+        "—";
     }
 
     if (sharedCountElement) {
       sharedCountElement.textContent =
-        "0";
+        "—";
     }
 
     if (upcomingDateElement) {
       upcomingDateElement.textContent =
-        "No Trip";
+        "—";
     }
 
     if (recentListElement) {
@@ -395,7 +432,7 @@ async function loadItineraryData(user) {
           </div>
 
           <div class="empty-sub">
-            Unable to load itineraries.
+            Unable to load this information. Please try again.
           </div>
         </div>
       `;
@@ -419,7 +456,7 @@ function updateSavedCount(itineraries) {
 
 
 // =================================
-// Shared Itinerary Count
+// Published Trip Count
 // =================================
 
 function updateSharedCount(itineraries) {
@@ -438,31 +475,36 @@ function updateSharedCount(itineraries) {
     String(sharedCount);
 }
 
+
+// =================================
 // Upcoming Trip
+// =================================
+
 function updateUpcomingTrip(itineraries) {
   if (!upcomingDateElement) {
     return;
   }
 
   const now =
-  new Date();
+    new Date();
 
-const today = [
-  now.getFullYear(),
+  const today = [
+    now.getFullYear(),
 
-  String(
-    now.getMonth() + 1
-  ).padStart(2, "0"),
+    String(
+      now.getMonth() + 1
+    ).padStart(2, "0"),
 
-  String(
-    now.getDate()
-  ).padStart(2, "0")
-].join("-");
+    String(
+      now.getDate()
+    ).padStart(2, "0")
+  ].join("-");
 
   const upcoming =
     itineraries
       .map(item => ({
         ...item,
+
         dateValue: getDateString(
           item.travel_date ||
           item.date ||
@@ -485,7 +527,11 @@ const today = [
       : "No Trip";
 }
 
+
+// =================================
 // Recent Itineraries
+// =================================
+
 function updateRecentItineraries(itineraries) {
   if (!recentListElement) {
     return;
@@ -588,7 +634,10 @@ function updateRecentItineraries(itineraries) {
       .join("");
 }
 
+
+// =================================
 // Firebase Authentication
+// =================================
 
 onAuthStateChanged(
   auth,
@@ -597,6 +646,7 @@ onAuthStateChanged(
       console.log(
         "No Firebase user logged in."
       );
+
       return;
     }
 
@@ -605,10 +655,10 @@ onAuthStateChanged(
       user.uid
     );
 
-    
+    hideDashboardLoadError();
 
     await Promise.all([
-      await loadDashboardUser(user),
+      loadDashboardUser(user),
       loadFavouriteCount(user),
       loadItineraryData(user)
     ]);

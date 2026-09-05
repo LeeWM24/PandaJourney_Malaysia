@@ -9,9 +9,31 @@ Welcome back,
 <span id="dashboardName"></span>
 {% endblock %}
 
-
 {% block extra_head %}
 <style>
+  /* =================================
+     Dashboard Error
+  ================================= */
+
+  .dashboard-error {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 18px;
+    padding: 13px 16px;
+    color: #991b1b;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .dashboard-error[hidden] {
+    display: none;
+  }
+
+
   /* =================================
      Recent Itineraries
   ================================= */
@@ -163,7 +185,6 @@ Welcome back,
 </style>
 {% endblock %}
 
-
 {% block topbar_actions %}
 <a
   href="{{ url_for('smart_itinerary') }}"
@@ -171,7 +192,6 @@ Welcome back,
   ✈️ Plan a Trip
 </a>
 {% endblock %}
-
 
 {% block content %}
 
@@ -245,8 +265,24 @@ Welcome back,
   </div>
 </div>
 
-
 <div class="page-inner">
+
+  <!-- =================================
+       UC-300 Dashboard Error Message
+  ================================= -->
+
+  <div
+    id="dashboard-error"
+    class="dashboard-error"
+    role="alert"
+    aria-live="polite"
+    hidden>
+    <span aria-hidden="true">⚠️</span>
+    <span>
+      Unable to load this information. Please try again.
+    </span>
+  </div>
+
 
   <!-- =================================
        Summary Cards
@@ -475,7 +511,6 @@ Welcome back,
 </div>
 
 {% endblock %}
-
 
 {% block extra_scripts %}
 <script

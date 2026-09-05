@@ -1061,7 +1061,7 @@ async function () {
 
   if (!newDisplayName) {
     alert(
-      "Display name cannot be empty."
+      "Please enter valid profile information."
     );
 
     return;
@@ -1250,42 +1250,37 @@ async function () {
       .add("hidden");
 
     const toast =
-      document.getElementById(
-        "save-toast"
-      );
+  document.getElementById(
+    "save-toast"
+  );
 
-    if (toast) {
-      toast.classList.add(
-        "show"
-      );
+  if (toast) {
+    toast.textContent =
+      "Profile updated successfully.";
 
-      setTimeout(
-        () => {
-          toast.classList.remove(
-            "show"
-          );
-        },
-        2500
-      );
-    }
-  } catch (error) {
-    console.error(
-      "Error saving profile:",
-      error
+    toast.classList.add(
+      "show"
     );
 
-    let message =
-      "Failed to save profile.";
+    setTimeout(
+      () => {
+        toast.classList.remove(
+          "show"
+        );
+      },
+      2500
+    );
+  }
+  } catch (error) {
+  console.error(
+    "Error saving profile:",
+    error
+  );
 
-    if (
-      error.code ===
-      "permission-denied"
-    ) {
-      message =
-        "Firestore permission denied. Please check your Firestore rules.";
-    }
-
-    alert(message);
+  alert(
+    error.message ||
+    "Unable to update the user profile."
+  );
   }
 };
 
@@ -1849,16 +1844,16 @@ changePasswordForm
       }
 
       const strongPassword =
-        newPassword.length >= 8 &&
-        /[a-z]/.test(newPassword) &&
-        /[A-Z]/.test(newPassword) &&
-        /[0-9]/.test(newPassword);
+      password.length >= 8 &&
+      /[A-Z]/.test(password) &&
+      /[a-z]/.test(password) &&
+      /[^A-Za-z0-9]/.test(password);
 
       if (!strongPassword) {
-        showPasswordMessage(
-          "Use at least 8 characters with uppercase, lowercase and a number.",
-          "error"
-        );
+        errorBox.textContent =
+          "Password must contain at least 8 characters, including uppercase, lowercase, and a special character.";
+
+        errorBox.style.display = "block";
         return;
       }
 

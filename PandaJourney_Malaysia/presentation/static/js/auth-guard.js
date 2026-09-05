@@ -23,6 +23,12 @@ const authNavText =
 const profileNavLink =
   document.getElementById("profile-nav-link");
 
+const logoutForm =
+  document.getElementById("global-logout-form");
+
+const logoutError =
+  document.getElementById("logout-error");
+
 onAuthStateChanged(auth, user => {
   updateAuthNavigation(user);
 
@@ -39,11 +45,28 @@ onAuthStateChanged(auth, user => {
 });
 
 function updateAuthNavigation(user) {
+  const isLoggedIn = Boolean(user);
+
+  document.documentElement.classList.toggle(
+    "likely-authenticated",
+    isLoggedIn
+  );
+
   if (profileNavLink) {
-    profileNavLink.style.setProperty(
-      "display",
-      user ? "flex" : "none",
-      "important"
+    profileNavLink.setAttribute(
+      "aria-hidden",
+      isLoggedIn ? "false" : "true"
+    );
+  }
+
+  if (isLoggedIn) {
+    localStorage.setItem(
+      "pandajourney-authenticated",
+      "true"
+    );
+  } else {
+    localStorage.removeItem(
+      "pandajourney-authenticated"
     );
   }
 
@@ -51,43 +74,19 @@ function updateAuthNavigation(user) {
     return;
   }
 
-  if (user) {
-    localStorage.setItem(
-      "pandajourney-authenticated",
-      "true"
-    );
-
-    if (authNavIcon) {
-      authNavIcon.textContent = "🚪";
-    }
-
-    if (authNavText) {
-      authNavText.textContent = "Logout";
-    }
-
-    authNavButton.setAttribute(
-      "aria-label",
-      "Logout"
-    );
-
-    return;
-  }
-
-  localStorage.removeItem(
-    "pandajourney-authenticated"
-  );
-
   if (authNavIcon) {
-    authNavIcon.textContent = "🔐";
+    authNavIcon.textContent =
+      isLoggedIn ? "🚪" : "🔐";
   }
 
   if (authNavText) {
-    authNavText.textContent = "Login";
+    authNavText.textContent =
+      isLoggedIn ? "Logout" : "Login";
   }
 
   authNavButton.setAttribute(
     "aria-label",
-    "Login"
+    isLoggedIn ? "Logout" : "Login"
   );
 }
 
@@ -170,10 +169,6 @@ function protectPublicPageNavigation() {
   });
 }
 
-const logoutForm =
-  document.getElementById("global-logout-form");
-
-
 logoutForm?.addEventListener(
   "submit",
   async event => {
@@ -184,6 +179,12 @@ logoutForm?.addEventListener(
         'button[type="submit"]'
       );
 
+    // Clear previous error
+    if (logoutError) {
+      logoutError.textContent = "";
+      logoutError.hidden = true;
+    }
+
     try {
       if (logoutButton) {
         logoutButton.disabled = true;
@@ -191,11 +192,10 @@ logoutForm?.addEventListener(
           "Signing out...";
       }
 
-      localStorage.removeItem(
-      "pandajourney-authenticated"
-    );
-
+      // Sign out from Firebase
       await signOut(auth);
+
+      // Clear Flask server session
       const response = await fetch(
         "/logout",
         {
@@ -210,6 +210,16 @@ logoutForm?.addEventListener(
         );
       }
 
+      // Only clear the navigation hint
+      // after logout succeeds.
+      localStorage.removeItem(
+        "pandajourney-authenticated"
+      );
+
+      document.documentElement.classList.remove(
+        "likely-authenticated"
+      );
+
       window.location.replace("/login");
 
     } catch (error) {
@@ -217,6 +227,14 @@ logoutForm?.addEventListener(
         "Logout failed:",
         error
       );
+
+      // UC_500 M1
+      if (logoutError) {
+        logoutError.textContent =
+          "Unable to sign out. Please try again.";
+
+        logoutError.hidden = false;
+      }
 
       if (logoutButton) {
         logoutButton.disabled = false;

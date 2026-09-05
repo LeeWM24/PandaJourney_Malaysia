@@ -69,6 +69,7 @@ const googleLogin = document.getElementById("googleLogin");
 
 if (googleLogin) {
   googleLogin.addEventListener("click", async () => {
+    clearLoginError();
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -115,7 +116,10 @@ if (googleLogin) {
 
     } catch (error) {
       console.error("Google Login failed:", error);
-      alert(error.message);
+
+      showLoginError(
+        getAuthenticationErrorMessage(error)
+      );
     }
   });
 }
@@ -246,9 +250,21 @@ if (loginForm && document.getElementById("email")) {
   if (!document.getElementById("registerForm")) {
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+      clearLoginError();
 
-      const email = document.getElementById("email").value.trim();
-      const password = document.getElementById("password").value;
+      const email =
+        document.getElementById("email").value.trim();
+
+      const password =
+        document.getElementById("password").value;
+
+      // M1: Email or password is missing
+      if (!email || !password) {
+        showLoginError(
+          "Please enter your email address and password."
+        );
+        return;
+      }
 
       try {
         const result = await signInWithEmailAndPassword(
@@ -263,9 +279,9 @@ if (loginForm && document.getElementById("email")) {
 
             await signOut(auth);
 
-            alert(
-              "Please verify your email before logging in."
-            );
+            showLoginError(
+            "Please verify your email before logging in."
+          );
 
             return;
         }
@@ -308,7 +324,10 @@ if (loginForm && document.getElementById("email")) {
 
       } catch (error) {
         console.error("Email Login failed:", error);
-        alert(error.message);
+
+        showLoginError(
+          getAuthenticationErrorMessage(error)
+        );
       }
     });
   }
@@ -321,25 +340,69 @@ if (registerForm) {
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
 
-    const name = document.getElementById("name").value.trim();
-    const email = document.getElementById("email").value.trim();
-    const password = document.getElementById("password").value;
-    const confirmPassword = document.getElementById("confirmPassword").value;
+    const name =
+      document.getElementById("name").value.trim();
 
-    const errorBox = document.getElementById("registerError");
-    const button = document.getElementById("createAccountBtn");
+    const email =
+      document.getElementById("email").value.trim();
 
-    errorBox.style.display = "none";
+    const password =
+      document.getElementById("password").value;
+
+    const confirmPassword =
+      document.getElementById("confirmPassword").value;
+
+    const errorBox =
+      document.getElementById("registerError");
+
+    const button =
+      document.getElementById("createAccountBtn");
+
+    // Clear the previous error message
     errorBox.textContent = "";
+    errorBox.style.display = "none";
 
-    if (password !== confirmPassword) {
-      errorBox.textContent = "Passwords do not match.";
+    // M1: Required fields are missing
+    if (!name || !email || !password || !confirmPassword) {
+      errorBox.textContent =
+        "Please complete all required fields.";
+
       errorBox.style.display = "block";
       return;
     }
 
-    if (password.length < 8) {
-      errorBox.textContent = "Password must be at least 8 characters.";
+    // M2: Invalid email address
+    const emailPattern =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailPattern.test(email)) {
+      errorBox.textContent =
+        "Please enter a valid email address.";
+
+      errorBox.style.display = "block";
+      return;
+    }
+
+    // M3: Password is shorter than 8 characters and Not Strong
+    const strongPassword =
+    password.length >= 8 &&
+    /[A-Z]/.test(password) &&
+    /[a-z]/.test(password) &&
+    /[^A-Za-z0-9]/.test(password);
+
+  if (!strongPassword) {
+    errorBox.textContent =
+      "Password must contain at least 8 characters, including uppercase, lowercase, and a special character.";
+
+    errorBox.style.display = "block";
+    return;
+  }
+
+    // M4: Password confirmation does not match
+    if (password !== confirmPassword) {
+      errorBox.textContent =
+        "Passwords do not match.";
+
       errorBox.style.display = "block";
       return;
     }
@@ -348,11 +411,12 @@ if (registerForm) {
       button.disabled = true;
       button.textContent = "Creating Account...";
 
-      const result = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const result =
+        await createUserWithEmailAndPassword(
+          auth,
+          email,
+          password
+        );
 
       const user = result.user;
 
@@ -380,22 +444,48 @@ if (registerForm) {
       );
 
       alert(
-        "Account created successfully!\n\nPlease check your email and click the verification link before logging in."
+        "Account created successfully!\n\n" +
+        "Please check your email and click the " +
+        "verification link before logging in."
       );
 
       window.location.href = "/login";
 
     } catch (error) {
-      console.error("Create Account failed:", error);
+      console.error(
+        "Create Account failed:",
+        error
+      );
 
-      if (error.code === "auth/email-already-in-use") {
-        errorBox.textContent = "An account with this email already exists.";
-      } else if (error.code === "auth/invalid-email") {
-        errorBox.textContent = "Please enter a valid email address.";
-      } else if (error.code === "auth/weak-password") {
-        errorBox.textContent = "Password is too weak.";
+      // M5: Email is already registered
+      if (
+        error.code ===
+        "auth/email-already-in-use"
+      ) {
+        errorBox.textContent =
+          "An account with this email address already exists.";
+
+      // M2: Firebase rejects the email format
+      } else if (
+        error.code ===
+        "auth/invalid-email"
+      ) {
+        errorBox.textContent =
+          "Please enter a valid email address.";
+
+      // M3: Firebase rejects the password
+      } else if (
+        error.code ===
+        "auth/weak-password"
+      ) {
+        errorBox.textContent =
+          "Passwords must contain at least 8 characters, including uppercase and lowercase letters and a special character.";
+
+      // M6: Account or profile creation error
       } else {
-        errorBox.textContent = error.message;
+        errorBox.textContent =
+          error.message ||
+          "Unable to create the account or user profile.";
       }
 
       errorBox.style.display = "block";
@@ -405,66 +495,46 @@ if (registerForm) {
     }
   });
 }
+function showLoginError(message) {
+  const errorBox = document.getElementById("loginError");
 
-async function linkEmailPassword(email, password) {
+  if (!errorBox) {
+    console.error(message);
+    return;
+  }
 
-    const user = auth.currentUser;
-
-    if (!user) {
-        alert("Please login first.");
-        return;
-    }
-
-    try {
-
-        const credential =
-            EmailAuthProvider.credential(
-                email,
-                password
-            );
-
-        await linkWithCredential(
-            user,
-            credential
-        );
-
-        console.log(
-            "Email/Password linked successfully!"
-        );
-
-        alert(
-            "Email and password have been linked to your Google account."
-        );
-
-    } catch (error) {
-
-        console.error(
-            "Failed to link Email/Password:",
-            error
-        );
-
-        if (
-            error.code ===
-            "auth/provider-already-linked"
-        ) {
-
-            alert(
-                "This account already has Email/Password login."
-            );
-
-        } else if (
-            error.code ===
-            "auth/email-already-in-use"
-        ) {
-
-            alert(
-                "This email is already connected to another Firebase account."
-            );
-
-        } else {
-
-            alert(error.message);
-
-        }
-    }
+  errorBox.textContent = message;
+  errorBox.style.display = "block";
 }
+
+function clearLoginError() {
+  const errorBox = document.getElementById("loginError");
+
+  if (!errorBox) {
+    return;
+  }
+
+  errorBox.textContent = "";
+  errorBox.style.display = "none";
+}
+
+function getAuthenticationErrorMessage(error) {
+  switch (error.code) {
+    // M2: Invalid email address or password
+    case "auth/invalid-email":
+    case "auth/invalid-credential":
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "Invalid email address or password.";
+
+    // M3: Google sign-in was cancelled
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return "Google sign-in was cancelled.";
+
+    // M4: Other authentication errors
+    default:
+      return error.message || "Unable to complete authentication.";
+  }
+}
+
