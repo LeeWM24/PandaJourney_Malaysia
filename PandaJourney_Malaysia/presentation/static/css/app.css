@@ -136,6 +136,13 @@ button, input, select, textarea { font: inherit; }
 .card-p { padding: 22px; }
 .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .card-title { font-size: 17px; font-weight: 700; color: #071f17; }
+.list-card .card-title,
+.popular-card .card-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .card-subtitle { color: var(--muted-fg); font-size: 13px; margin-top: 5px; }
 .section-heading { color: var(--fg-2); font-size: 14px; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; margin: 0 0 12px; }
 .flex { display: flex; } .flex-1 { flex: 1; } .flex-wrap { flex-wrap: wrap; } .items-start { align-items: flex-start; } .justify-center { justify-content: center; }

@@ -424,7 +424,7 @@ Explore community favorites, search destinations, and save routes in a tap.
     }
 
     function getPublicMeta(item) {
-      return `${escapeHtml(formatTripDateRange(item))} - ${escapeHtml(item.duration)} - ${item.stops} stops`;
+      return `${escapeHtml(formatTripDateRange(item))}`;
     }
 
     function getStopPoint(stop) {
