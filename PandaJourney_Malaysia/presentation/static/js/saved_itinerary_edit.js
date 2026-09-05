@@ -281,12 +281,81 @@ function normaliseEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isValidInviteEmail(email) {
+  return /^[^\s@/]+@[^\s@/]+\.[^\s@/]{2,}$/.test(normaliseEmail(email));
+}
+
+function notificationDocumentId(itineraryDocumentId, type, key) {
+  const safeKey = String(key || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9@._-]+/g, "_");
+  return `${itineraryDocumentId}_${type}_${safeKey}`;
+}
+
+function dedupeNotifications(notifications) {
+  const unique = new Map();
+
+  notifications.forEach(notification => {
+    const key = notification.type === "invite_sent"
+      ? `${notification.itinerary_id}|${notification.type}|${notification.actor_id}|${notification.message}`
+      : notification.document_id;
+
+    if (!key) return;
+    const existing = unique.get(key);
+    if (!existing || timestampMillis(notification.created_at) >= timestampMillis(existing.created_at)) {
+      unique.set(key, notification);
+    }
+  });
+
+  return [...unique.values()];
+}
+
 function collaboratorDocumentId(itineraryDocumentId, userId) {
   return `${itineraryDocumentId}_${userId}`;
 }
 
 function pendingInviteDocumentId(itineraryDocumentId, email) {
   return `${itineraryDocumentId}_invite_${normaliseEmail(email)}`;
+}
+
+function expectedCollaboratorDocumentId(collaborator) {
+  if (!itinerary?.document_id) return "";
+  if (collaborator.user_id) {
+    return collaboratorDocumentId(itinerary.document_id, collaborator.user_id);
+  }
+  if (collaborator.email) {
+    return pendingInviteDocumentId(itinerary.document_id, collaborator.email);
+  }
+  return "";
+}
+
+function collaboratorKey(collaborator) {
+  return collaborator.user_id || normaliseEmail(collaborator.email) || collaborator.document_id || "";
+}
+
+function collaboratorRank(collaborator) {
+  const roleRanks = { owner: 30, editor: 20, viewer: 10 };
+  const statusRanks = { accepted: 3, pending: 2, pending_registration: 1, declined: 0 };
+  const role = String(collaborator.role || "viewer").toLowerCase();
+  const status = String(collaborator.status || "accepted").toLowerCase();
+  const canonicalBonus = collaborator.document_id === expectedCollaboratorDocumentId(collaborator) ? 100 : 0;
+  return canonicalBonus + (roleRanks[role] || 0) + (statusRanks[status] || 0);
+}
+
+function dedupeCollaborators(collaborators) {
+  const unique = new Map();
+
+  collaborators.forEach(collaborator => {
+    const key = collaboratorKey(collaborator);
+    if (!key) return;
+
+    const existing = unique.get(key);
+    if (!existing || collaboratorRank(collaborator) >= collaboratorRank(existing)) {
+      unique.set(key, collaborator);
+    }
+  });
+
+  return [...unique.values()];
 }
 
 function displayNameFromCollaborator(collaborator) {
@@ -2671,12 +2740,14 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
 
 function renderCollaborators() {
   if (!collaboratorList) return;
+  const visibleCollaborators = dedupeCollaborators(collaboratorDocs);
+
   if (peopleCount) {
-    const acceptedCount = collaboratorDocs.filter(item => item.status === "accepted").length || 1;
+    const acceptedCount = visibleCollaborators.filter(item => item.status === "accepted").length || 1;
     peopleCount.textContent = `${acceptedCount} ${acceptedCount === 1 ? "person" : "people"}`;
   }
 
-  const sorted = [...collaboratorDocs].sort((a, b) => {
+  const sorted = [...visibleCollaborators].sort((a, b) => {
     if (a.role === "owner") return -1;
     if (b.role === "owner") return 1;
     return String(a.email || "").localeCompare(String(b.email || ""));
@@ -2717,7 +2788,11 @@ function renderCollaborators() {
     if (roleSelect) {
       roleSelect.value = collaborator.role || "viewer";
       roleSelect.addEventListener("change", function () {
-        updateCollaboratorRole(collaborator.document_id, roleSelect.value, collaborator.email).catch(console.error);
+        updateCollaboratorRole(collaborator, roleSelect.value).catch(error => {
+          console.error("Failed to update collaborator role:", error);
+          roleSelect.value = collaborator.role || "viewer";
+          setInviteMessage("Could not update authority. Please try again.", true);
+        });
       });
     }
 
@@ -2734,13 +2809,31 @@ function renderCollaborators() {
   });
 }
 
-async function updateCollaboratorRole(collaboratorDocumentId, role, email) {
+async function updateCollaboratorRole(collaborator, role) {
   if (!isOwner) return;
-  await updateDoc(doc(db, COLLABORATOR_COLLECTION, collaboratorDocumentId), {
+  const targetDocumentId = expectedCollaboratorDocumentId(collaborator) || collaborator.document_id;
+  const payload = {
+    ...collaborator,
+    collaborator_id: targetDocumentId,
     role,
     updated_at: serverTimestamp()
-  });
-  await addActivity("role_changed", `${currentUserDisplayName()} changed ${email} to ${role}`);
+  };
+  delete payload.document_id;
+
+  if (targetDocumentId !== collaborator.document_id) {
+    await setDoc(doc(db, COLLABORATOR_COLLECTION, targetDocumentId), payload, { merge: true });
+    deleteDoc(doc(db, COLLABORATOR_COLLECTION, collaborator.document_id)).catch(error => {
+      console.warn("Could not delete old collaborator record:", error);
+    });
+  } else {
+    await updateDoc(doc(db, COLLABORATOR_COLLECTION, targetDocumentId), {
+      role,
+      updated_at: serverTimestamp()
+    });
+  }
+
+  setInviteMessage("");
+  await addActivity("role_changed", `${currentUserDisplayName()} changed ${collaborator.email || "a collaborator"} to ${role}`);
 }
 
 async function removeCollaborator(collaboratorDocumentId, email) {
@@ -2760,6 +2853,18 @@ async function inviteCollaborator(email) {
   if (!canEdit || !itinerary) return;
   const existing = collaboratorDocs.find(item => normaliseEmail(item.email) === email);
   if (existing) {
+    setInviteMessage("This person is already invited or added.", true);
+    return;
+  }
+
+  const existingQuery = query(
+    collection(db, COLLABORATOR_COLLECTION),
+    where("itinerary_id", "==", activeItineraryId),
+    where("email", "==", email)
+  );
+  const existingSnapshot = await getDocs(existingQuery);
+
+  if (!existingSnapshot.empty) {
     setInviteMessage("This person is already invited or added.", true);
     return;
   }
@@ -2807,7 +2912,21 @@ async function inviteCollaborator(email) {
     user_id: registeredUser ? registeredUser.id : ""
   });
 
-  await addActivity("invite_sent", `${inviterName} invited ${email}`);
+  const notificationRef = doc(
+    db,
+    NOTIFICATION_COLLECTION,
+    notificationDocumentId(itinerary.document_id, "invite_sent", email)
+  );
+  await setDoc(notificationRef, {
+    notification_id: notificationRef.id,
+    itinerary_id: activeItineraryId,
+    itinerary_document_id: itinerary.document_id,
+    actor_id: currentUser.uid,
+    actor_name: inviterName,
+    type: "invite_sent",
+    message: `${inviterName} invited ${email}`,
+    created_at: serverTimestamp()
+  }, { merge: true });
 
   if (registeredUser) {
     setInviteMessage("Invitation request sent. It will show as pending until accepted.");
@@ -3059,7 +3178,7 @@ function subscribeToData() {
 
   const collaboratorQuery = query(collection(db, COLLABORATOR_COLLECTION), where("itinerary_id", "==", activeItineraryId));
   unsubscribeFns.push(onSnapshot(collaboratorQuery, async snapshot => {
-    collaboratorDocs = snapshot.docs.map(item => ({ document_id: item.id, ...item.data() }));
+    collaboratorDocs = dedupeCollaborators(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
     await loadUserProfilesForIds(collaboratorDocs.map(item => item.user_id));
     const ownCollaborator = collaboratorDocs.find(item => item.user_id === currentUser.uid);
     ownCollaboratorDocumentId = ownCollaborator?.document_id || "";
@@ -3100,7 +3219,7 @@ function subscribeToActivities() {
     : query(collection(db, NOTIFICATION_COLLECTION), where("itinerary_id", "==", activeItineraryId));
 
   const activityUnsubscribe = onSnapshot(activityQuery, async snapshot => {
-    latestActivityDocs = sortByCreatedDesc(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() })));
+    latestActivityDocs = sortByCreatedDesc(dedupeNotifications(snapshot.docs.map(item => ({ document_id: item.id, ...item.data() }))));
     await loadUserProfilesForIds(latestActivityDocs.map(item => item.actor_id));
     renderActivities(allActivityMode ? latestActivityDocs : latestActivityDocs.slice(0, 5));
   });
@@ -3233,27 +3352,36 @@ inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
   const submitButton = inviteForm.querySelector('button[type="submit"]');
   const email = normaliseEmail(inviteEmailInput?.value);
-  if (
-    !email ||
-    !email.includes("@") ||
-    email.includes("/")
-  ) {
-    setInviteMessage(
-      "Enter a valid email address.",
-      true
-    );
 
+  if (!isValidInviteEmail(email)) {
+    setInviteMessage("Enter a valid email address.", true);
     return;
   }
-  runBusyAction(
-    "invite-collaborator",
-    submitButton,
-    "Inviting...",
-    () => inviteCollaborator(email)
-  ).catch(error => {
-    console.error("Invite failed:", error);
-    setInviteMessage("Could not send the invite.", true);
-  });
+
+  if (email === normaliseEmail(currentUser?.email)) {
+    setInviteMessage("You are already the owner of this itinerary.", true);
+    return;
+  }
+
+  setInviteMessage("");
+  clearInviteSuggestions();
+
+  if (submitButton) {
+    submitButton.disabled = true;
+    submitButton.textContent = "Inviting...";
+  }
+
+  inviteCollaborator(email)
+    .catch(error => {
+      console.error("Invite failed:", error);
+      setInviteMessage("Could not send the invite.", true);
+    })
+    .finally(() => {
+      if (submitButton) {
+        submitButton.disabled = false;
+        submitButton.textContent = "Invite";
+      }
+    });
 });
 
 sendJoinEmailButton?.addEventListener("click", function () {

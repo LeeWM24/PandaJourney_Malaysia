@@ -279,7 +279,7 @@ async function getCollaboratorDetails(itineraryId, ownerId) {
     });
   }
 
-  return collaborators;
+  return dedupeCollaborators(collaborators);
 }
 
 async function getItineraryByReferenceIds(referenceIds) {
@@ -384,12 +384,69 @@ function normaliseEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function isValidInviteEmail(email) {
+  return /^[^\s@/]+@[^\s@/]+\.[^\s@/]{2,}$/.test(normaliseEmail(email));
+}
+
+function notificationDocumentId(itineraryDocumentId, type, key) {
+  const safeKey = String(key || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9@._-]+/g, "_");
+  return `${itineraryDocumentId}_${type}_${safeKey}`;
+}
+
+function dedupeNotifications(notifications) {
+  const unique = new Map();
+
+  notifications.forEach(notification => {
+    const key = notification.type === "invite_sent"
+      ? `${notification.itinerary_id}|${notification.type}|${notification.actor_id}|${notification.message}`
+      : notification.document_id;
+
+    if (!key) return;
+    const existing = unique.get(key);
+    if (!existing || timestampMillis(notification.created_at) >= timestampMillis(existing.created_at)) {
+      unique.set(key, notification);
+    }
+  });
+
+  return [...unique.values()];
+}
+
 function collaboratorDocumentId(itineraryDocumentId, userId) {
   return `${itineraryDocumentId}_${userId}`;
 }
 
 function pendingInviteDocumentId(itineraryDocumentId, email) {
   return `${itineraryDocumentId}_invite_${normaliseEmail(email)}`;
+}
+
+function collaboratorKey(collaborator) {
+  return collaborator.user_id || normaliseEmail(collaborator.email) || collaborator.document_id || "";
+}
+
+function collaboratorRank(collaborator) {
+  const roleRanks = { owner: 30, editor: 20, viewer: 10 };
+  const statusRanks = { accepted: 3, pending: 2, pending_registration: 1, declined: 0 };
+  const role = String(collaborator.role || "viewer").toLowerCase();
+  const status = String(collaborator.status || "accepted").toLowerCase();
+  return (roleRanks[role] || 0) + (statusRanks[status] || 0);
+}
+
+function dedupeCollaborators(collaborators) {
+  const unique = new Map();
+
+  collaborators.forEach(collaborator => {
+    const key = collaboratorKey(collaborator);
+    if (!key) return;
+
+    const existing = unique.get(key);
+    if (!existing || collaboratorRank(collaborator) >= collaboratorRank(existing)) {
+      unique.set(key, collaborator);
+    }
+  });
+
+  return [...unique.values()];
 }
 
 function currentUserDisplayName() {
@@ -513,7 +570,7 @@ function getPeopleStatusLabel(status) {
 function openPeopleModal(itinerary) {
   if (peopleTitle) peopleTitle.textContent = `People in ${itinerary.title || "this itinerary"}`;
 
-  const collaborators = itinerary.collaborators || [];
+  const collaborators = dedupeCollaborators(itinerary.collaborators || []);
 
   if (peopleList) {
     if (!collaborators.length) {
@@ -652,7 +709,11 @@ const inviterName = currentUserDisplayName();
     updated_at: serverTimestamp()
   });
 
-  const notificationRef = doc(collection(db, NOTIFICATION_COLLECTION));
+  const notificationRef = doc(
+    db,
+    NOTIFICATION_COLLECTION,
+    notificationDocumentId(itinerary.id, "invite_sent", email)
+  );
   await setDoc(notificationRef, {
     notification_id: notificationRef.id,
     itinerary_id: itinerary.itinerary_id,
@@ -819,7 +880,7 @@ async function loadActivityNotifications(ownedItineraries, sharedItineraries) {
         }
       });
 
-      itinerary.activity_notifications = activityItems
+      itinerary.activity_notifications = dedupeNotifications(activityItems)
         .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at))
         .slice(0, 10);
       itinerary.unread_activity_count = itinerary.activity_notifications.filter(item => {
@@ -1233,18 +1294,18 @@ inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
   const email = normaliseEmail(inviteEmailInput?.value);
 
-  if (
-    !email ||
-    !email.includes("@") ||
-    email.includes("/")
-  ) {
-    setInviteMessage(
-      "Enter a valid email address.",
-      true
-    );
-
+  if (!isValidInviteEmail(email)) {
+    setInviteMessage("Enter a valid email address.", true);
     return;
   }
+
+  if (email === normaliseEmail(currentUser?.email)) {
+    setInviteMessage("You are already the owner of this itinerary.", true);
+    return;
+  }
+
+  setInviteMessage("");
+  clearInviteSuggestions();
 
   const submitButton = inviteForm.querySelector('button[type="submit"]');
   if (submitButton) {
