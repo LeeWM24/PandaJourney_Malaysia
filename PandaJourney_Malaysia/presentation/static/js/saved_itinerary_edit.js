@@ -1259,6 +1259,12 @@ function getDayRouteColor(dayNumber) {
   return DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % DAY_ROUTE_COLORS.length];
 }
 
+function getDayRouteDashArray(dayNumber) {
+  return [null, "14 8", "4 8", "14 6 3 6", "2 8", "18 4"][
+    (Math.max(1, Number(dayNumber) || 1) - 1) % 6
+  ];
+}
+
 function getDayMapSections(stops) {
   const startPoint = getItineraryPoint("start");
   const endPoint = getItineraryPoint("end");
@@ -1390,7 +1396,12 @@ async function renderEditRouteMap() {
       popupAnchor: [0, -16]
     });
 
-    const marker = L.marker([point.latitude, point.longitude], { icon })
+    const zIndexOffset = point.type === "start"
+      ? 1000
+      : point.type === "end"
+        ? 900
+        : Math.max(0, 500 - Number(point.number || 0));
+    const marker = L.marker([point.latitude, point.longitude], { icon, zIndexOffset })
       .bindPopup(point.label)
       .addTo(editMap);
 
@@ -1412,7 +1423,10 @@ async function renderEditRouteMap() {
     const style = {
       color: getDayRouteColor(section.dayNumber),
       weight: 5,
-      opacity: .85
+      opacity: .85,
+      dashArray: getDayRouteDashArray(section.dayNumber),
+      lineCap: "round",
+      lineJoin: "round"
     };
     const geometry = routeGeometries[index];
     const layer = geometry

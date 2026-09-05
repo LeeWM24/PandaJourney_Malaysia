@@ -709,6 +709,12 @@ function getDayRouteColor(dayNumber) {
   return DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % DAY_ROUTE_COLORS.length];
 }
 
+function getDayRouteDashArray(dayNumber) {
+  return [null, "14 8", "4 8", "14 6 3 6", "2 8", "18 4"][
+    (Math.max(1, Number(dayNumber) || 1) - 1) % 6
+  ];
+}
+
 function getDayMapSections(itinerary, stops) {
   const startPoint = getStartPoint(itinerary);
   const endPoint = getEndPoint(itinerary);
@@ -1409,7 +1415,8 @@ async function renderMap(itinerary, stops) {
     mapPoints.push({
       label: `Start: ${getStartDisplayName(itinerary)}`,
       latitude: startPoint.latitude,
-      longitude: startPoint.longitude
+      longitude: startPoint.longitude,
+      type: "start"
     });
   }
 
@@ -1420,7 +1427,9 @@ async function renderMap(itinerary, stops) {
       mapPoints.push({
         label: `${index + 1}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(itinerary, stop.day_number || stop.day || 1)})`,
         latitude: stopPoint.latitude,
-        longitude: stopPoint.longitude
+        longitude: stopPoint.longitude,
+        type: "stop",
+        number: index + 1
       });
     }
   });
@@ -1429,7 +1438,8 @@ async function renderMap(itinerary, stops) {
     mapPoints.push({
       label: `End: ${getEndDisplayName(itinerary)}`,
       latitude: endPoint.latitude,
-      longitude: endPoint.longitude
+      longitude: endPoint.longitude,
+      type: "end"
     });
   } else {
     console.warn("[Saved Detail] End location coordinate missing:", {
@@ -1456,7 +1466,12 @@ async function renderMap(itinerary, stops) {
   const markerGroup = L.featureGroup();
 
   mapPoints.forEach(function (point) {
-    const marker = L.marker([point.latitude, point.longitude])
+    const zIndexOffset = point.type === "start"
+      ? 1000
+      : point.type === "end"
+        ? 900
+        : Math.max(0, 500 - Number(point.number || 0));
+    const marker = L.marker([point.latitude, point.longitude], { zIndexOffset })
       .bindPopup(point.label)
       .addTo(detailMap);
 
@@ -1474,7 +1489,10 @@ async function renderMap(itinerary, stops) {
     const style = {
       color: getDayRouteColor(section.dayNumber),
       weight: 5,
-      opacity: .85
+      opacity: .85,
+      dashArray: getDayRouteDashArray(section.dayNumber),
+      lineCap: "round",
+      lineJoin: "round"
     };
     const geometry = routeGeometries[index];
     const layer = geometry

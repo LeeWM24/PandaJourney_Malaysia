@@ -736,6 +736,12 @@ function getPublicDayRouteColor(dayNumber) {
   return PUBLIC_DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % PUBLIC_DAY_ROUTE_COLORS.length];
 }
 
+function getPublicDayRouteDashArray(dayNumber) {
+  return [null, "14 8", "4 8", "14 6 3 6", "2 8", "18 4"][
+    (Math.max(1, Number(dayNumber) || 1) - 1) % 6
+  ];
+}
+
 function getPublicDayMapSections(item) {
   const startPoint = getPublicItineraryPoint(item, "start");
   const endPoint = getPublicItineraryPoint(item, "end");
@@ -888,7 +894,14 @@ async function renderPublicRouteMap(item) {
 
     const marker = L.marker(
       [point.latitude, point.longitude],
-      { icon }
+      {
+        icon,
+        zIndexOffset: point.type === "start"
+          ? 1000
+          : point.type === "end"
+            ? 900
+            : Math.max(0, 500 - Number(point.markerLabel || 0))
+      }
     )
       .bindPopup(point.label)
       .addTo(publicDetailMap);
@@ -909,7 +922,10 @@ async function renderPublicRouteMap(item) {
     const style = {
       color: getPublicDayRouteColor(section.dayNumber),
       weight: 5,
-      opacity: 0.85
+      opacity: 0.85,
+      dashArray: getPublicDayRouteDashArray(section.dayNumber),
+      lineCap: "round",
+      lineJoin: "round"
     };
     const geometry = routeGeometries[index];
     const layer = geometry
