@@ -162,6 +162,26 @@
 
   .saved-row {
     position: relative;
+    min-width: 0;
+  }
+
+  .saved-info {
+    min-width: 0;
+  }
+
+  .saved-title {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .saved-title > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .row-activity-wrap {
@@ -397,6 +417,10 @@
     .saved-actions {
       justify-content: flex-start;
       margin-top: 12px;
+    }
+
+    .saved-title {
+      max-width: 100%;
     }
   }
 </style>

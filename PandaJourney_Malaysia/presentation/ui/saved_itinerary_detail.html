@@ -42,6 +42,15 @@
     overflow-wrap: anywhere;
   }
 
+  #detail-title,
+  .detail-location-value {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .detail-stop-row {
     display: grid;
     grid-template-columns: 34px minmax(0, 1fr);
@@ -326,7 +335,7 @@
       <div class="detail-grid">
         <div class="detail-item">
           <div class="detail-label">Route</div>
-          <div class="detail-value" id="detail-destination">-</div>
+          <div class="detail-value detail-location-value" id="detail-destination">-</div>
         </div>
 
         <div class="detail-item">
@@ -336,12 +345,12 @@
 
         <div class="detail-item">
           <div class="detail-label">Start Location</div>
-          <div class="detail-value" id="detail-start">-</div>
+          <div class="detail-value detail-location-value" id="detail-start">-</div>
         </div>
 
         <div class="detail-item">
           <div class="detail-label">End Location</div>
-          <div class="detail-value" id="detail-end">-</div>
+          <div class="detail-value detail-location-value" id="detail-end">-</div>
         </div>
 
         <div class="detail-item">

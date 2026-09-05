@@ -152,6 +152,25 @@
     margin-top: 10px;
   }
 
+  /* Prevent long location / Google Maps labels from breaking small screens. */
+  .timetable-content {
+    min-width: 0;
+  }
+
+  .timetable-name {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timetable-actions .btn {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .save-modal-overlay {
   position: fixed;
   inset: 0;
@@ -428,9 +447,9 @@
         id="save-itinerary-title-input"
         class="form-input"
         placeholder="e.g. Kuala Lumpur Culture Trip"
-        maxlength="80"
+        maxlength="50"
       />
-      <div id="save-title-error" class="save-modal-error">Please enter an itinerary title.</div>
+      <div id="save-title-error" class="save-modal-error">Please enter an itinerary title (maximum 50 characters).</div>
 
       <div class="save-modal-actions">
         <button type="button" class="btn btn-secondary btn-md" id="cancel-save-title-btn">Cancel</button>

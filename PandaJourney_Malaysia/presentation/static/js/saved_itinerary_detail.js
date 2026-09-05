@@ -95,11 +95,41 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function setText(id, value) {
+const MAX_TITLE_DISPLAY_LENGTH = 50;
+const MAX_LOCATION_DISPLAY_LENGTH = 40;
+
+function truncateText(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return text.slice(0, Math.max(1, maxLength - 3)).trimEnd() + "...";
+}
+
+function shortLocationName(value, maxLength = MAX_LOCATION_DISPLAY_LENGTH) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  if (text.toLowerCase() === "current location") return "Current Location";
+
+  const parts = text.split(",").map(part => part.trim()).filter(Boolean);
+  let shortName = parts[0] || text;
+
+  if (/^\d+$/.test(shortName.replace(/\s+/g, "")) && parts.length > 1) {
+    shortName = `${shortName}, ${parts[1]}`;
+  }
+
+  return truncateText(shortName, maxLength);
+}
+
+function setText(id, value, fullValue = "") {
   const element = document.getElementById(id);
 
   if (element) {
     element.textContent = value || "-";
+
+    if (fullValue && String(fullValue) !== String(value || "")) {
+      element.title = String(fullValue);
+    } else {
+      element.removeAttribute("title");
+    }
   }
 }
 
@@ -189,8 +219,8 @@ function getDayStartTime(itinerary, dayNumber) {
 }
 
 function formatRouteSummary(itinerary) {
-  const startName = getStartLocationName(itinerary);
-  const endName = getEndLocationName(itinerary);
+  const startName = getStartDisplayName(itinerary);
+  const endName = getEndDisplayName(itinerary);
 
   if (startName && endName) {
     return `${startName} -> ${endName}`;
@@ -343,6 +373,14 @@ function getEndLocationName(itinerary) {
     itinerary.destination ||
     "End Location"
   );
+}
+
+function getStartDisplayName(itinerary) {
+  return shortLocationName(getStartLocationName(itinerary)) || "Start Location";
+}
+
+function getEndDisplayName(itinerary) {
+  return shortLocationName(getEndLocationName(itinerary)) || "End Location";
 }
 
 function getStartPoint(itinerary) {
@@ -798,11 +836,19 @@ function renderItinerary(itinerary, stops) {
     stops.length ||
     0;
 
-  setText("detail-title", itinerary.title || "Untitled Trip");
-  setText("detail-destination", formatRouteSummary(itinerary));
+  const fullTitle = itinerary.title || "Untitled Trip";
+  const fullStartName = getStartLocationName(itinerary);
+  const fullEndName = getEndLocationName(itinerary);
+
+  setText("detail-title", truncateText(fullTitle, MAX_TITLE_DISPLAY_LENGTH), fullTitle);
+  setText(
+    "detail-destination",
+    formatRouteSummary(itinerary),
+    `${fullStartName} -> ${fullEndName}`
+  );
   setText("detail-date", formatTripDateRange(itinerary));
-  setText("detail-start", getStartLocationName(itinerary));
-  setText("detail-end", getEndLocationName(itinerary));
+  setText("detail-start", getStartDisplayName(itinerary), fullStartName);
+  setText("detail-end", getEndDisplayName(itinerary), fullEndName);
   setText("detail-hours", formatAvailableHours(itinerary));
 
   if (Array.isArray(itinerary.interests) && itinerary.interests.length) {
@@ -988,8 +1034,8 @@ function renderDetailStops(itinerary, stops) {
   stopList.innerHTML = "";
 
   const routeRows = [];
-  const startName = getStartLocationName(itinerary);
-  const endName = getEndLocationName(itinerary);
+  const startName = getStartDisplayName(itinerary);
+  const endName = getEndDisplayName(itinerary);
   const dayStartTimes = getDayStartTimes(itinerary);
   const startTime = formatClockMinutes(parseClockMinutes(dayStartTimes["1"] || itinerary.start_time || "09:00"));
   const lastStop = stops.length ? stops[stops.length - 1] : null;
@@ -1102,7 +1148,7 @@ function renderDetailStops(itinerary, stops) {
     const originLabel = index === 0
       ? useLiveCurrentLocation
         ? "Current Location"
-        : getStartLocationName(itinerary)
+        : getStartDisplayName(itinerary)
       : stops[index - 1].stop_name || "Previous Stop";
     const destinationPoint = getStopPoint(stop);
     const googleMapsUrl = buildGoogleMapsUrl(
@@ -1141,7 +1187,7 @@ function renderDetailStops(itinerary, stops) {
             target="_blank"
             rel="noopener noreferrer"
             class="btn btn-secondary btn-sm"
-            title="Google Maps: ${escapeHtml(stop.stop_name || "Stop")} -> ${escapeHtml(getEndLocationName(itinerary))}"
+            title="Google Maps: ${escapeHtml(stop.stop_name || "Stop")} -> ${escapeHtml(getEndDisplayName(itinerary))}"
           >
             ${escapeHtml(returnSegmentLabel)}
           </a>
@@ -1211,7 +1257,7 @@ function renderStops(itinerary, stops) {
       );
       originLabel = useLiveCurrentLocation
         ? "Current Location"
-        : getStartLocationName(itinerary);
+        : getStartDisplayName(itinerary);
     } else {
       originPoint = getStopPoint(stops[index - 1]);
       originLabel = stops[index - 1].stop_name || "Previous Stop";
@@ -1285,7 +1331,7 @@ async function renderMap(itinerary, stops) {
 
   if (startPoint) {
     mapPoints.push({
-      label: `Start: ${getStartLocationName(itinerary)}`,
+      label: `Start: ${getStartDisplayName(itinerary)}`,
       latitude: startPoint.latitude,
       longitude: startPoint.longitude
     });
@@ -1305,7 +1351,7 @@ async function renderMap(itinerary, stops) {
 
   if (endPoint) {
     mapPoints.push({
-      label: `End: ${getEndLocationName(itinerary)}`,
+      label: `End: ${getEndDisplayName(itinerary)}`,
       latitude: endPoint.latitude,
       longitude: endPoint.longitude
     });
