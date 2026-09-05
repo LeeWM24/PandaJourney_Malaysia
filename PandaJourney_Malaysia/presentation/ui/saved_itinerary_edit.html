@@ -93,11 +93,6 @@
     text-overflow: ellipsis;
   }
 
-  .edit-route-action {
-    display: none;
-    margin-top: 12px;
-  }
-
   .edit-route-map {
     position: relative;
     z-index: 0;
@@ -201,6 +196,7 @@
 
   .day-divider {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     flex: 0 0 100%;
@@ -1260,18 +1256,6 @@
             <div class="edit-section-subtitle">Adjust stop order, assign days and open each route leg in Google Maps.</div>
           </div>
         </div>
-        <div id="edit-full-route-action" class="edit-route-action">
-          <a
-            href="#"
-            id="edit-google-full-route-link"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="btn btn-secondary btn-sm"
-          >
-            View Full Route in Google Maps
-          </a>
-        </div>
-
         <div id="stop-list" class="stop-list" style="margin-top:16px;"></div>
         <button type="button" id="add-stop-btn" class="btn btn-secondary btn-md" style="width:100%; margin-top:12px;">+ Add a stop</button>
         <div class="edit-meta" style="margin-top:12px;">Synced live. Everyone with access sees saved changes.</div>

@@ -428,10 +428,121 @@ Explore community favorites, search destinations, and save routes in a tap.
     }
 
     function getStopPoint(stop) {
-      const latitude = Number(stop.latitude ?? stop.lat);
-      const longitude = Number(stop.longitude ?? stop.lng ?? stop.lon);
+      const rawLatitude = stop.latitude ?? stop.lat;
+      const rawLongitude = stop.longitude ?? stop.lng ?? stop.lon;
+      if (rawLatitude === null || rawLatitude === undefined || rawLatitude === '' ||
+          rawLongitude === null || rawLongitude === undefined || rawLongitude === '') return null;
+      const latitude = Number(rawLatitude);
+      const longitude = Number(rawLongitude);
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
       return { latitude, longitude };
+    }
+
+    function getItineraryPoint(item, prefix) {
+      const rawLatitude = item?.[`${prefix}_latitude`];
+      const rawLongitude = item?.[`${prefix}_longitude`];
+      if (rawLatitude === null || rawLatitude === undefined || rawLatitude === '' ||
+          rawLongitude === null || rawLongitude === undefined || rawLongitude === '') return null;
+      const latitude = Number(rawLatitude);
+      const longitude = Number(rawLongitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { latitude, longitude };
+    }
+
+    function isCurrentLocationName(value) {
+      return String(value || '').trim().toLowerCase() === 'current location';
+    }
+
+    function buildCoordinateText(point) {
+      if (!point) return '';
+      const latitude = Number(point.latitude);
+      const longitude = Number(point.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
+      return `${latitude.toFixed(7)},${longitude.toFixed(7)}`;
+    }
+
+    function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints = [], useLiveCurrentLocation = false) {
+      const destinationText = buildCoordinateText(destinationPoint);
+      if (!destinationText) return '';
+
+      const params = new URLSearchParams();
+      params.set('api', '1');
+
+      if (!useLiveCurrentLocation) {
+        const originText = buildCoordinateText(originPoint);
+        if (!originText) return '';
+        params.set('origin', originText);
+      }
+
+      params.set('destination', destinationText);
+      params.set('travelmode', 'driving');
+
+      const waypointTexts = waypointPoints.map(buildCoordinateText).filter(Boolean);
+      if (waypointTexts.length) params.set('waypoints', waypointTexts.join('|'));
+      if (useLiveCurrentLocation) params.set('dir_action', 'navigate');
+
+      return `https://www.google.com/maps/dir/?${params.toString()}`;
+    }
+
+    function getPublicDayRoute(item, dayNumber, stops) {
+      const numberedStops = stops.map((stop, index) => ({
+        stop,
+        marker: String(index + 1),
+        dayNumber: normaliseDayNumber(item, stop.day_number || stop.day || 1),
+        point: getStopPoint(stop)
+      }));
+      const dayStops = numberedStops.filter(stop => {
+        return stop.dayNumber === dayNumber && stop.point;
+      });
+
+      if (!dayStops.length) return null;
+
+      const previousStop = [...numberedStops].reverse().find(stop => {
+        return stop.dayNumber < dayNumber && stop.point;
+      });
+      const startPoint = getItineraryPoint(item, 'start');
+      const endPoint = getItineraryPoint(item, 'end');
+      const isFirstDay = dayNumber === 1;
+      const isFinalDay = dayNumber === getTripDays(item);
+      const useLiveCurrentLocation = isFirstDay && isCurrentLocationName(item.start_location_name);
+      const originPoint = isFirstDay
+        ? startPoint
+        : previousStop?.point || startPoint;
+      const originMarker = isFirstDay || !previousStop ? 'S' : previousStop.marker;
+      const destinationPoint = isFinalDay && endPoint
+        ? endPoint
+        : dayStops[dayStops.length - 1].point;
+      const waypointPoints = isFinalDay && endPoint
+        ? dayStops.map(stop => stop.point)
+        : dayStops.slice(0, -1).map(stop => stop.point);
+      const destinationMarker = isFinalDay && endPoint ? 'E' : '';
+      const markerPath = [
+        originMarker,
+        ...dayStops.map(stop => stop.marker),
+        destinationMarker
+      ].filter(Boolean);
+      const url = buildGoogleMapsRouteUrl(
+        originPoint,
+        destinationPoint,
+        waypointPoints,
+        useLiveCurrentLocation
+      );
+
+      return url
+        ? { url, label: `Google Maps ${markerPath.join(' -> ')}` }
+        : null;
+    }
+
+    function renderPublicDayDivider(item, stops, dayNumber) {
+      const route = getPublicDayRoute(item, dayNumber, stops);
+      return `
+        <div class="timeline-day-divider">
+          <span>Day ${dayNumber}</span>
+          ${route
+            ? `<a href="${escapeHtml(route.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm day-route-link">${escapeHtml(route.label)}</a>`
+            : ''}
+        </div>
+      `;
     }
 
     function distanceKm(pointA, pointB) {
@@ -480,11 +591,7 @@ Explore community favorites, search destinations, and save routes in a tap.
         : '';
 
       if (startName || stops.length || endName) {
-        rows.push(`
-          <div class="timeline-day-divider">
-            <span>Day 1</span>
-          </div>
-        `);
+        rows.push(renderPublicDayDivider(item, stops, 1));
         lastDayNumber = 1;
       }
 
@@ -503,11 +610,7 @@ Explore community favorites, search destinations, and save routes in a tap.
       stops.forEach((stop) => {
         const dayNumber = normaliseDayNumber(item, stop.day_number || stop.day || 1);
         const divider = dayNumber !== lastDayNumber
-          ? `
-            <div class="timeline-day-divider">
-              <span>Day ${dayNumber}</span>
-            </div>
-          `
+          ? renderPublicDayDivider(item, stops, dayNumber)
           : '';
         lastDayNumber = dayNumber;
         rows.push(`

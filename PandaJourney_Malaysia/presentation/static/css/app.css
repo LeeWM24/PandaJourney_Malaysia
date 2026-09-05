@@ -293,9 +293,10 @@ button, input, select, textarea { font: inherit; }
 .timeline-dot { width: 12px; height: 12px; margin-top: 6px; background: var(--primary); border-radius: 50%; z-index: 2; }
 .timeline-dot.start { background: var(--success); } .timeline-dot.end { background: var(--danger); }
 .timeline-line { position: absolute; top: 22px; bottom: -6px; width: 1px; background: var(--border); }
-.timeline-day-divider { display: flex; align-items: center; gap: 10px; margin: 14px 0 12px; color: var(--muted-fg); font-size: 12px; font-weight: 600; }
+.timeline-day-divider { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 14px 0 12px; color: var(--muted-fg); font-size: 12px; font-weight: 600; }
 .timeline-day-divider::before,
 .timeline-day-divider::after { content: ""; flex: 1; height: 1px; background: rgba(0, 0, 0, 0.08); }
+.day-route-link { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .timetable-content { padding-bottom: 18px; }
 .timetable-time { color: var(--muted-fg); font-size: 13px; margin-bottom: 4px; }
 .timetable-name { font-size: 16px; font-weight: 800; margin-bottom: 8px; }

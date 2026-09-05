@@ -673,8 +673,10 @@ async function loadDetailPhotoCarousel(item) {
 }
 
 let publicDetailMap = null;
+let publicDetailMapRequest = 0;
 
 function normaliseNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -715,6 +717,64 @@ function getPublicItineraryPoint(item, prefix) {
   };
 }
 
+const PUBLIC_DAY_ROUTE_COLORS = ["#15956f", "#2563eb", "#d97706", "#db2777", "#7c3aed", "#dc2626"];
+
+function getPublicTripDays(item) {
+  const days = Math.round(Number(item?.trip_days || item?.day_count || 1));
+  return Math.min(30, Math.max(1, Number.isFinite(days) ? days : 1));
+}
+
+function normalisePublicDayNumber(item, value) {
+  const dayNumber = Math.round(Number(value || 1));
+  return Math.min(
+    getPublicTripDays(item),
+    Math.max(1, Number.isFinite(dayNumber) ? dayNumber : 1)
+  );
+}
+
+function getPublicDayRouteColor(dayNumber) {
+  return PUBLIC_DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % PUBLIC_DAY_ROUTE_COLORS.length];
+}
+
+function getPublicDayMapSections(item) {
+  const startPoint = getPublicItineraryPoint(item, "start");
+  const endPoint = getPublicItineraryPoint(item, "end");
+  const numberedStops = (item.stopList || []).map((stop, index) => ({
+    stop,
+    marker: index + 1,
+    dayNumber: normalisePublicDayNumber(item, stop.day_number || stop.day || 1),
+    point: getPublicStopPoint(stop)
+  })).filter(entry => entry.point);
+  const dayNumbers = [...new Set(numberedStops.map(entry => entry.dayNumber))];
+  const sections = dayNumbers.map(dayNumber => {
+    const dayStops = numberedStops.filter(entry => entry.dayNumber === dayNumber);
+    const previousStop = [...numberedStops].reverse().find(entry => entry.dayNumber < dayNumber);
+    const originPoint = dayNumber === 1
+      ? startPoint
+      : previousStop?.point || startPoint;
+    const points = [originPoint, ...dayStops.map(entry => entry.point)].filter(Boolean);
+
+    if (dayNumber === getPublicTripDays(item) && endPoint) {
+      points.push(endPoint);
+    }
+
+    return { dayNumber, points };
+  }).filter(section => section.points.length > 1);
+
+  const lastStop = numberedStops[numberedStops.length - 1];
+  if (endPoint && (!lastStop || lastStop.dayNumber < getPublicTripDays(item))) {
+    const originPoint = lastStop?.point || startPoint;
+    if (originPoint) {
+      sections.push({
+        dayNumber: getPublicTripDays(item),
+        points: [originPoint, endPoint]
+      });
+    }
+  }
+
+  return sections;
+}
+
 async function renderPublicRouteMap(item) {
   const mapElement = document.getElementById(
     "publicDetailRouteMap"
@@ -723,6 +783,9 @@ async function renderPublicRouteMap(item) {
   if (!mapElement || typeof L === "undefined") {
     return;
   }
+
+  const requestId = publicDetailMapRequest + 1;
+  publicDetailMapRequest = requestId;
 
   if (publicDetailMap) {
     publicDetailMap.remove();
@@ -760,7 +823,7 @@ async function renderPublicRouteMap(item) {
         stop.stop_name ||
         stop.place ||
         "Stop"
-      }`,
+      } (Day ${normalisePublicDayNumber(item, stop.day_number || stop.day || 1)})`,
       latitude: point.latitude,
       longitude: point.longitude,
       type: "stop",
@@ -833,24 +896,31 @@ async function renderPublicRouteMap(item) {
     markerGroup.addLayer(marker);
   });
 
-  const roadRouteGeometry =
-    await getPublicRoadRouteGeometry(mapPoints);
+  const daySections = getPublicDayMapSections(item);
+  const routeGeometries = await Promise.all(
+    daySections.map(section => getPublicRoadRouteGeometry(section.points))
+  );
 
-    if (roadRouteGeometry) {
-      L.geoJSON(
-        roadRouteGeometry,
-        {
-          style: {
-            color: "#15956f",
-            weight: 5,
-            opacity: 0.85
-          }
-        }
+  if (requestId !== publicDetailMapRequest || !publicDetailMap) {
+    return;
+  }
+
+  daySections.forEach((section, index) => {
+    const style = {
+      color: getPublicDayRouteColor(section.dayNumber),
+      weight: 5,
+      opacity: 0.85
+    };
+    const geometry = routeGeometries[index];
+    const layer = geometry
+      ? L.geoJSON(geometry, { style }).addTo(publicDetailMap)
+      : L.polyline(
+        section.points.map(point => [point.latitude, point.longitude]),
+        style
       ).addTo(publicDetailMap);
-    } else if (mapPoints.length > 1) {
-      const polylinePoints = mapPoints.map((point) => [point.latitude, point.longitude]);
-      L.polyline(polylinePoints, { color: "#15956f", weight: 5, opacity: 0.85 }).addTo(publicDetailMap);
-    }
+
+    layer.bindTooltip(`Day ${section.dayNumber}`);
+  });
 
   if (mapPoints.length === 1) {
     publicDetailMap.setView([mapPoints[0].latitude, mapPoints[0].longitude], 14);
@@ -875,9 +945,11 @@ async function getPublicRoadRouteGeometry(mapPoints) {
   const routeUrl =
     `https://router.project-osrm.org/route/v1/driving/${coordinates}` +
     `?overview=full&geometries=geojson`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 4500);
 
   try {
-    const response = await fetch(routeUrl);
+    const response = await fetch(routeUrl, { signal: controller.signal });
 
     if (!response.ok) {
       return null;
@@ -898,6 +970,8 @@ async function getPublicRoadRouteGeometry(mapPoints) {
     );
 
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 

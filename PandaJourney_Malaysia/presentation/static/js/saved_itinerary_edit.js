@@ -789,11 +789,13 @@ function renderStopSuggestions(inputElement, boxElement, stopId, payload) {
       </span>
       <span class="stop-suggestion-sub">${escapeHtml(suggestion.address || suggestion.source || "")}</span>
     `;
-    button.addEventListener("click", function () {
-      inputElement.value = suggestion.display_name || suggestion.name || "";
-      selectedStopPlaces[stopId] = suggestion;
-      hideStopSuggestions(boxElement);
-    });
+      button.addEventListener("click", function () {
+        inputElement.value = suggestion.display_name || suggestion.name || "";
+        selectedStopPlaces[stopId] = suggestion;
+        const warningElement = boxElement.closest(".stop-edit-panel")?.querySelector(".js-stop-warning");
+        clearStopValidationError(warningElement);
+        hideStopSuggestions(boxElement);
+      });
     boxElement.appendChild(button);
   });
 }
@@ -805,6 +807,8 @@ function setupStopPlaceAutocomplete(row, stopId, stop) {
 
   inputElement.addEventListener("input", function () {
     selectedStopPlaces[stopId] = null;
+    const warningElement = row.querySelector(".js-stop-warning");
+    clearStopValidationError(warningElement);
     const queryText = inputElement.value.trim();
     clearTimeout(stopSuggestionTimers[stopId]);
 
@@ -945,7 +949,11 @@ function scheduleHighlightRefresh() {
 }
 
 function hasValidStopCoordinates(stop) {
-  return Number.isFinite(Number(stop.latitude)) && Number.isFinite(Number(stop.longitude));
+  return hasCoordinateValue(stop.latitude) && hasCoordinateValue(stop.longitude);
+}
+
+function hasCoordinateValue(value) {
+  return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
 }
 
 function parseClockMinutes(value) {
@@ -997,6 +1005,7 @@ function estimateTravelMinutes(previousPoint, stop) {
 }
 
 function recalculateStopTimes(stops) {
+  let currentDay = 1;
   let cursor = parseClockMinutes(getDayStartTime(1));
   let previousPoint = {
     latitude: itinerary?.start_latitude,
@@ -1005,6 +1014,11 @@ function recalculateStopTimes(stops) {
 
   return stops.map((stop, index) => {
     const dayNumber = normaliseDayNumber(stop.day_number || stop.day || 1);
+    if (index === 0 || dayNumber !== currentDay) {
+      currentDay = dayNumber;
+      cursor = parseClockMinutes(getDayStartTime(dayNumber));
+    }
+
     const visitMinutes = Math.max(0, Number(stop.visit_duration_minutes || 0));
     const travelMinutes = estimateTravelMinutes(previousPoint, stop);
     const arrivalMinutes = cursor + travelMinutes;
@@ -1054,14 +1068,17 @@ function recalculateStopTimesWithExistingTravel(stops) {
 }
 
 function getItineraryPoint(prefix) {
-  const latitude = Number(itinerary?.[`${prefix}_latitude`]);
-  const longitude = Number(itinerary?.[`${prefix}_longitude`]);
+  const rawLatitude = itinerary?.[`${prefix}_latitude`];
+  const rawLongitude = itinerary?.[`${prefix}_longitude`];
 
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+  if (!hasCoordinateValue(rawLatitude) || !hasCoordinateValue(rawLongitude)) {
     return null;
   }
 
-  return { latitude, longitude };
+  return {
+    latitude: Number(rawLatitude),
+    longitude: Number(rawLongitude)
+  };
 }
 
 function getPointFromStop(stop) {
@@ -1158,43 +1175,56 @@ function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints =
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-function getFullRouteGoogleMapsUrl(stops = stopDocs) {
+function getDayRouteGoogleMaps(dayNumber, stops = stopDocs) {
+  const numberedStops = stops.map((stop, index) => ({
+    stop,
+    marker: String(index + 1),
+    dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
+    point: getPointFromStop(stop)
+  }));
+  const dayStops = numberedStops.filter(item => {
+    return item.dayNumber === dayNumber && item.point;
+  });
+
+  if (!dayStops.length) return null;
+
+  const previousStop = [...numberedStops].reverse().find(item => {
+    return item.dayNumber < dayNumber && item.point;
+  });
   const startPoint = getItineraryPoint("start");
   const endPoint = getItineraryPoint("end");
-
-  if (!endPoint) {
-    return "";
-  }
-
-  const useLiveCurrentLocation = isCurrentLocationName(itinerary?.start_location_name);
-  const waypointPoints = stops
-    .map(getPointFromStop)
-    .filter(Boolean);
-
-  return buildGoogleMapsRouteUrl(
-    startPoint,
-    endPoint,
+  const isFirstDay = dayNumber === 1;
+  const isFinalDay = dayNumber === getTripDays();
+  const useLiveCurrentLocation = isFirstDay && isCurrentLocationName(itinerary?.start_location_name);
+  const originPoint = isFirstDay
+    ? startPoint
+    : previousStop?.point || startPoint;
+  const originMarker = isFirstDay || !previousStop ? "S" : previousStop.marker;
+  const destinationPoint = isFinalDay && endPoint
+    ? endPoint
+    : dayStops[dayStops.length - 1].point;
+  const waypointPoints = isFinalDay && endPoint
+    ? dayStops.map(item => item.point)
+    : dayStops.slice(0, -1).map(item => item.point);
+  const destinationMarker = isFinalDay && endPoint ? "E" : "";
+  const markerPath = [
+    originMarker,
+    ...dayStops.map(item => item.marker),
+    destinationMarker
+  ].filter(Boolean);
+  const url = buildGoogleMapsRouteUrl(
+    originPoint,
+    destinationPoint,
     waypointPoints,
     useLiveCurrentLocation
   );
-}
 
-function renderFullRouteAction() {
-  const action = document.getElementById("edit-full-route-action");
-  const link = document.getElementById("edit-google-full-route-link");
-
-  if (!action || !link) return;
-
-  const fullRouteUrl = getFullRouteGoogleMapsUrl();
-
-  if (!fullRouteUrl) {
-    action.style.display = "none";
-    link.removeAttribute("href");
-    return;
-  }
-
-  link.href = fullRouteUrl;
-  action.style.display = "flex";
+  return url
+    ? {
+      url,
+      label: `Google Maps ${markerPath.join(" -> ")}`
+    }
+    : null;
 }
 
 async function getRoadRouteGeometry(points) {
@@ -1223,14 +1253,59 @@ async function getRoadRouteGeometry(points) {
   }
 }
 
+const DAY_ROUTE_COLORS = ["#15956f", "#2563eb", "#d97706", "#db2777", "#7c3aed", "#dc2626"];
+
+function getDayRouteColor(dayNumber) {
+  return DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % DAY_ROUTE_COLORS.length];
+}
+
+function getDayMapSections(stops) {
+  const startPoint = getItineraryPoint("start");
+  const endPoint = getItineraryPoint("end");
+  const numberedStops = stops.map((stop, index) => ({
+    stop,
+    marker: index + 1,
+    dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
+    point: getPointFromStop(stop)
+  })).filter(item => item.point);
+  const dayNumbers = [...new Set(numberedStops.map(item => item.dayNumber))];
+  const sections = dayNumbers.map(dayNumber => {
+    const dayStops = numberedStops.filter(item => item.dayNumber === dayNumber);
+    const previousStop = [...numberedStops].reverse().find(item => item.dayNumber < dayNumber);
+    const originPoint = dayNumber === 1
+      ? startPoint
+      : previousStop?.point || startPoint;
+    const points = [originPoint, ...dayStops.map(item => item.point)].filter(Boolean);
+
+    if (dayNumber === getTripDays() && endPoint) {
+      points.push(endPoint);
+    }
+
+    return { dayNumber, points };
+  }).filter(section => section.points.length > 1);
+
+  const lastStop = numberedStops[numberedStops.length - 1];
+  if (endPoint && (!lastStop || lastStop.dayNumber < getTripDays())) {
+    const originPoint = lastStop?.point || startPoint;
+    if (originPoint) {
+      sections.push({ dayNumber: getTripDays(), points: [originPoint, endPoint] });
+    }
+  }
+
+  return sections;
+}
+
 async function renderEditRouteMap() {
   const mapElement = document.getElementById("editRouteMap");
 
   if (!mapElement || typeof L === "undefined") return;
 
   const mapKey = [
+    String(getTripDays()),
     buildCoordinateText(getItineraryPoint("start")),
-    ...stopDocs.map(stop => buildCoordinateText(getPointFromStop(stop))),
+    ...stopDocs.map(stop => {
+      return `${normaliseDayNumber(stop.day_number || stop.day || 1)}:${buildCoordinateText(getPointFromStop(stop))}`;
+    }),
     buildCoordinateText(getItineraryPoint("end"))
   ].join("|");
 
@@ -1269,7 +1344,7 @@ async function renderEditRouteMap() {
     if (!point) return;
 
     mapPoints.push({
-      label: `${index + 1}. ${stop.stop_name || "Stop"}`,
+      label: `${index + 1}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(stop.day_number || stop.day || 1)})`,
       latitude: point.latitude,
       longitude: point.longitude,
       type: "stop",
@@ -1324,30 +1399,31 @@ async function renderEditRouteMap() {
 
   const requestId = activeRouteMapRequest + 1;
   activeRouteMapRequest = requestId;
-  const roadRouteGeometry = await getRoadRouteGeometry(mapPoints);
+  const daySections = getDayMapSections(stopDocs);
+  const routeGeometries = await Promise.all(
+    daySections.map(section => getRoadRouteGeometry(section.points))
+  );
 
   if (requestId !== activeRouteMapRequest || !editMap) {
     return;
   }
 
-  if (roadRouteGeometry) {
-    L.geoJSON(roadRouteGeometry, {
-      style: {
-        color: "#15956f",
-        weight: 5,
-        opacity: .85
-      }
-    }).addTo(editMap);
-  } else if (mapPoints.length > 1) {
-    L.polyline(
-      mapPoints.map(point => [point.latitude, point.longitude]),
-      {
-        color: "#15956f",
-        weight: 5,
-        opacity: .85
-      }
-    ).addTo(editMap);
-  }
+  daySections.forEach((section, index) => {
+    const style = {
+      color: getDayRouteColor(section.dayNumber),
+      weight: 5,
+      opacity: .85
+    };
+    const geometry = routeGeometries[index];
+    const layer = geometry
+      ? L.geoJSON(geometry, { style }).addTo(editMap)
+      : L.polyline(
+        section.points.map(point => [point.latitude, point.longitude]),
+        style
+      ).addTo(editMap);
+
+    layer.bindTooltip(`Day ${section.dayNumber}`);
+  });
 
   if (mapPoints.length === 1) {
     editMap.setView([mapPoints[0].latitude, mapPoints[0].longitude], 14);
@@ -1423,18 +1499,13 @@ async function recalculateStopTimesWithOsrm(stops) {
 
   const recalculatedStops = stops.map((stop, index) => {
     const dayNumber = normaliseDayNumber(stop.day_number || stop.day || 1);
-    const isFirstStopOfDay = index === 0 || dayNumber !== currentDay;
     if (index === 0 || dayNumber !== currentDay) {
       currentDay = dayNumber;
       cursor = parseClockMinutes(getDayStartTime(dayNumber));
-      previousPoint = startPoint || {
-        latitude: itinerary?.start_latitude,
-        longitude: itinerary?.start_longitude
-      };
     }
 
     const visitMinutes = Math.max(0, Number(stop.visit_duration_minutes || 0));
-    const travelMinutes = !isFirstStopOfDay && Number.isFinite(Number(legMinutes[index]))
+    const travelMinutes = Number.isFinite(Number(legMinutes[index]))
       ? Number(legMinutes[index])
       : estimateTravelMinutes(previousPoint, stop);
     const arrivalMinutes = cursor + travelMinutes;
@@ -1597,6 +1668,18 @@ function clearFarStopConfirmation(warningElement, saveButton) {
     delete saveButton.dataset.confirmFar;
     saveButton.textContent = "Save changes";
   }
+}
+
+function showStopValidationError(warningElement, message) {
+  if (!warningElement) return;
+  warningElement.textContent = message;
+  warningElement.classList.add("show");
+}
+
+function clearStopValidationError(warningElement) {
+  if (!warningElement || warningElement.dataset.confirmation === "1") return;
+  warningElement.textContent = "";
+  warningElement.classList.remove("show");
 }
 
 function stopsHaveSameRoute(previousStops, nextStops) {
@@ -1793,7 +1876,6 @@ function renderItinerary() {
 
   if (hoursText) hoursText.textContent = formatMinutesAsDuration(calculatedMinutes);
   if (stopCountText) stopCountText.textContent = `${stopDocs.length} stops`;
-  renderFullRouteAction();
   renderTripPhoto().catch(console.error);
   scheduleEditRouteMapRender();
 }
@@ -2009,8 +2091,18 @@ function renderStops() {
     }
 
     const dayNumber = isRouteMarker ? 0 : normaliseDayNumber(stop.day_number || stop.day || 1);
+    const dayRoute = !isRouteMarker && dayNumber !== lastRenderedDay
+      ? getDayRouteGoogleMaps(dayNumber, editableStops)
+      : null;
     const dayDivider = !isRouteMarker && dayNumber !== lastRenderedDay
-      ? `<div class="day-divider"><span>Day ${dayNumber} - starts ${escapeHtml(formatClockMinutes(parseClockMinutes(getDayStartTime(dayNumber))))}</span></div>`
+      ? `
+        <div class="day-divider">
+          <span>Day ${dayNumber} - starts ${escapeHtml(formatClockMinutes(parseClockMinutes(getDayStartTime(dayNumber))))}</span>
+          ${dayRoute
+            ? `<a href="${escapeHtml(dayRoute.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm day-route-link">${escapeHtml(dayRoute.label)}</a>`
+            : ""}
+        </div>
+      `
       : "";
     if (!isRouteMarker && dayNumber !== lastRenderedDay) {
       lastRenderedDay = dayNumber;
@@ -2462,10 +2554,9 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     return;
   }
   if (!hasValidStopCoordinates({ ...existingStop, ...changes })) {
-    openConfirmModal(
-      "Select a place",
-      "Please choose a stop from the location suggestions so the itinerary has map coordinates.",
-      null
+    showStopValidationError(
+      warningElement,
+      "Please select a location from the suggestions before saving this stop."
     );
     return;
   }
@@ -2666,10 +2757,9 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     return;
   }
   if (!hasValidStopCoordinates(changes)) {
-    openConfirmModal(
-      "Select a place",
-      "Please choose a stop from the location suggestions so the itinerary has map coordinates.",
-      null
+    showStopValidationError(
+      warningElement,
+      "Please select a location from the suggestions before saving this stop."
     );
     return;
   }

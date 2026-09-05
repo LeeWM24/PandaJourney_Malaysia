@@ -258,6 +258,7 @@ function updateStatusBadge(status) {
 }
 
 function normaliseNumber(value) {
+  if (value === null || value === undefined || value === "") return null;
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
 }
@@ -570,28 +571,56 @@ function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints =
   return `https://www.google.com/maps/dir/?${params.toString()}`;
 }
 
-function buildFallbackFullRouteUrl(itinerary, stops) {
+function getDayRouteGoogleMaps(itinerary, dayNumber, stops) {
+  const numberedStops = stops.map((stop, index) => ({
+    stop,
+    marker: String(index + 1),
+    dayNumber: normaliseDayNumber(itinerary, stop.day_number || stop.day || 1),
+    point: getStopPoint(stop)
+  }));
+  const dayStops = numberedStops.filter(item => {
+    return item.dayNumber === dayNumber && item.point;
+  });
+
+  if (!dayStops.length) return null;
+
+  const previousStop = [...numberedStops].reverse().find(item => {
+    return item.dayNumber < dayNumber && item.point;
+  });
   const startPoint = getStartPoint(itinerary);
   const endPoint = getEndPoint(itinerary);
-
-  if (!endPoint) {
-    return "";
-  }
-
-  const useLiveCurrentLocation = isCurrentLocationName(
-    itinerary.start_location_name
-  );
-
-  const waypointPoints = stops
-    .map(getStopPoint)
-    .filter(Boolean);
-
-  return buildGoogleMapsRouteUrl(
-    startPoint,
-    endPoint,
+  const isFirstDay = dayNumber === 1;
+  const isFinalDay = dayNumber === getTripDays(itinerary);
+  const useLiveCurrentLocation = isFirstDay && isCurrentLocationName(itinerary.start_location_name);
+  const originPoint = isFirstDay
+    ? startPoint
+    : previousStop?.point || startPoint;
+  const originMarker = isFirstDay || !previousStop ? "S" : previousStop.marker;
+  const destinationPoint = isFinalDay && endPoint
+    ? endPoint
+    : dayStops[dayStops.length - 1].point;
+  const waypointPoints = isFinalDay && endPoint
+    ? dayStops.map(item => item.point)
+    : dayStops.slice(0, -1).map(item => item.point);
+  const destinationMarker = isFinalDay && endPoint ? "E" : "";
+  const markerPath = [
+    originMarker,
+    ...dayStops.map(item => item.marker),
+    destinationMarker
+  ].filter(Boolean);
+  const url = buildGoogleMapsRouteUrl(
+    originPoint,
+    destinationPoint,
     waypointPoints,
     useLiveCurrentLocation
   );
+
+  return url
+    ? {
+      url,
+      label: `Google Maps ${markerPath.join(" -> ")}`
+    }
+    : null;
 }
 
 async function getRoadRouteGeometry(mapPoints) {
@@ -608,9 +637,13 @@ async function getRoadRouteGeometry(mapPoints) {
   const routeUrl =
     `https://router.project-osrm.org/route/v1/driving/${coordinates}` +
     `?overview=full&geometries=geojson`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(function () {
+    controller.abort();
+  }, 4500);
 
   try {
-    const response = await fetch(routeUrl);
+    const response = await fetch(routeUrl, { signal: controller.signal });
 
     if (!response.ok) {
       return null;
@@ -627,7 +660,68 @@ async function getRoadRouteGeometry(mapPoints) {
   } catch (error) {
     console.error("Failed to load OSRM route:", error);
     return null;
+  } finally {
+    clearTimeout(timeoutId);
   }
+}
+
+const DAY_ROUTE_COLORS = ["#15956f", "#2563eb", "#d97706", "#db2777", "#7c3aed", "#dc2626"];
+
+function getDayRouteColor(dayNumber) {
+  return DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % DAY_ROUTE_COLORS.length];
+}
+
+function getDayMapSections(itinerary, stops) {
+  const startPoint = getStartPoint(itinerary);
+  const endPoint = getEndPoint(itinerary);
+  const numberedStops = stops.map(function (stop, index) {
+    return {
+      stop,
+      marker: index + 1,
+      dayNumber: normaliseDayNumber(itinerary, stop.day_number || stop.day || 1),
+      point: getStopPoint(stop)
+    };
+  }).filter(function (item) {
+    return item.point;
+  });
+  const dayNumbers = [...new Set(numberedStops.map(function (item) {
+    return item.dayNumber;
+  }))];
+  const sections = dayNumbers.map(function (dayNumber) {
+    const dayStops = numberedStops.filter(function (item) {
+      return item.dayNumber === dayNumber;
+    });
+    const previousStop = [...numberedStops].reverse().find(function (item) {
+      return item.dayNumber < dayNumber;
+    });
+    const originPoint = dayNumber === 1
+      ? startPoint
+      : previousStop?.point || startPoint;
+    const points = [originPoint, ...dayStops.map(function (item) {
+      return item.point;
+    })].filter(Boolean);
+
+    if (dayNumber === getTripDays(itinerary) && endPoint) {
+      points.push(endPoint);
+    }
+
+    return { dayNumber, points };
+  }).filter(function (section) {
+    return section.points.length > 1;
+  });
+
+  const lastStop = numberedStops[numberedStops.length - 1];
+  if (endPoint && (!lastStop || lastStop.dayNumber < getTripDays(itinerary))) {
+    const originPoint = lastStop?.point || startPoint;
+    if (originPoint) {
+      sections.push({
+        dayNumber: getTripDays(itinerary),
+        points: [originPoint, endPoint]
+      });
+    }
+  }
+
+  return sections;
 }
 
 // ================================
@@ -816,10 +910,6 @@ function renderItinerary(itinerary, stops) {
 
   updateStatusBadge(itinerary.status || "Draft");
 
-  const rebuiltFullRouteUrl = buildFallbackFullRouteUrl(itinerary, stops);
-  const fullRouteUrl = rebuiltFullRouteUrl || itinerary.google_maps_full_route_url || "";
-
-  renderFullGoogleRouteAction(fullRouteUrl);
   renderEndLocationAction(itinerary, stops);
 }
 
@@ -896,24 +986,6 @@ async function renderPhotoCarousel(stops) {
   }
 
   await renderPhoto();
-}
-
-function renderFullGoogleRouteAction(url) {
-  const action = document.getElementById("detail-full-route-action");
-  const link = document.getElementById("detail-google-full-route-link");
-
-  if (!action || !link) {
-    return;
-  }
-
-  if (!url) {
-    action.style.display = "none";
-    link.removeAttribute("href");
-    return;
-  }
-
-  link.href = url;
-  action.style.display = "flex";
 }
 
 function renderEndLocationAction(itinerary, stops) {
@@ -1021,7 +1093,8 @@ function renderDetailStops(itinerary, stops) {
         type: "day",
         dayNumber,
         title: `Day ${dayNumber}`,
-        meta: `Starts ${formatClockMinutes(parseClockMinutes(getDayStartTime(itinerary, dayNumber)))}`
+        meta: `Starts ${formatClockMinutes(parseClockMinutes(getDayStartTime(itinerary, dayNumber)))}`,
+        route: getDayRouteGoogleMaps(itinerary, dayNumber, stops)
       });
       lastDayNumber = dayNumber;
     }
@@ -1065,6 +1138,9 @@ function renderDetailStops(itinerary, stops) {
       row.innerHTML = `
         <div class="detail-day-divider">
           <span>${escapeHtml(routeRow.title)} - ${escapeHtml(routeRow.meta)}</span>
+          ${routeRow.route
+            ? `<a href="${escapeHtml(routeRow.route.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm day-route-link">${escapeHtml(routeRow.route.label)}</a>`
+            : ""}
         </div>
       `;
 
@@ -1296,7 +1372,7 @@ async function renderMap(itinerary, stops) {
 
     if (stopPoint) {
       mapPoints.push({
-        label: `${index + 1}. ${stop.stop_name || "Stop"}`,
+        label: `${index + 1}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(itinerary, stop.day_number || stop.day || 1)})`,
         latitude: stopPoint.latitude,
         longitude: stopPoint.longitude
       });
@@ -1341,32 +1417,38 @@ async function renderMap(itinerary, stops) {
     markerGroup.addLayer(marker);
   });
 
-  const roadRouteGeometry = await getRoadRouteGeometry(mapPoints);
+  const daySections = getDayMapSections(itinerary, stops);
+  const routeGeometries = await Promise.all(
+    daySections.map(function (section) {
+      return getRoadRouteGeometry(section.points);
+    })
+  );
 
-  let routeLayer = null;
+  daySections.forEach(function (section, index) {
+    const style = {
+      color: getDayRouteColor(section.dayNumber),
+      weight: 5,
+      opacity: .85
+    };
+    const geometry = routeGeometries[index];
+    const layer = geometry
+      ? L.geoJSON(geometry, { style }).addTo(detailMap)
+      : L.polyline(
+        section.points.map(function (point) {
+          return [point.latitude, point.longitude];
+        }),
+        style
+      ).addTo(detailMap);
 
-  if (roadRouteGeometry) {
-    routeLayer = L.geoJSON(roadRouteGeometry).addTo(detailMap);
-  } else {
-    const polylinePoints = mapPoints.map(function (point) {
-      return [point.latitude, point.longitude];
-    });
-
-    if (polylinePoints.length >= 2) {
-      routeLayer = L.polyline(polylinePoints).addTo(detailMap);
-    }
-  }
+    layer.bindTooltip(`Day ${section.dayNumber}`);
+  });
 
   detailMap.setView([mapPoints[0].latitude, mapPoints[0].longitude], 13);
 
   setTimeout(function () {
     detailMap.invalidateSize();
 
-    if (routeLayer && routeLayer.getBounds && routeLayer.getBounds().isValid()) {
-      detailMap.fitBounds(routeLayer.getBounds(), {
-        padding: [24, 24]
-      });
-    } else if (markerGroup.getLayers().length > 0) {
+    if (markerGroup.getLayers().length > 0) {
       detailMap.fitBounds(markerGroup.getBounds(), {
         padding: [24, 24]
       });
