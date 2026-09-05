@@ -120,6 +120,18 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+const MAX_TITLE_DISPLAY_LENGTH = 50;
+
+function truncateText(value, maxLength = MAX_TITLE_DISPLAY_LENGTH) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= maxLength) return text;
+  return text.slice(0, Math.max(1, maxLength - 3)).trimEnd() + "...";
+}
+
+function displayTitle(value) {
+  return truncateText(value || "Untitled Trip", MAX_TITLE_DISPLAY_LENGTH);
+}
+
 function getBadgeClass(status) {
   if (status === "Published") return "badge-success";
   if (status === "Draft") return "badge-warning";
@@ -532,7 +544,7 @@ function openInviteModal(itinerary) {
   pendingInviteItinerary = itinerary;
   pendingInviteLink = "";
   pendingInviteEmail = "";
-  if (inviteTitle) inviteTitle.textContent = `Invite people to ${itinerary.title || "this itinerary"}`;
+  if (inviteTitle) inviteTitle.textContent = `Invite people to ${displayTitle(itinerary.title || "this itinerary")}`;
   if (inviteEmailInput) inviteEmailInput.value = "";
   if (inviteOptions) inviteOptions.classList.remove("show");
   clearInviteSuggestions();
@@ -568,7 +580,7 @@ function getPeopleStatusLabel(status) {
 }
 
 function openPeopleModal(itinerary) {
-  if (peopleTitle) peopleTitle.textContent = `People in ${itinerary.title || "this itinerary"}`;
+  if (peopleTitle) peopleTitle.textContent = `People in ${displayTitle(itinerary.title || "this itinerary")}`;
 
   const collaborators = dedupeCollaborators(itinerary.collaborators || []);
 
@@ -963,7 +975,7 @@ function renderItineraries(itineraries, targetElement, listType) {
       <div class="saved-icon">🗓️</div>
       <div class="saved-info">
         <div class="saved-title">
-          ${escapeHtml(itinerary.title)}
+          <span title="${escapeHtml(itinerary.title || "Untitled Trip")}">${escapeHtml(displayTitle(itinerary.title))}</span>
         </div>
         <div class="saved-meta">
           <span class="badge ${badgeClass} saved-status-badge">${escapeHtml(status)}</span>
@@ -1054,7 +1066,7 @@ function renderRequests(requests) {
     item.className = "request-item";
     item.innerHTML = `
       <div class="request-title">${escapeHtml(request.invited_by_name || request.owner_email || "Someone")} invited you</div>
-      <div class="request-meta">${escapeHtml(request.itinerary.title)} - ${escapeHtml(formatDate(request.itinerary.date))}</div>
+      <div class="request-meta">${escapeHtml(displayTitle(request.itinerary.title))} - ${escapeHtml(formatDate(request.itinerary.date))}</div>
       <div class="request-meta">${escapeHtml(request.itinerary.stop_count)} stops - ${escapeHtml(request.itinerary.collaborator_count)} people</div>
       <div class="request-actions">
         <button type="button" class="btn btn-primary btn-sm js-accept-request">Accept</button>
@@ -1094,7 +1106,7 @@ function activityPanelHtml(itinerary) {
           ${escapeHtml(item.message || "Itinerary updated")}
         </div>
         <div class="request-meta">
-          ${escapeHtml(item.itinerary_title || "Itinerary")} - ${escapeHtml(formatRelativeTime(item.created_at))}
+          ${escapeHtml(displayTitle(item.itinerary_title || "Itinerary"))} - ${escapeHtml(formatRelativeTime(item.created_at))}
         </div>
       </div>
     `;

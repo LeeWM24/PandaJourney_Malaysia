@@ -268,7 +268,7 @@ function initRouteMap() {
   const markerGroup = L.featureGroup();
 
   const startMarker = L.marker([startPoint.latitude, startPoint.longitude])
-    .bindPopup("Start: " + mapData.startText)
+    .bindPopup("Start: " + (mapData.startDisplayText || shortLocationName(mapData.startText)))
     .addTo(map);
 
   markerGroup.addLayer(startMarker);
@@ -282,7 +282,7 @@ function initRouteMap() {
   });
 
   const endMarker = L.marker([endPoint.latitude, endPoint.longitude])
-    .bindPopup("End: " + mapData.endText)
+    .bindPopup("End: " + (mapData.endDisplayText || shortLocationName(mapData.endText)))
     .addTo(map);
 
   markerGroup.addLayer(endMarker);
@@ -298,6 +298,32 @@ function initRouteMap() {
 // ================================
 // Helper
 // ================================
+
+const MAX_ITINERARY_TITLE_LENGTH = 50;
+const MAX_LOCATION_DISPLAY_LENGTH = 40;
+
+function truncateText(value, maxLength) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+
+  if (text.length <= maxLength) return text;
+  return text.slice(0, Math.max(1, maxLength - 3)).trimEnd() + "...";
+}
+
+function shortLocationName(value, maxLength = MAX_LOCATION_DISPLAY_LENGTH) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+
+  if (!text) return "";
+  if (text.toLowerCase() === "current location") return "Current Location";
+
+  const parts = text.split(",").map(part => part.trim()).filter(Boolean);
+  let shortName = parts[0] || text;
+
+  if (/^\d+$/.test(shortName.replace(/\s+/g, "")) && parts.length > 1) {
+    shortName = `${shortName}, ${parts[1]}`;
+  }
+
+  return truncateText(shortName, maxLength);
+}
 
 function getJsonData(elementId) {
   const element = document.getElementById(elementId);
@@ -962,7 +988,8 @@ function openSaveTitleModal(defaultTitle) {
     errorElement.style.display = "none";
   }
 
-  input.value = defaultTitle || "";
+  input.maxLength = MAX_ITINERARY_TITLE_LENGTH;
+  input.value = truncateText(defaultTitle || "", MAX_ITINERARY_TITLE_LENGTH);
   modal.style.display = "flex";
   modal.setAttribute("aria-hidden", "false");
 
@@ -1003,6 +1030,7 @@ function confirmSaveTitle() {
 
   if (!title) {
     if (errorElement) {
+      errorElement.textContent = "Please enter an itinerary title.";
       errorElement.style.display = "block";
     }
 
@@ -1010,6 +1038,16 @@ function confirmSaveTitle() {
       input.focus();
     }
 
+    return;
+  }
+
+  if (title.length > MAX_ITINERARY_TITLE_LENGTH) {
+    if (errorElement) {
+      errorElement.textContent = `Title cannot exceed ${MAX_ITINERARY_TITLE_LENGTH} characters.`;
+      errorElement.style.display = "block";
+    }
+
+    if (input) input.focus();
     return;
   }
 
@@ -1105,12 +1143,29 @@ async function saveItinerary() {
       "End Location";
 
     const destination = endText;
+    const destinationDisplayName =
+      mapData.endDisplayText ||
+      shortLocationName(endText) ||
+      "Malaysia";
 
     const itineraryTitle = await openSaveTitleModal(
-      destination + " Trip"
+      `${destinationDisplayName} Trip`
     );
 
     if (!itineraryTitle || !itineraryTitle.trim()) {
+      saveButton.disabled = false;
+      saveButton.textContent = "💾 Save";
+      return;
+    }
+
+    const cleanItineraryTitle = itineraryTitle.trim();
+
+    if (cleanItineraryTitle.length > MAX_ITINERARY_TITLE_LENGTH) {
+      openPlannerAlertModal(
+        "Title Too Long",
+        `Itinerary title cannot exceed ${MAX_ITINERARY_TITLE_LENGTH} characters.`,
+        "⚠️"
+      );
       saveButton.disabled = false;
       saveButton.textContent = "💾 Save";
       return;
@@ -1142,7 +1197,7 @@ async function saveItinerary() {
       itinerary_id: itineraryId,
       user_id: currentUser.uid,
 
-      title: itineraryTitle.trim(),
+      title: cleanItineraryTitle,
       destination: destination,
 
       start_location_name: startText,

@@ -4,6 +4,7 @@ import json
 import math
 import os
 import time
+from itertools import permutations
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
+OSRM_TABLE_URL = "https://router.project-osrm.org/table/v1/driving/"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 SERPAPI_URL = "https://serpapi.com/search.json"
 
@@ -984,6 +986,145 @@ def search_attractions_serpapi(
     return candidates
 
 
+def get_osrm_duration_matrix(points: list[dict[str, Any]]) -> list[list[float | None]] | None:
+    """Return an all-to-all driving-duration matrix from OSRM Table API."""
+    if len(points) < 2:
+        return None
+
+    coordinates = ";".join(
+        f"{point['longitude']},{point['latitude']}"
+        for point in points
+    )
+
+    try:
+        data = _request_json(
+            f"{OSRM_TABLE_URL}{coordinates}",
+            params={"annotations": "duration"},
+        )
+
+        durations = data.get("durations")
+
+        if not durations or len(durations) != len(points):
+            return None
+
+        return durations
+
+    except requests.RequestException as error:
+        print(f"[OSRM TABLE ERROR] {type(error).__name__}: {error}", flush=True)
+        return None
+
+
+def _route_order_cost(
+    order: tuple[int, ...],
+    matrix: list[list[float | None]],
+    end_index: int,
+) -> float:
+    """Calculate total driving duration for Start -> ordered stops -> End."""
+    total = 0.0
+    previous = 0
+
+    for current in order:
+        duration = matrix[previous][current]
+
+        if duration is None:
+            return float("inf")
+
+        total += float(duration)
+        previous = current
+
+    final_duration = matrix[previous][end_index]
+
+    if final_duration is None:
+        return float("inf")
+
+    return total + float(final_duration)
+
+
+def optimise_stop_order_by_road(
+    start: dict[str, Any],
+    selected: list[dict[str, Any]],
+    end: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Optimise visit order while keeping Start and End fixed.
+
+    The recommendation engine decides WHICH attractions are selected.
+    This function separately decides IN WHICH ORDER those selected stops
+    should be visited. Since the prototype allows at most 6 stops, all
+    possible stop orders can be checked exactly after one OSRM Table call.
+    """
+    if len(selected) <= 1:
+        return list(selected)
+
+    points = [start, *selected, end]
+    matrix = get_osrm_duration_matrix(points)
+
+    if matrix:
+        stop_indexes = tuple(range(1, len(points) - 1))
+        end_index = len(points) - 1
+
+        best_order: tuple[int, ...] | None = None
+        best_cost = float("inf")
+
+        for order in permutations(stop_indexes):
+            cost = _route_order_cost(order, matrix, end_index)
+
+            if cost < best_cost:
+                best_cost = cost
+                best_order = order
+
+        if best_order is not None and math.isfinite(best_cost):
+            optimised = [selected[index - 1] for index in best_order]
+
+            print(
+                "[ROUTE ORDER - OSRM] "
+                + " -> ".join(
+                    [start.get("display_name", "Start")]
+                    + [place.get("name", "Stop") for place in optimised]
+                    + [end.get("display_name", "End")]
+                )
+                + f" | estimated driving time={human_duration(best_cost)}",
+                flush=True,
+            )
+
+            return optimised
+
+    # Fallback: exact ordering using straight-line distance if OSRM Table fails.
+    best_order_places = list(selected)
+    best_distance = float("inf")
+
+    for order in permutations(selected):
+        points_in_order = [start, *order, end]
+        total_distance = 0.0
+
+        for index in range(len(points_in_order) - 1):
+            current = points_in_order[index]
+            next_point = points_in_order[index + 1]
+
+            total_distance += calculate_distance_km(
+                current["latitude"],
+                current["longitude"],
+                next_point["latitude"],
+                next_point["longitude"],
+            )
+
+        if total_distance < best_distance:
+            best_distance = total_distance
+            best_order_places = list(order)
+
+    print(
+        "[ROUTE ORDER - HAVERSINE FALLBACK] "
+        + " -> ".join(
+            [start.get("display_name", "Start")]
+            + [place.get("name", "Stop") for place in best_order_places]
+            + [end.get("display_name", "End")]
+        )
+        + f" | estimated distance={best_distance:.1f} km",
+        flush=True,
+    )
+
+    return best_order_places
+
+
 def get_route_with_stops(
     points: list[dict[str, Any]],
     transport_mode: str = "driving"
@@ -1251,6 +1392,48 @@ def human_duration(seconds: float | int | None) -> str:
     hours, remainder = divmod(minutes, 60)
 
     return f"{hours} hr {remainder} min" if hours else f"{remainder} min"
+
+
+DISPLAY_LOCATION_MAX_LENGTH = 40
+
+
+def truncate_display_text(value: Any, max_length: int) -> str:
+    text = " ".join(str(value or "").split()).strip()
+
+    if len(text) <= max_length:
+        return text
+
+    return text[: max(1, max_length - 3)].rstrip() + "..."
+
+
+def get_short_location_name(value: Any, max_length: int = DISPLAY_LOCATION_MAX_LENGTH) -> str:
+    """Return a concise UI label without changing the stored full address.
+
+    Examples:
+    - 'Kajang Municipal Council, Hulu Langat, Selangor, Malaysia'
+      -> 'Kajang Municipal Council'
+    - 'Cheras, Jalan Jelawat 1, ...' -> 'Cheras'
+
+    The original full start/end text is still kept in start_text/end_text for
+    Firestore and routing.
+    """
+    text = " ".join(str(value or "").split()).strip()
+
+    if not text:
+        return ""
+
+    if text.lower() == "current location":
+        return "Current Location"
+
+    parts = [part.strip() for part in text.split(",") if part.strip()]
+    short_name = parts[0] if parts else text
+
+    # If the first address segment is only a house/building number, keep the
+    # following segment too so the label remains meaningful.
+    if short_name.replace(" ", "").isdigit() and len(parts) > 1:
+        short_name = f"{short_name}, {parts[1]}"
+
+    return truncate_display_text(short_name, max_length)
 
 
 def assign_visit_duration_by_available_hours(
@@ -1779,8 +1962,25 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     selected = selected_favourites + recommended_selected
     selected = prepare_selected_attractions(selected)
 
-    route_points = [start] + selected + [end]
+    print(
+        "[ROUTE ORDER BEFORE] "
+        + " -> ".join(place.get("name", "Stop") for place in selected),
+        flush=True,
+    )
 
+    selected = optimise_stop_order_by_road(
+        start,
+        selected,
+        end,
+    )
+
+    print(
+        "[ROUTE ORDER AFTER] "
+        + " -> ".join(place.get("name", "Stop") for place in selected),
+        flush=True,
+    )
+
+    route_points = [start] + selected + [end]
     route = get_route_with_stops(route_points, transport_mode)
 
     selected = assign_visit_duration_by_available_hours(
@@ -1812,11 +2012,16 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             "extensions": ["OpenStreetMap road-route estimate"],
         }
 
+    # Keep full start_text/end_text for routing + saving, but use concise
+    # labels in the generated timetable and UI.
+    start_display_text = get_short_location_name(start_text) or "Start Location"
+    end_display_text = get_short_location_name(end_text) or "End Location"
+
     timetable = build_timetable(
         start_datetime,
-        start_text,
+        start_display_text,
         selected,
-        end_text,
+        end_display_text,
         route,
         transport_option,
         start_place=start,
@@ -1839,7 +2044,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "id": int(datetime.now().timestamp()),
-        "title": f"{start_text} to {end_text} Trip",
+        "title": f"{end_display_text} Trip",
         "destination": end_text,
         "date": format_date_for_display(trip_date),
         "duration": f"{available_hours} hrs",
@@ -1851,6 +2056,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "end": end,
         "start_text": start_text,
         "end_text": end_text,
+        "start_display_text": start_display_text,
+        "end_display_text": end_display_text,
         "trip_date": trip_date,
         "start_time": start_time,
         "use_current_location": use_current_location,
@@ -1903,8 +2110,12 @@ def build_map_data(plan: dict[str, Any] | None) -> dict[str, Any] | None:
         "end": plan.get("end"),
         "attractions": plan.get("selected", []),
         "routeGeometry": route.get("geometry"),
+        # Full values are preserved for saving/routing. Display values are
+        # concise labels used only by the UI.
         "startText": plan.get("start_text", "Start"),
         "endText": plan.get("end_text", "End"),
+        "startDisplayText": plan.get("start_display_text") or get_short_location_name(plan.get("start_text", "Start")),
+        "endDisplayText": plan.get("end_display_text") or get_short_location_name(plan.get("end_text", "End")),
         "googleMapsFullRouteUrl": plan.get("google_maps_full_route_url", "")
     }
 
