@@ -100,22 +100,9 @@ WEATHER_LABELS = {
 }
 
 
-TRANSPORT_OPTIONS = {
-    "driving": {
-        "label": "Driving",
-        "icon": "🚗",
-        "speed_mps": None,
-    },
-    "walking": {
-        "label": "Walking",
-        "icon": "🚶",
-        "speed_mps": 1.4,
-    },
-    "cycling": {
-        "label": "Cycling",
-        "icon": "🚲",
-        "speed_mps": 4.2,
-    },
+DRIVING_OPTION = {
+    "label": "Driving",
+    "icon": "🚗",
 }
 
 
@@ -219,15 +206,6 @@ def detect_interest_tags_from_text(text: str, selected_interests: list[str]) -> 
     return matched_tags
 
 
-def get_transport_option(transport_mode: str | None) -> dict[str, Any]:
-    transport_mode = str(transport_mode or "driving").lower()
-
-    if transport_mode not in TRANSPORT_OPTIONS:
-        transport_mode = "driving"
-
-    return TRANSPORT_OPTIONS[transport_mode]
-
-
 def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
     """Limit available Maximum Stops options based on available travelling hours.
 
@@ -245,21 +223,6 @@ def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
         hours = 6
 
     return max(1, min(hours - 3, 6))
-
-
-def get_serpapi_search_keyword(interests: list[str]) -> str:
-    """Return more suitable Google Maps search keyword based on interest."""
-    interest = interests[0].lower() if interests else "attraction"
-
-    keyword_map = {
-        "food": "restaurants cafe food court",
-        "shopping": "shopping mall",
-        "culture": "cultural attractions",
-        "museum": "museum",
-        "nature": "parks nature attractions",
-    }
-
-    return keyword_map.get(interest, f"{interest} attractions")
 
 
 def calculate_distance_km(
@@ -508,7 +471,6 @@ def _request_json(
     response = requests.get(url, params=params, headers=headers, timeout=20)
     response.raise_for_status()
     return response.json()
-
 
 
 def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]:
@@ -1127,12 +1089,10 @@ def optimise_stop_order_by_road(
 
 def get_route_with_stops(
     points: list[dict[str, Any]],
-    transport_mode: str = "driving"
 ) -> dict[str, Any] | None:
+    """Calculate the final driving route in the supplied waypoint order."""
     if len(points) < 2:
         return None
-
-    transport_option = get_transport_option(transport_mode)
 
     coordinates = ";".join(
         f"{point['longitude']},{point['latitude']}"
@@ -1145,7 +1105,7 @@ def get_route_with_stops(
             params={
                 "overview": "full",
                 "geometries": "geojson",
-                "steps": "false"
+                "steps": "false",
             },
         )
 
@@ -1155,77 +1115,12 @@ def get_route_with_stops(
             return None
 
         route = routes[0]
-        distance_m = float(route.get("distance", 0))
-        duration_s = float(route.get("duration", 0))
-        legs = route.get("legs", [])
-
-        if transport_mode != "driving":
-            speed_mps = transport_option.get("speed_mps")
-
-            if speed_mps:
-                duration_s = distance_m / float(speed_mps)
-                adjusted_legs = []
-
-                for leg in legs:
-                    new_leg = dict(leg)
-                    leg_distance = float(new_leg.get("distance", 0))
-                    new_leg["duration"] = leg_distance / float(speed_mps)
-                    adjusted_legs.append(new_leg)
-
-                legs = adjusted_legs
 
         return {
-            "distance_m": distance_m,
-            "duration_s": duration_s,
+            "distance_m": float(route.get("distance", 0)),
+            "duration_s": float(route.get("duration", 0)),
             "geometry": route.get("geometry", {}),
-            "legs": legs,
-        }
-
-    except requests.RequestException:
-        return None
-
-
-def get_serpapi_direction(
-    start: str,
-    end: str,
-    travel_mode: str,
-    depart_at: datetime
-) -> dict[str, Any] | None:
-    api_key = os.getenv("SERPAPI_KEY", "").strip()
-
-    if not api_key:
-        return None
-
-    mode_value = "0" if travel_mode == "driving" else "3"
-
-    params: dict[str, Any] = {
-        "engine": "google_maps_directions",
-        "start_addr": start,
-        "end_addr": end,
-        "travel_mode": mode_value,
-        "distance_unit": "0",
-        "hl": "en",
-        "gl": "my",
-        "api_key": api_key,
-        "time": f"depart_at:{int(depart_at.timestamp())}",
-    }
-
-    if travel_mode == "transit":
-        params["prefer"] = "bus"
-
-    try:
-        data = _request_json(SERPAPI_URL, params=params)
-        direction = next(iter(data.get("directions", [])), None)
-
-        if not direction:
-            return None
-
-        return {
-            "mode": direction.get("travel_mode", travel_mode.title()),
-            "duration_seconds": direction.get("duration"),
-            "duration": direction.get("formatted_duration", "Not available"),
-            "distance": direction.get("formatted_distance", "Not available"),
-            "extensions": direction.get("extensions", []),
+            "legs": route.get("legs", []),
         }
 
     except requests.RequestException:
@@ -1293,7 +1188,6 @@ def choose_attractions(
     candidates: list[dict[str, Any]],
     interests: list[str],
     weather: dict[str, Any] | None,
-    available_minutes: int,
     minimum_rating: float,
     max_stops: int
 ) -> list[dict[str, Any]]:
@@ -1343,45 +1237,6 @@ def choose_attractions(
     )
 
     return ranked[:max_stops]
-
-
-def recommend_attractions(
-    candidates: list[dict[str, Any]],
-    interests: list[str],
-    weather: dict[str, Any] | None,
-    minimum_rating: float,
-    max_results: int = 8,
-    filter_partly_cloudy: bool = False,
-) -> list[dict[str, Any]]:
-    ranked: list[dict[str, Any]] = []
-
-    for attraction in candidates:
-        tags = {tag.lower() for tag in attraction.get("tags", [])}
-        rating = float(attraction.get("rating") or 0)
-
-        if rating and rating < minimum_rating:
-            continue
-
-        if (
-            filter_partly_cloudy
-            and weather
-            and weather.get("condition", "").lower() == "partly cloudy"
-            and "outdoor" in tags
-        ):
-            continue
-
-        score, reasons = score_attraction(attraction, interests, weather)
-
-        item = dict(attraction)
-        item["score"] = score
-        item["reasons"] = reasons
-        item["rating"] = rating
-        item["tags"] = list(tags)
-
-        ranked.append(item)
-
-    ranked.sort(key=lambda item: item["score"], reverse=True)
-    return ranked[:max_results]
 
 
 def human_duration(seconds: float | int | None) -> str:
@@ -1492,7 +1347,6 @@ def is_browser_current_location(place: dict[str, Any] | None) -> bool:
     )
 
 
-
 def build_coordinate_text(place: dict[str, Any] | None) -> str:
     if not place:
         return ""
@@ -1563,25 +1417,6 @@ def build_google_maps_full_route_url(
         end,
         waypoints=selected,
     )
-
-
-def compute_distance_km(
-    lat1: float,
-    lon1: float,
-    lat2: float,
-    lon2: float,
-) -> float:
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    delta_phi = math.radians(lat2 - lat1)
-    delta_lambda = math.radians(lon2 - lon1)
-
-    a = (
-        math.sin(delta_phi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
-    )
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(max(0.0, 1 - a)))
-    return 6371.0 * c
 
 
 DEFAULT_ATTRACTION_IMAGES: dict[str, list[str]] = {
@@ -1691,7 +1526,7 @@ def prepare_selected_attractions(
             and item.get("latitude") is not None
             and item.get("longitude") is not None
         ):
-            item["distance_km"] = compute_distance_km(
+            item["distance_km"] = calculate_distance_km(
                 float(reference_lat),
                 float(reference_lon),
                 float(item["latitude"]),
@@ -1860,8 +1695,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     remaining_stop_slots = max(0, max_stops - len(selected_favourites))
     regenerate_token = str(form.get("regenerate_token", "")).strip()
 
-    transport_mode = "driving"
-    transport_option = get_transport_option(transport_mode)
+    transport_option = DRIVING_OPTION
 
     if use_current_location:
         start_text = "Current Location"
@@ -1902,10 +1736,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     if live_candidates:
         candidates = live_candidates + demo_candidates
-        source_note = "Live SerpApi Google Maps search with local demo backup"
     else:
         candidates = demo_candidates
-        source_note = "Local Kuala Lumpur demonstration dataset. Add SERPAPI_KEY for live attraction search."
 
     route_relevant_candidates = filter_route_relevant_candidates(
         candidates,
@@ -1944,7 +1776,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             candidates,
             interests,
             weather,
-            available_hours * 60,
             minimum_rating,
             remaining_stop_slots
         )
@@ -1954,7 +1785,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             candidates,
             interests,
             weather,
-            available_hours * 60,
             0,
             remaining_stop_slots
         )
@@ -1981,7 +1811,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     )
 
     route_points = [start] + selected + [end]
-    route = get_route_with_stops(route_points, transport_mode)
+    route = get_route_with_stops(route_points)
 
     selected = assign_visit_duration_by_available_hours(
         selected,
@@ -1989,28 +1819,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         available_hours
     )
 
-    car_comparison = get_serpapi_direction(
-        start_text,
-        end_text,
-        "driving",
-        start_datetime
-    )
-
-    transit_comparison = get_serpapi_direction(
-        start_text,
-        end_text,
-        "transit",
-        start_datetime
-    )
-
-    if not car_comparison and route:
-        car_comparison = {
-            "mode": "Driving (OSRM estimate)",
-            "duration_seconds": route.get("duration_s"),
-            "duration": human_duration(route.get("duration_s")),
-            "distance": f"{route.get('distance_m', 0) / 1000:.1f} km",
-            "extensions": ["OpenStreetMap road-route estimate"],
-        }
 
     # Keep full start_text/end_text for routing + saving, but use concise
     # labels in the generated timetable and UI.
@@ -2085,9 +1893,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "route": route,
         "timetable": timetable,
 
-        "car_comparison": car_comparison,
-        "transit_comparison": transit_comparison,
-        "attraction_source_note": source_note,
 
         "total_distance_km": total_distance_km,
         "google_maps_full_route_url": google_maps_full_route_url,
