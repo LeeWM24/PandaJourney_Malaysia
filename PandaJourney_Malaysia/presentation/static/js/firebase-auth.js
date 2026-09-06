@@ -518,6 +518,24 @@ function clearLoginError() {
   errorBox.style.display = "none";
 }
 
+// Display the inactivity logout message
+// after redirecting to the Login page.
+
+const storedAuthenticationMessage =
+  sessionStorage.getItem(
+    "pandajourney-auth-message"
+  );
+
+if (storedAuthenticationMessage) {
+  sessionStorage.removeItem(
+    "pandajourney-auth-message"
+  );
+
+  showLoginError(
+    storedAuthenticationMessage
+  );
+}
+
 function getAuthenticationErrorMessage(error) {
   switch (error.code) {
     // M2: Invalid email address or password

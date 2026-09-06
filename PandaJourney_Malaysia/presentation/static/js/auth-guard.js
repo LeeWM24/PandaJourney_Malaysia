@@ -29,10 +29,41 @@ const logoutForm =
 const logoutError =
   document.getElementById("logout-error");
 
+
+// Inactivity Logout Configuration
+// 30 minutes
+const INACTIVITY_LIMIT_MS =
+  30 * 60 * 1000;
+
+const LAST_ACTIVITY_KEY =
+  "pandajourney-last-activity";
+
+const INACTIVITY_MESSAGE_KEY =
+  "pandajourney-auth-message";
+
+let inactivityTimer = null;
+let activityListenersAdded = false;
+let lastActivityRecordedAt = 0;
+let logoutInProgress = false;
+
+
+// =================================
+// Firebase Authentication Guard
+// =================================
+
 onAuthStateChanged(auth, user => {
   updateAuthNavigation(user);
 
   if (user) {
+    startInactivityMonitoring();
+    return;
+  }
+
+  stopInactivityMonitoring();
+
+  // Prevent the authentication listener from
+  // redirecting before logout finishes.
+  if (logoutInProgress) {
     return;
   }
 
@@ -44,8 +75,196 @@ onAuthStateChanged(auth, user => {
   redirectProtectedPageToLogin();
 });
 
+
+// =================================
+// Inactivity Monitoring
+// =================================
+
+function startInactivityMonitoring() {
+  let lastActivity = Number(
+    localStorage.getItem(
+      LAST_ACTIVITY_KEY
+    )
+  );
+
+  if (
+    !Number.isFinite(lastActivity) ||
+    lastActivity <= 0
+  ) {
+    lastActivity = Date.now();
+
+    localStorage.setItem(
+      LAST_ACTIVITY_KEY,
+      String(lastActivity)
+    );
+  }
+
+  if (!activityListenersAdded) {
+    const activityEvents = [
+      "pointerdown",
+      "pointermove",
+      "keydown",
+      "scroll",
+      "touchstart"
+    ];
+
+    activityEvents.forEach(eventName => {
+      window.addEventListener(
+        eventName,
+        recordUserActivity,
+        {
+          passive: true
+        }
+      );
+    });
+
+    // Synchronise activity between browser tabs.
+    window.addEventListener(
+      "storage",
+      handleActivityStorageChange
+    );
+
+    activityListenersAdded = true;
+  }
+
+  scheduleInactivityLogout();
+}
+
+
+function recordUserActivity() {
+  if (
+    !auth.currentUser ||
+    logoutInProgress
+  ) {
+    return;
+  }
+
+  const now = Date.now();
+
+  // Prevent excessive localStorage writes
+  // during continuous pointer movement.
+  if (
+    now - lastActivityRecordedAt < 1000
+  ) {
+    return;
+  }
+
+  lastActivityRecordedAt = now;
+
+  localStorage.setItem(
+    LAST_ACTIVITY_KEY,
+    String(now)
+  );
+
+  scheduleInactivityLogout();
+}
+
+
+function handleActivityStorageChange(event) {
+  if (
+    event.key === LAST_ACTIVITY_KEY &&
+    auth.currentUser
+  ) {
+    scheduleInactivityLogout();
+  }
+}
+
+
+function scheduleInactivityLogout() {
+  clearTimeout(inactivityTimer);
+
+  const lastActivity = Number(
+    localStorage.getItem(
+      LAST_ACTIVITY_KEY
+    )
+  ) || Date.now();
+
+  const elapsed =
+    Date.now() - lastActivity;
+
+  const remaining =
+    Math.max(
+      0,
+      INACTIVITY_LIMIT_MS - elapsed
+    );
+
+  inactivityTimer = setTimeout(
+    performAutomaticLogout,
+    remaining
+  );
+}
+
+
+function stopInactivityMonitoring() {
+  clearTimeout(inactivityTimer);
+  inactivityTimer = null;
+}
+
+
+async function performAutomaticLogout() {
+  if (
+    !auth.currentUser ||
+    logoutInProgress
+  ) {
+    return;
+  }
+
+  logoutInProgress = true;
+  stopInactivityMonitoring();
+
+  // This message will be displayed
+  // after redirecting to Login.
+  sessionStorage.setItem(
+    INACTIVITY_MESSAGE_KEY,
+    "Your session expired due to inactivity. Please sign in again."
+  );
+
+  try {
+    await signOut(auth);
+
+    const response = await fetch(
+      "/logout",
+      {
+        method: "POST",
+        credentials: "same-origin"
+      }
+    );
+
+    if (!response.ok) {
+      console.error(
+        "Failed to clear the server session after inactivity."
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Automatic logout failed:",
+      error
+    );
+  } finally {
+    localStorage.removeItem(
+      "pandajourney-authenticated"
+    );
+
+    localStorage.removeItem(
+      LAST_ACTIVITY_KEY
+    );
+
+    document.documentElement.classList.remove(
+      "likely-authenticated"
+    );
+
+    window.location.replace("/login");
+  }
+}
+
+
+// =================================
+// Navigation Authentication State
+// =================================
+
 function updateAuthNavigation(user) {
-  const isLoggedIn = Boolean(user);
+  const isLoggedIn =
+    Boolean(user);
 
   document.documentElement.classList.toggle(
     "likely-authenticated",
@@ -90,6 +309,11 @@ function updateAuthNavigation(user) {
   );
 }
 
+
+// =================================
+// Login Button
+// =================================
+
 authNavButton?.addEventListener(
   "click",
   event => {
@@ -109,6 +333,11 @@ authNavButton?.addEventListener(
   true
 );
 
+
+// =================================
+// Protected Page Redirect
+// =================================
+
 function redirectProtectedPageToLogin() {
   const target =
     window.location.pathname +
@@ -121,6 +350,10 @@ function redirectProtectedPageToLogin() {
 }
 
 
+// =================================
+// Public Page Navigation Protection
+// =================================
+
 function protectPublicPageNavigation() {
   const protectedLinks =
     document.querySelectorAll(
@@ -128,46 +361,59 @@ function protectPublicPageNavigation() {
     );
 
   protectedLinks.forEach(link => {
-    link.addEventListener("click", event => {
-      const href = link.getAttribute("href");
+    link.addEventListener(
+      "click",
+      event => {
+        const href =
+          link.getAttribute("href");
 
-      if (
-        !href ||
-        href === "#" ||
-        href.startsWith("javascript:")
-      ) {
-        return;
+        if (
+          !href ||
+          href === "#" ||
+          href.startsWith("javascript:")
+        ) {
+          return;
+        }
+
+        const url = new URL(
+          link.href,
+          window.location.origin
+        );
+
+        if (
+          url.origin !==
+          window.location.origin
+        ) {
+          return;
+        }
+
+        const isAttractionPage =
+          url.pathname === "/" ||
+          url.pathname ===
+            "/smart-attraction";
+
+        if (isAttractionPage) {
+          return;
+        }
+
+        event.preventDefault();
+
+        const target =
+          url.pathname +
+          url.search +
+          url.hash;
+
+        window.location.href =
+          `/login?next=${encodeURIComponent(target)}`;
       }
-
-      const url = new URL(
-        link.href,
-        window.location.origin
-      );
-
-      if (url.origin !== window.location.origin) {
-        return;
-      }
-
-      const isAttractionPage =
-        url.pathname === "/" ||
-        url.pathname === "/smart-attraction";
-
-      if (isAttractionPage) {
-        return;
-      }
-
-      event.preventDefault();
-
-      const target =
-        url.pathname +
-        url.search +
-        url.hash;
-
-      window.location.href =
-        `/login?next=${encodeURIComponent(target)}`;
-    });
+    );
   });
 }
+
+
+// =================================
+// Manual Logout
+// =================================
 
 logoutForm?.addEventListener(
   "submit",
@@ -179,23 +425,23 @@ logoutForm?.addEventListener(
         'button[type="submit"]'
       );
 
-    // Clear previous error
     if (logoutError) {
       logoutError.textContent = "";
       logoutError.hidden = true;
     }
 
     try {
+      logoutInProgress = true;
+      stopInactivityMonitoring();
+
       if (logoutButton) {
         logoutButton.disabled = true;
         logoutButton.textContent =
           "Signing out...";
       }
 
-      // Sign out from Firebase
       await signOut(auth);
 
-      // Clear Flask server session
       const response = await fetch(
         "/logout",
         {
@@ -210,10 +456,12 @@ logoutForm?.addEventListener(
         );
       }
 
-      // Only clear the navigation hint
-      // after logout succeeds.
       localStorage.removeItem(
         "pandajourney-authenticated"
+      );
+
+      localStorage.removeItem(
+        LAST_ACTIVITY_KEY
       );
 
       document.documentElement.classList.remove(
@@ -228,7 +476,6 @@ logoutForm?.addEventListener(
         error
       );
 
-      // UC_500 M1
       if (logoutError) {
         logoutError.textContent =
           "Unable to sign out. Please try again.";
@@ -240,6 +487,12 @@ logoutForm?.addEventListener(
         logoutButton.disabled = false;
         logoutButton.textContent =
           "Sign out";
+      }
+
+      logoutInProgress = false;
+
+      if (auth.currentUser) {
+        startInactivityMonitoring();
       }
     }
   }

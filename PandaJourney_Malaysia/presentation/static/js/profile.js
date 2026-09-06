@@ -1379,6 +1379,16 @@ async function loadFavourites(user) {
     const snapshot =
       await getDocs(favouritesQuery);
 
+    console.log(
+      "Current user UID:",
+      user.uid
+    );
+
+    console.log(
+      "Favourite count:",
+      snapshot.size
+    );
+
     if (loadingEl) {
       loadingEl.style.display = "none";
     }
@@ -1388,18 +1398,36 @@ async function loadFavourites(user) {
         String(snapshot.size);
     }
 
+    // No favourites
     if (snapshot.empty) {
       if (listEl) {
         listEl.style.display = "none";
+        listEl.innerHTML = "";
       }
 
       if (emptyEl) {
+        emptyEl.innerHTML = `
+          <div class="empty-icon">
+            ⭐
+          </div>
+
+          <div class="empty-title">
+            No favourite attractions yet.
+          </div>
+
+          <div class="empty-sub">
+            Star an attraction on the Attractions page
+            to save it here.
+          </div>
+        `;
+
         emptyEl.style.display = "block";
       }
 
       return;
     }
 
+    // Favourites exist
     if (emptyEl) {
       emptyEl.style.display = "none";
     }
@@ -1412,107 +1440,118 @@ async function loadFavourites(user) {
     listEl.innerHTML = "";
 
     const favouriteDocs =
-    snapshot.docs;
+      snapshot.docs;
 
-  favouriteDocs.forEach(
-  (docSnap, index) => {
-      const data = docSnap.data();
+    favouriteDocs.forEach(
+      (docSnap, index) => {
+        const data =
+          docSnap.data();
 
-      const row =
-        document.createElement("div");
+        const attractionName =
+          data.name ||
+          data.attraction_name ||
+          "Unnamed Attraction";
 
-      row.className = "fav-row";
-      if (index >= 5) {
-      row.classList.add(
-        "fav-row-extra"
-      );
+        const row =
+          document.createElement("div");
 
-      row.hidden = true;
-    }
+        row.className = "fav-row";
 
-      row.innerHTML = `
-        <div class="recent-icon">⭐</div>
+        if (index >= 5) {
+          row.classList.add(
+            "fav-row-extra"
+          );
 
-        <div class="fav-row-name">
-          ${escapeHtml(
-            data.name || "Unnamed Attraction"
-          )}
-        </div>
+          row.hidden = true;
+        }
 
-        <button
-          class="fav-remove"
-          type="button">
-          Remove
-        </button>
-      `;
+        row.innerHTML = `
+          <div class="recent-icon">
+            ⭐
+          </div>
 
-      row
-        .querySelector(".fav-remove")
-        ?.addEventListener(
-          "click",
-          () => {
-            openRemoveFavouriteDialog(
-              docSnap.id,
-              user,
-              data.name || "this attraction"
-            );
-          }
-        );
+          <div class="fav-row-name">
+            ${escapeHtml(attractionName)}
+          </div>
 
-      listEl.appendChild(row);
-    });
-    if (favouriteDocs.length > 5) {
-  const toggleButton =
-    document.createElement(
-      "button"
+          <button
+            class="fav-remove"
+            type="button">
+            Remove
+          </button>
+        `;
+
+        row
+          .querySelector(".fav-remove")
+          ?.addEventListener(
+            "click",
+            () => {
+              openRemoveFavouriteDialog(
+                docSnap.id,
+                user,
+                attractionName
+              );
+            }
+          );
+
+        listEl.appendChild(row);
+      }
     );
 
-  toggleButton.type = "button";
+    // Show All / Show Less
+    if (favouriteDocs.length > 5) {
+      const toggleButton =
+        document.createElement(
+          "button"
+        );
 
-  toggleButton.className =
-    "btn btn-ghost btn-sm fav-toggle";
+      toggleButton.type = "button";
 
-  toggleButton.textContent =
-    `Show all (${favouriteDocs.length})`;
+      toggleButton.className =
+        "btn btn-ghost btn-sm fav-toggle";
 
-  toggleButton.setAttribute(
-    "aria-expanded",
-    "false"
-  );
-
-  toggleButton.addEventListener(
-    "click",
-    () => {
-      const willExpand =
-        toggleButton.getAttribute(
-          "aria-expanded"
-        ) === "false";
-
-      listEl
-        .querySelectorAll(
-          ".fav-row-extra"
-        )
-        .forEach(row => {
-          row.hidden =
-            !willExpand;
-        });
+      toggleButton.textContent =
+        `Show all (${favouriteDocs.length})`;
 
       toggleButton.setAttribute(
         "aria-expanded",
-        String(willExpand)
+        "false"
       );
 
-      toggleButton.textContent =
-        willExpand
-          ? "Show less"
-          : `Show all (${favouriteDocs.length})`;
-    }
-  );
+      toggleButton.addEventListener(
+        "click",
+        () => {
+          const willExpand =
+            toggleButton.getAttribute(
+              "aria-expanded"
+            ) === "false";
 
-  listEl.appendChild(
-    toggleButton
-  );
-}
+          listEl
+            .querySelectorAll(
+              ".fav-row-extra"
+            )
+            .forEach(row => {
+              row.hidden =
+                !willExpand;
+            });
+
+          toggleButton.setAttribute(
+            "aria-expanded",
+            String(willExpand)
+          );
+
+          toggleButton.textContent =
+            willExpand
+              ? "Show less"
+              : `Show all (${favouriteDocs.length})`;
+        }
+      );
+
+      listEl.appendChild(
+        toggleButton
+      );
+    }
+
   } catch (error) {
     console.error(
       "Failed to load favourites:",
@@ -1523,12 +1562,31 @@ async function loadFavourites(user) {
       loadingEl.style.display = "none";
     }
 
+    if (listEl) {
+      listEl.style.display = "none";
+      listEl.innerHTML = "";
+    }
+
     if (emptyEl) {
+      emptyEl.innerHTML = `
+        <div class="empty-icon">
+          ⚠️
+        </div>
+
+        <div class="empty-title">
+          Unable to load favourite attractions.
+        </div>
+
+        <div class="empty-sub">
+          Please try again.
+        </div>
+      `;
+
       emptyEl.style.display = "block";
     }
 
     if (countEl) {
-      countEl.textContent = "0";
+      countEl.textContent = "—";
     }
   }
 }
@@ -1844,18 +1902,19 @@ changePasswordForm
       }
 
       const strongPassword =
-      password.length >= 8 &&
-      /[A-Z]/.test(password) &&
-      /[a-z]/.test(password) &&
-      /[^A-Za-z0-9]/.test(password);
+      newPassword.length >= 8 &&
+      /[A-Z]/.test(newPassword) &&
+      /[a-z]/.test(newPassword) &&
+      /[^A-Za-z0-9]/.test(newPassword);
 
-      if (!strongPassword) {
-        errorBox.textContent =
-          "Password must contain at least 8 characters, including uppercase, lowercase, and a special character.";
+    if (!strongPassword) {
+      showPasswordMessage(
+        "Password must contain at least 8 characters, including uppercase, lowercase, and a special character.",
+        "error"
+      );
 
-        errorBox.style.display = "block";
-        return;
-      }
+      return;
+    }
 
       if (
         newPassword !==
