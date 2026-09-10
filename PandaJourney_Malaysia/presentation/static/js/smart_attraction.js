@@ -19,6 +19,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 const FAVOURITES_COLLECTION = "Favourites";
+const FAVOURITES_CACHE_PREFIX = "pandajourney:favourites:";
 
 function readJsonData(elementId, fallback) {
   const el = document.getElementById(elementId);
@@ -43,12 +44,51 @@ const favouriteDocIds = new Map();
 let currentUser = null;
 let hasSearched = !!searchState.searched;
 let appliedFilters = {
+  dest: searchState.filters.destination || '',
   interests: searchState.filters.interests || [],
   minRating: searchState.filters.min_rating || '0',
   weather: !!searchState.filters.weather_aware,
 };
 let currentAttr = null;
 let toastTimer = null;
+
+function favouritesCacheKey(user) {
+  return `${FAVOURITES_CACHE_PREFIX}${user.uid}`;
+}
+
+function restoreFavouritesFromLocalStorage(user) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(favouritesCacheKey(user)) || "[]");
+    if (!Array.isArray(cached)) return;
+
+    favourites.clear();
+    favouriteDocIds.clear();
+
+    cached.forEach((item) => {
+      if (!item || !item.name) return;
+      if (item.docId) favouriteDocIds.set(item.name, item.docId);
+      const match = attractionsData.find((attraction) => attraction.name === item.name);
+      if (match) favourites.add(match.id);
+    });
+  } catch {
+    localStorage.removeItem(favouritesCacheKey(user));
+  }
+}
+
+function saveFavouritesToLocalStorage(user) {
+  if (!user) return;
+
+  const payload = Array.from(favouriteDocIds.entries()).map(([name, docId]) => ({
+    name,
+    docId,
+  }));
+
+  try {
+    localStorage.setItem(favouritesCacheKey(user), JSON.stringify(payload));
+  } catch {
+    // Ignore quota/private-mode failures; Firestore remains source of truth.
+  }
+}
 
 // Pagination: render only PAGE_SIZE cards for the current page, with real
 // page-number navigation (rather than a cumulative "show more" list).
@@ -60,6 +100,7 @@ function resetPagination() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  showLoadingOverlay('Loading attraction page...', 'Preparing recommendations and filters.');
   initializeChipState();
   bindFilterEvents();
   bindPanelEvents();
@@ -67,6 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateFavUI();
   bindSearchLoadingOverlay();
   bindDestinationSuggestions();
+  window.setTimeout(hideLoadingOverlay, 450);
 
   const clearBtn = document.getElementById('clear-filters');
   if (clearBtn && hasSearched) {
@@ -80,17 +122,32 @@ document.addEventListener('DOMContentLoaded', () => {
 // stays up until the new page finishes loading — no need to hide it.
 function bindSearchLoadingOverlay() {
   const form = document.getElementById('filter-form');
-  const overlay = document.getElementById('planner-loading-overlay');
-  if (!form || !overlay) return;
+  if (!form) return;
 
   form.addEventListener('submit', () => {
-    const destination = document.getElementById('destination');
-    if (destination && !destination.value.trim()) {
-      return; // let native "required" validation handle empty destination
-    }
-    overlay.style.display = 'flex';
-    overlay.setAttribute('aria-hidden', 'false');
+    showLoadingOverlay(
+      'Searching attractions...',
+      'Fetching live places and weather. This can take a few seconds.'
+    );
   });
+}
+
+function showLoadingOverlay(title, subtext) {
+  const overlay = document.getElementById('planner-loading-overlay');
+  if (!overlay) return;
+  const titleEl = overlay.querySelector('.planner-loading-title');
+  const subEl = overlay.querySelector('.planner-loading-sub');
+  if (titleEl && title) titleEl.textContent = title;
+  if (subEl && subtext) subEl.textContent = subtext;
+  overlay.style.display = 'flex';
+  overlay.setAttribute('aria-hidden', 'false');
+}
+
+function hideLoadingOverlay() {
+  const overlay = document.getElementById('planner-loading-overlay');
+  if (!overlay) return;
+  overlay.style.display = 'none';
+  overlay.setAttribute('aria-hidden', 'true');
 }
 
 // Custom "Google Maps style" type-ahead for the destination field, used
@@ -142,7 +199,6 @@ function bindDestinationSuggestions() {
         📍
         <span>
           <span class="destination-suggestion-name">${item.name || item.display_name}</span>
-          ${item.subtitle ? `<span class="destination-suggestion-sub">${item.subtitle}</span>` : ''}
         </span>
       </div>`).join('');
 
@@ -229,8 +285,13 @@ onAuthStateChanged(auth, (user) => {
   currentUser = user;
 
   if (user) {
+    document.getElementById('is_registered_user')?.setAttribute('value', '1');
+    restoreFavouritesFromLocalStorage(user);
+    renderCards();
+    updateFavUI();
     loadFavourites(user);
   } else {
+    document.getElementById('is_registered_user')?.setAttribute('value', '0');
     favourites.clear();
     favouriteDocIds.clear();
     renderCards();
@@ -258,6 +319,7 @@ async function loadFavourites(user) {
       if (match) favourites.add(match.id);
     });
 
+    saveFavouritesToLocalStorage(user);
     renderCards();
     updateFavUI();
   } catch (error) {
@@ -298,6 +360,7 @@ function createMap() {
         maxZoom: 19,
         attribution: '&copy; OpenStreetMap contributors'
       }).addTo(_map);
+      _map.on('click', openCurrentAttractionInMaps);
     }
     return _map;
   } catch (e) {
@@ -312,6 +375,15 @@ function updateMapForAttraction(attraction) {
   const lng = Number(attraction.longitude || attraction.lon || attraction.lng || 0);
 
   const linkEl = document.getElementById('detail-map-link');
+  const mapEl = document.getElementById('detail-map');
+  const mapsUrl = getMapsUrl(attraction);
+  if (mapEl) {
+    mapEl.dataset.mapsUrl = mapsUrl;
+    mapEl.setAttribute('role', 'link');
+    mapEl.setAttribute('tabindex', '0');
+    mapEl.setAttribute('aria-label', 'Open this attraction in Google Maps');
+    mapEl.title = 'Click to open in Google Maps';
+  }
 
   if (!lat || !lng) {
     if (linkEl) linkEl.style.display = 'none';
@@ -347,10 +419,11 @@ function updateMapForAttraction(attraction) {
         .openPopup();
     } catch (e) { console.warn('marker creation error:', e); }
 
-    // Point the "Open in OpenStreetMap" link at this attraction's coordinates
+    // Keep a hidden fallback link current; the map itself is the click target.
     if (linkEl) {
-      linkEl.href = getMapsUrl({ latitude: lat, longitude: lng });
-      linkEl.style.display = 'inline-flex';
+      linkEl.href = mapsUrl;
+      linkEl.textContent = 'Open in Google Maps';
+      linkEl.style.display = 'none';
     }
   }, 150);
 }
@@ -372,18 +445,33 @@ function bindPanelEvents() {
     const id = Number(document.getElementById('detail-fav-btn').dataset.favId);
     if (!Number.isNaN(id)) toggleFavourite(id);
   });
+  const detailMap = document.getElementById('detail-map');
+  if (detailMap) {
+    detailMap.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        openCurrentAttractionInMaps();
+      }
+    });
+  }
 }
 
-// Return an OpenStreetMap URL
-function getMapsUrl(attraction, zoom = 17) {
+// Return a Google Maps search URL for the current attraction.
+function getMapsUrl(attraction) {
   if (!attraction) return '';
   const lat = Number(attraction.latitude || attraction.lat || attraction.latitude_deg || 0);
   const lng = Number(attraction.longitude || attraction.lon || attraction.lng || 0);
   if (lat && lng) {
-    return `https://www.openstreetmap.org/?mlat=${encodeURIComponent(lat)}&mlon=${encodeURIComponent(lng)}#map=${zoom}/${encodeURIComponent(lat)}/${encodeURIComponent(lng)}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
   }
   const query = `${attraction.name || ''} ${attraction.area || attraction.location || ''}`.trim();
-  return `https://www.openstreetmap.org/search?query=${encodeURIComponent(query)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function openCurrentAttractionInMaps() {
+  const url = getMapsUrl(currentAttr);
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function clearFilters() {
@@ -393,8 +481,7 @@ function clearFilters() {
 const RATING_MIN = { '0': 0, '3.0': 3, '4.0': 4, '4.5': 4.5 };
 
 function getFilteredAttractions() {
-  // Show all attractions by default until the user applies filters/search
-  if (!hasSearched) return Array.isArray(attractionsData) ? [...attractionsData] : [];
+  if (!hasSearched) return [];
   return attractionsData.filter((item) => {
     if (appliedFilters.interests.length > 0) {
       // match when the attraction has any of the selected interests (OR logic)
@@ -413,10 +500,16 @@ function getFilteredAttractions() {
 function getSortedAttractions(list) {
   const mode = document.getElementById('sort-select').value;
   return [...list].sort((a, b) => {
+    // A selected venue is the user's explicit destination, so keep it first
+    // for relevance and distance sorting when Google Maps returns it.
+    if (mode === 'score' || mode === 'nearest') {
+      const destinationDifference = Number(!!b.is_destination_match) - Number(!!a.is_destination_match);
+      if (destinationDifference) return destinationDifference;
+    }
     if (mode === 'rating') return Number(b.rating || 0) - Number(a.rating || 0);
     if (mode === 'rating-asc') return Number(a.rating || 0) - Number(b.rating || 0);
     if (mode === 'nearest') return Number(a.distance_km ?? Infinity) - Number(b.distance_km ?? Infinity);
-    return 0;
+    return Number(b.relevance_score ?? b.score ?? 0) - Number(a.relevance_score ?? a.score ?? 0);
   });
 }
 
@@ -432,6 +525,19 @@ function renderCards() {
   const noteEl = document.getElementById('results-note');
   const weatherEl = document.getElementById('weather-note');
   const paginationWrap = document.getElementById('pagination-wrap');
+
+  if (!hasSearched) {
+    countEl.innerHTML = 'Showing <strong>0</strong> attractions';
+    noteEl.textContent = 'Choose your filters, then click Search Attractions to view recommendations.';
+    weatherEl.style.display = 'none';
+    weatherEl.textContent = '';
+    grid.innerHTML = '';
+    if (paginationWrap) {
+      paginationWrap.style.display = 'none';
+      paginationWrap.innerHTML = '';
+    }
+    return;
+  }
 
   const label = hasSearched ? `result${sorted.length !== 1 ? 's' : ''}` : 'attractions';
   countEl.innerHTML = `Showing <strong>${visible.length}</strong> of <strong>${sorted.length}</strong> ${label}`;
@@ -535,6 +641,7 @@ function weatherIcon(condition) {
 }
 
 function buildWeatherBadgeHtml(attraction) {
+  if (!appliedFilters.weather) return '';
   const weather = attraction.current_weather;
   if (weather && weather.condition) {
     const temp = weather.temp !== null && weather.temp !== undefined ? `${Math.round(weather.temp)}°C` : '';
@@ -557,9 +664,60 @@ const PLACEHOLDER_IMAGE =
     '</svg>'
   );
 
+function escapeSvgText(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function buildPlaceholderImage(attraction = {}) {
+  const category = String(attraction.category || '').toLowerCase();
+  const palette = {
+    culture: ['#f8e7c9', '#b45309', '#fff7ed'],
+    museum: ['#e0f2fe', '#0369a1', '#f0f9ff'],
+    nature: ['#dcfce7', '#15803d', '#f0fdf4'],
+    shopping: ['#fae8ff', '#a21caf', '#fdf4ff'],
+    food: ['#fee2e2', '#b91c1c', '#fff7ed'],
+    adventure: ['#ffedd5', '#c2410c', '#fff7ed'],
+  };
+  const colors = palette[String(category).toLowerCase()] || ['#dbeafe', '#0f766e', '#f8fafc'];
+
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620">
+      <defs>
+        <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0" stop-color="${colors[0]}"/>
+          <stop offset="1" stop-color="${colors[2]}"/>
+        </linearGradient>
+      </defs>
+      <rect width="900" height="620" rx="42" fill="url(#bg)"/>
+      <circle cx="760" cy="118" r="110" fill="${colors[1]}" opacity=".16"/>
+      <circle cx="135" cy="500" r="155" fill="${colors[1]}" opacity=".10"/>
+      <path d="M170 420h560l-92-124-76 83-95-132-104 144-62-74z" fill="${colors[1]}" opacity=".38"/>
+      <path d="M150 455h600" stroke="${colors[1]}" stroke-width="18" stroke-linecap="round" opacity=".32"/>
+      <circle cx="450" cy="282" r="62" fill="#fff" opacity=".72"/>
+      <path d="M421 297l25-28 20 21 18-18 25 25z" fill="${colors[1]}" opacity=".65"/>
+    </svg>
+  `);
+}
+
+function getAttractionImage(attraction = {}) {
+  if (attraction.image_url) return attraction.image_url;
+  if (Array.isArray(attraction.photo_urls)) {
+    const photo = attraction.photo_urls.find(Boolean);
+    if (photo) return photo;
+  }
+  return buildPlaceholderImage(attraction);
+}
+
 function buildCard(attraction) {
   const isFav = favourites.has(attraction.id);
   const weatherBadge = buildWeatherBadgeHtml(attraction);
+  const imageUrl = getAttractionImage(attraction);
+  const fallbackImage = buildPlaceholderImage(attraction);
 
   const reasons = (attraction.reason_tags || []).map((reason) => `<span class="reason-tag">${reason}</span>`).join('');
   const locationLabel = attraction.location || attraction.area || 'Unknown location';
@@ -568,7 +726,7 @@ function buildCard(attraction) {
   return `
     <article class="attr-card">
       <button class="attr-card-img-wrap" type="button" onclick="openDetail(${attraction.id})" aria-label="View details for ${attraction.name}">
-        <img src="${attraction.image_url || PLACEHOLDER_IMAGE}" alt="${attraction.name}" loading="lazy" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMAGE}';" />
+        <img src="${imageUrl}" alt="${attraction.name}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackImage}';" />
         <div class="attr-card-img-overlay"><span class="img-hint">View details</span></div>
         <div class="img-badge-tr">${weatherBadge}</div>
         <div class="img-fav-badge ${isFav ? 'show' : ''}">★</div>
@@ -618,6 +776,7 @@ async function toggleFavourite(id) {
       favouriteDocIds.delete(attraction.name);
       favourites.delete(id);
       attraction.is_favourite = false;
+      saveFavouritesToLocalStorage(currentUser);
       showToast('Removed from favourites');
     } else {
       const docRef = await addDoc(collection(db, FAVOURITES_COLLECTION), {
@@ -635,6 +794,7 @@ async function toggleFavourite(id) {
       favouriteDocIds.set(attraction.name, docRef.id);
       favourites.add(id);
       attraction.is_favourite = true;
+      saveFavouritesToLocalStorage(currentUser);
       showToast('★ Saved to favourites!');
     }
 
@@ -669,7 +829,8 @@ function openDetail(id) {
   const attraction = attractionsData.find((item) => item.id === id);
   if (!attraction) return;
   currentAttr = attraction;
-  const gallery = attraction.photo_urls && attraction.photo_urls.length ? attraction.photo_urls : [attraction.image_url || ''];
+  const fallbackImage = buildPlaceholderImage(attraction);
+  const gallery = attraction.photo_urls && attraction.photo_urls.length ? attraction.photo_urls : [getAttractionImage(attraction)];
   const mainImage = document.getElementById('detail-main-image');
   const nameEl = document.getElementById('detail-name');
   const metaTop = document.getElementById('detail-meta-top');
@@ -685,36 +846,49 @@ function openDetail(id) {
   const sourceEl = document.getElementById('detail-source');
   const galleryEl = document.getElementById('detail-gallery');
 
-  mainImage.src = gallery[0] || PLACEHOLDER_IMAGE;
+  mainImage.src = gallery[0] || fallbackImage;
   mainImage.onerror = () => {
     mainImage.onerror = null;
-    mainImage.src = PLACEHOLDER_IMAGE;
+    mainImage.src = fallbackImage;
   };
   nameEl.textContent = attraction.name || 'Attraction';
   const weather = attraction.current_weather;
   const weatherText = weather && weather.condition
     ? `${weatherIcon(weather.condition)} ${weather.condition}${weather.temp !== null && weather.temp !== undefined ? ' · ' + Math.round(weather.temp) + '°C' : ''}`
     : (attraction.weather_suitability || 'Weather unavailable');
-  metaTop.innerHTML = `
-    <span>${weatherText}</span>
-    <span>${attraction.category || ''}</span>`;
+  const metaTopParts = [];
+  if (appliedFilters.weather) metaTopParts.push(`<span>${weatherText}</span>`);
+  if (attraction.category) metaTopParts.push(`<span>${attraction.category}</span>`);
+  metaTop.innerHTML = metaTopParts.join('');
   metaBottom.innerHTML = `
     <span>${attraction.area || attraction.location || ''}</span>
     <span>⭐ ${attraction.rating ? Number(attraction.rating).toFixed(1) : 'N/A'}</span>`;
   hoursEl.textContent = attraction.hours || 'N/A';
   feeEl.textContent = attraction.entry_fee || 'N/A';
   durationEl.textContent = attraction.estimated_minutes ? `${attraction.estimated_minutes} mins` : 'N/A';
-  descEl.textContent = attraction.description || 'No description available.';
+  const description = String(attraction.description || '').trim();
+  const unavailableDescriptions = new Set([
+    'no description available.',
+    'no description available',
+    'n/a',
+  ]);
+  const hasDescription = Boolean(description) && !unavailableDescriptions.has(description.toLowerCase());
+  descEl.textContent = hasDescription ? description : '';
+  document.getElementById('detail-about-section').hidden = !hasDescription;
   areaEl.textContent = attraction.area || attraction.location || 'Unknown location';
   sourceEl.textContent = attraction.source || 'SerpApi (Google Maps)';
 
-  reasonsEl.innerHTML = (attraction.reason_tags || []).map((reason) => `<span class="detail-pill">${reason}</span>`).join('');
-  interestsEl.innerHTML = (attraction.interest_tags || attraction.interests || []).map((interest) => `<span class="detail-pill">${interest}</span>`).join('');
+  const reasons = attraction.reason_tags || [];
+  const interests = attraction.interest_tags || attraction.interests || [];
+  reasonsEl.innerHTML = reasons.map((reason) => `<span class="detail-pill">${reason}</span>`).join('');
+  interestsEl.innerHTML = interests.map((interest) => `<span class="detail-pill">${interest}</span>`).join('');
+  document.getElementById('detail-reasons-section').hidden = reasons.length === 0;
+  document.getElementById('detail-interests-section').hidden = interests.length === 0;
   tipsEl.innerHTML = (attraction.visitor_tips || []).map((tip) => `<li><span class="tip-dot">•</span>${tip}</li>`).join('');
 
   galleryEl.innerHTML = gallery.map((photo, index) => `
     <button id="thumb-${index}" type="button" class="detail-thumb ${index === 0 ? 'active' : ''}" onclick="setGalleryImg(${index})">
-      <img src="${photo || PLACEHOLDER_IMAGE}" alt="Gallery ${index + 1}" onerror="this.onerror=null;this.src='${PLACEHOLDER_IMAGE}';" />
+      <img src="${photo || fallbackImage}" alt="Gallery ${index + 1}" onerror="this.onerror=null;this.src='${fallbackImage}';" />
     </button>`).join('');
 
   document.getElementById('detail-backdrop').classList.add('active');
@@ -729,8 +903,14 @@ function openDetail(id) {
 
 function setGalleryImg(index) {
   if (!currentAttr) return;
-  const images = currentAttr.photo_urls && currentAttr.photo_urls.length ? currentAttr.photo_urls : [currentAttr.image_url || ''];
-  document.getElementById('detail-main-image').src = images[index] || PLACEHOLDER_IMAGE;
+  const fallbackImage = buildPlaceholderImage(currentAttr);
+  const images = currentAttr.photo_urls && currentAttr.photo_urls.length ? currentAttr.photo_urls : [getAttractionImage(currentAttr)];
+  const mainImage = document.getElementById('detail-main-image');
+  mainImage.src = images[index] || fallbackImage;
+  mainImage.onerror = () => {
+    mainImage.onerror = null;
+    mainImage.src = fallbackImage;
+  };
   images.forEach((_, idx) => {
     document.getElementById(`thumb-${idx}`)?.classList.toggle('active', idx === index);
   });
@@ -756,3 +936,4 @@ function showToast(message) {
 window.openDetail = openDetail;
 window.toggleFavourite = toggleFavourite;
 window.setGalleryImg = setGalleryImg;
+window.closeDetail = closeDetail;

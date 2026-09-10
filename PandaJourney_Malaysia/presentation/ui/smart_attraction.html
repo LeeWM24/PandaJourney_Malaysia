@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block title %}Smart Attractions PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/attractions-favicon.svg') }}?v={{ asset_version('images/attractions-favicon.svg') }}" />
+{% endblock %}
 {% block page_title %}Smart Attraction Recommendation{% endblock %}
 {% block page_subtitle %}Discover attractions matched to your travel interests and weather preferences{% endblock %}
 
@@ -303,15 +306,17 @@
   .detail-info-card { background: var(--muted-bg); border-radius: 18px; padding: 16px; }
   .detail-info-title { font-weight: 700; margin-bottom: 8px; }
   .detail-footer { padding: 14px 16px 16px; border-top: 1px solid var(--border); background: #fbfffd; display: flex; gap: 10px; align-items: center; }
-  .detail-footer .btn { flex: 1; min-height: 42px; font-size: .95rem; font-weight: 700; white-space: nowrap; }
-  #detail-fav-btn { flex: 1.35; }
+  .detail-footer .btn { flex: 1; min-height: 46px; padding: 0 18px; font-size: .98rem; font-weight: 700; white-space: nowrap; }
+  #detail-fav-btn { flex: 1.5; min-width: 180px; }
   .panel-close { position: absolute; right: 16px; top: 16px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.42); color: white; font-size: 18px; cursor: pointer; z-index: 5; }
   #detail-map {
     border-radius: 12px;
     overflow: hidden;
     border: 1px solid var(--border);
     background: var(--muted-bg);
+    cursor: pointer;
   }
+  #detail-map:focus-visible { outline: 3px solid rgba(15, 122, 90, .32); outline-offset: 3px; }
   .detail-map-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--primary); font-weight: 600; font-size: .9rem; text-decoration: none; }
   .detail-map-link:hover { text-decoration: underline; }
   .detail-empty { min-height: 240px; display: grid; place-items: center; color: var(--fg-2); }
@@ -355,6 +360,7 @@
                    value="{{ filters.destination | default('') }}" />
             <input type="hidden" id="destination_lat" name="destination_lat" value="{{ filters.destination_lat | default('') }}" />
             <input type="hidden" id="destination_lng" name="destination_lng" value="{{ filters.destination_lng | default('') }}" />
+            <input type="hidden" id="is_registered_user" name="is_registered_user" value="0" />
             <div id="destination-suggestions" class="destination-suggestions" role="listbox"></div>
           </div>
         </div>
@@ -408,11 +414,11 @@
         </div>
         <div class="results-bar">
           <label for="sort-select" class="sr-only">Sort</label>
-          <select class="sort-select" id="sort-select">
-            <option value="score">Most Relevant</option>
-            <option value="rating">Highest Rated</option>
-            <option value="rating-asc">Lowest Rated</option>
-            <option value="nearest" selected>Nearest</option>
+          <select class="sort-select" id="sort-select" name="sort" form="filter-form">
+            <option value="score" {% if filters.sort == 'score' %}selected{% endif %}>Most Relevant</option>
+            <option value="rating" {% if filters.sort == 'rating' %}selected{% endif %}>Highest Rated</option>
+            <option value="rating-asc" {% if filters.sort == 'rating-asc' %}selected{% endif %}>Lowest Rated</option>
+            <option value="nearest" {% if filters.sort == 'nearest' %}selected{% endif %}>Nearest</option>
           </select>
         </div>
       </div>
@@ -453,22 +459,22 @@
         </div>
       </div>
 
-      <div class="detail-section">
+      <div class="detail-section" id="detail-about-section">
         <h3>About</h3>
         <p id="detail-description"></p>
       </div>
 
-      <div class="detail-section">
+      <div class="detail-section" id="detail-reasons-section">
         <h3>Why we recommend this</h3>
         <div class="detail-pills" id="detail-reasons"></div>
       </div>
 
-      <div class="detail-section">
+      <div class="detail-section" id="detail-interests-section">
         <h3>Travel interests</h3>
         <div class="detail-pills" id="detail-interests"></div>
       </div>
 
-      <div class="detail-section">
+      <div class="detail-section" id="detail-tips-section">
         <h3>Visitor tips</h3>
         <ul class="detail-tips" id="detail-tips"></ul>
       </div>

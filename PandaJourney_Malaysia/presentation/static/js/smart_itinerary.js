@@ -22,9 +22,36 @@ let currentUser = null;
 const ITINERARY_COLLECTION = "Itinerary";
 const ITINERARY_STOP_COLLECTION = "itinerary_stops";
 const FAVOURITES_COLLECTION = "Favourites";
+const FAVOURITES_CACHE_PREFIX = "pandajourney:favouritePlaces:";
 
 let favouritePlaces = [];
 let favouriteSearchText = "";
+
+function favouritesCacheKey(user) {
+  return `${FAVOURITES_CACHE_PREFIX}${user.uid}`;
+}
+
+function restoreFavouritePlacesFromLocalStorage(user) {
+  try {
+    const cached = JSON.parse(localStorage.getItem(favouritesCacheKey(user)) || "[]");
+    if (!Array.isArray(cached)) return false;
+    favouritePlaces = cached;
+    return cached.length > 0;
+  } catch {
+    localStorage.removeItem(favouritesCacheKey(user));
+    return false;
+  }
+}
+
+function saveFavouritePlacesToLocalStorage(user) {
+  if (!user) return;
+
+  try {
+    localStorage.setItem(favouritesCacheKey(user), JSON.stringify(favouritePlaces));
+  } catch {
+    // Ignore quota/private-mode failures; Firestore remains source of truth.
+  }
+}
 
 // ================================
 // Auth
@@ -41,6 +68,12 @@ onAuthStateChanged(auth, function (user) {
   }
 
   if (user) {
+    if (restoreFavouritePlacesFromLocalStorage(user)) {
+      const loadingElement = document.getElementById("favourites-loading");
+      if (loadingElement) loadingElement.style.display = "none";
+      renderFavouritePlaces();
+    }
+
     loadFavouritePlaces(user).catch(function (error) {
       console.error("Failed to load favourite places:", error);
       renderFavouriteError();
@@ -607,6 +640,8 @@ async function loadFavouritePlaces(user) {
   snapshot.forEach(function (docSnap) {
     favouritePlaces.push(normaliseFavouritePlace(docSnap));
   });
+
+  saveFavouritePlacesToLocalStorage(user);
 
   if (loadingElement) {
     loadingElement.style.display = "none";

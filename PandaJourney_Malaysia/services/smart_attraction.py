@@ -4,8 +4,8 @@ import json
 import logging
 import math
 import os
-import sqlite3
 import time
+import hashlib
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -13,6 +13,18 @@ from urllib.parse import quote_plus
 
 import requests
 from dotenv import load_dotenv
+
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    from google.cloud import firestore as google_firestore
+    from google.oauth2 import service_account
+except ImportError:
+    firebase_admin = None
+    credentials = None
+    firestore = None
+    google_firestore = None
+    service_account = None
 
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
@@ -43,96 +55,164 @@ if not logger.handlers:
 logger.setLevel(os.getenv("SMART_ATTRACTION_LOG_LEVEL", "INFO").upper())
 
 # ---------------------------------------------------------------------------
-# Persistent SQLite cache — cuts down repeat SerpAPI / geocoding usage.
-# Geocode results barely change (long TTL); attraction search results are
-# cached for a few hours since ratings/hours can drift slowly.
+# Firestore cache cuts down repeat SerpAPI / geocoding usage on temporary-disk
+# hosting. Geocode results barely change; attraction results refresh sooner.
 # ---------------------------------------------------------------------------
 
-CACHE_DB_PATH = BASE_DIR / "data" / "cache.db"
+FIRESTORE_CACHE_COLLECTION = os.getenv(
+    "SMART_ATTRACTION_FIRESTORE_CACHE_COLLECTION",
+    "api_cache",
+)
+FIRESTORE_DATABASE_ID = os.getenv("FIRESTORE_DATABASE_ID", "(default)").strip() or "(default)"
 GEOCODE_CACHE_TTL_SECONDS = 30 * 24 * 3600  # 30 days
-ATTRACTION_CACHE_TTL_SECONDS = 6 * 3600      # 6 hours
+ATTRACTION_CACHE_TTL_SECONDS = int(
+    os.getenv("SMART_ATTRACTION_CACHE_TTL_SECONDS", str(24 * 3600))
+)  # fresh attraction cache, default 24 hours
+ATTRACTION_STALE_CACHE_TTL_SECONDS = int(
+    os.getenv("SMART_ATTRACTION_STALE_CACHE_TTL_SECONDS", str(30 * 24 * 3600))
+)  # fallback attraction cache, default 30 days
 PUBLIC_PHOTO_CACHE_TTL_SECONDS = 7 * 24 * 3600 # 7 days
 
-def _init_cache_db() -> None:
-    CACHE_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(CACHE_DB_PATH)
-    conn.execute(
-        """CREATE TABLE IF NOT EXISTS api_cache (
-            cache_key TEXT PRIMARY KEY,
-            payload TEXT NOT NULL,
-            created_at REAL NOT NULL
-        )"""
-    )
-    conn.commit()
-    conn.close()
-    _evict_expired_cache_rows()
+_firestore_db = None
+_firestore_checked = False
 
 
-# Longest-lived entries (geocode results) set the retention window — once a
-# row is older than this, no code path could still treat it as fresh, so
-# there's no reason to keep it. Without this, api_cache.db only ever grows:
-# cache_get() already ignores expired rows on read, but nothing ever
-# deletes them, so a long-running deployment's cache file would grow
-# forever. Runs once per process start, which is enough for how often this
-# app is likely to be restarted — no scheduler dependency needed.
-def _evict_expired_cache_rows() -> None:
-    cutoff = time.time() - GEOCODE_CACHE_TTL_SECONDS
+def _get_firestore_db():
+    global _firestore_db, _firestore_checked
+
+    if _firestore_checked:
+        return _firestore_db
+
+    _firestore_checked = True
+
+    if firebase_admin is None:
+        logger.warning("[FIRESTORE CACHE] firebase-admin is not installed.")
+        return None
 
     try:
-        conn = sqlite3.connect(CACHE_DB_PATH)
-        deleted = conn.execute(
-            "DELETE FROM api_cache WHERE created_at < ?", (cutoff,)
-        ).rowcount
-        conn.commit()
-        conn.close()
+        credential_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        credential_path = os.getenv("FIREBASE_SERVICE_ACCOUNT_PATH", "").strip()
+        google_credential = None
+        project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip() or None
 
-        if deleted:
-            logger.info(f"[CACHE CLEANUP] Evicted {deleted} expired row(s) from api_cache.db")
-    except sqlite3.Error as error:
-        logger.error(f"[CACHE CLEANUP ERROR] {error}")
+        if credential_json:
+            service_account_info = json.loads(credential_json)
+            google_credential = service_account.Credentials.from_service_account_info(
+                service_account_info
+            )
+            project_id = project_id or service_account_info.get("project_id")
+        elif credential_path:
+            google_credential = service_account.Credentials.from_service_account_file(
+                credential_path
+            )
+
+        if not firebase_admin._apps:
+            if credential_json:
+                cred = credentials.Certificate(json.loads(credential_json))
+                firebase_admin.initialize_app(cred)
+            elif credential_path:
+                cred = credentials.Certificate(credential_path)
+                firebase_admin.initialize_app(cred)
+            else:
+                firebase_admin.initialize_app()
+
+        if google_credential is not None:
+            _firestore_db = google_firestore.Client(
+                project=project_id,
+                credentials=google_credential,
+                database=FIRESTORE_DATABASE_ID,
+            )
+        else:
+            _firestore_db = google_firestore.Client(
+                project=project_id,
+                database=FIRESTORE_DATABASE_ID,
+            )
+
+        if FIRESTORE_DATABASE_ID == "(default)":
+            _firestore_db._database_string_internal = (
+                f"projects/{_firestore_db.project}/databases/(default)"
+            )
+
+        logger.info(f"[FIRESTORE CACHE] Connected to database {FIRESTORE_DATABASE_ID!r}.")
+    except Exception as error:
+        logger.warning(f"[FIRESTORE CACHE] Disabled: {error}")
+        _firestore_db = None
+
+    return _firestore_db
 
 
-_init_cache_db()
+def _firestore_cache_doc_id(key: str) -> str:
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def firestore_cache_get_with_age(key: str, max_age_seconds: float) -> dict[str, Any] | None:
+    db = _get_firestore_db()
+    if db is None:
+        return None
+
+    try:
+        doc_ref = db.collection(FIRESTORE_CACHE_COLLECTION).document(
+            _firestore_cache_doc_id(key)
+        )
+        snapshot = doc_ref.get()
+    except Exception as error:
+        logger.warning(f"[FIRESTORE CACHE READ ERROR] {error}")
+        return None
+
+    if not snapshot.exists:
+        return None
+
+    data = snapshot.to_dict() or {}
+    created_at = float(data.get("created_at") or 0)
+
+    if not created_at or time.time() - created_at > max_age_seconds:
+        return None
+
+    payload = data.get("payload")
+    if payload is None:
+        return None
+
+    logger.debug(f"[FIRESTORE CACHE HIT] {key}")
+    return {
+        "payload": payload,
+        "age_seconds": time.time() - created_at,
+        "created_at": created_at,
+    }
+
+
+def firestore_cache_set(key: str, value: Any) -> bool:
+    db = _get_firestore_db()
+    if db is None:
+        return False
+
+    try:
+        db.collection(FIRESTORE_CACHE_COLLECTION).document(
+            _firestore_cache_doc_id(key)
+        ).set({
+            "cache_key": key,
+            "payload": value,
+            "created_at": time.time(),
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+        return True
+    except Exception as error:
+        logger.warning(f"[FIRESTORE CACHE WRITE ERROR] {error}")
+        return False
 
 
 def cache_get(key: str, max_age_seconds: float) -> Any | None:
-    try:
-        conn = sqlite3.connect(CACHE_DB_PATH)
-        row = conn.execute(
-            "SELECT payload, created_at FROM api_cache WHERE cache_key = ?",
-            (key,),
-        ).fetchone()
-        conn.close()
-    except sqlite3.Error as error:
-        logger.error(f"[CACHE READ ERROR] {error}")
+    cached = cache_get_with_age(key, max_age_seconds)
+    if cached is None:
         return None
+    return cached["payload"]
 
-    if not row:
-        return None
 
-    payload, created_at = row
-
-    if time.time() - created_at > max_age_seconds:
-        return None
-
-    try:
-        logger.debug(f"[CACHE HIT] {key}")
-        return json.loads(payload)
-    except (json.JSONDecodeError, TypeError):
-        return None
+def cache_get_with_age(key: str, max_age_seconds: float) -> dict[str, Any] | None:
+    return firestore_cache_get_with_age(key, max_age_seconds)
 
 
 def cache_set(key: str, value: Any) -> None:
-    try:
-        conn = sqlite3.connect(CACHE_DB_PATH)
-        conn.execute(
-            "INSERT OR REPLACE INTO api_cache (cache_key, payload, created_at) VALUES (?, ?, ?)",
-            (key, json.dumps(value), time.time()),
-        )
-        conn.commit()
-        conn.close()
-    except sqlite3.Error as error:
-        logger.error(f"[CACHE WRITE ERROR] {error}")
+    firestore_cache_set(key, value)
 
 USER_AGENT = os.getenv(
     "NOMINATIM_USER_AGENT",
@@ -324,6 +404,22 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
     return result
 
 
+def is_malaysia_location(location: dict[str, Any] | None) -> bool:
+    """Return whether a geocoded point is inside Malaysia's bounding box."""
+    if not location:
+        return False
+
+    try:
+        latitude = float(location["latitude"])
+        longitude = float(location["longitude"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+    # Includes Peninsular Malaysia plus Sabah and Sarawak. This is a safety
+    # check for broad place names such as "Pavilion", which also exist abroad.
+    return 0.7 <= latitude <= 7.6 and 99.5 <= longitude <= 120.5
+
+
 def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
@@ -363,6 +459,12 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
             "source": "SerpApi fallback",
         }
 
+        if not is_malaysia_location(result):
+            logger.warning(
+                f"[GEOCODE SERPAPI OUTSIDE MALAYSIA] Ignoring: {result['display_name']}"
+            )
+            continue
+
         logger.info(
             f"[GEOCODE SERPAPI SUCCESS] {result['display_name']} "
             f"({result['latitude']}, {result['longitude']})"
@@ -376,6 +478,7 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
 
 def geocode_place(query: str) -> dict[str, Any] | None:
     key = query.strip().lower()
+    cache_key = f"geocode:my:v2:{key}"
 
     if not key:
         logger.error("[GEOCODE ERROR] Empty input.")
@@ -386,18 +489,19 @@ def geocode_place(query: str) -> dict[str, Any] | None:
     # permanently blocks that exact string for the rest of the process's
     # life — even after we improve the fallback logic below.
     if key in GEOCODE_CACHE:
-        logger.debug(f"[GEOCODE MEMORY CACHE] {query}")
-        return GEOCODE_CACHE[key]
+        cached = GEOCODE_CACHE[key]
+        if is_malaysia_location(cached):
+            logger.debug(f"[GEOCODE MEMORY CACHE] {query}")
+            return cached
+        GEOCODE_CACHE.pop(key, None)
 
-    db_cached = cache_get(f"geocode:{key}", GEOCODE_CACHE_TTL_SECONDS)
-    if db_cached is not None:
+    # v2 prevents old, unrestricted geocode cache entries from being reused.
+    db_cached = cache_get(cache_key, GEOCODE_CACHE_TTL_SECONDS)
+    if is_malaysia_location(db_cached):
         GEOCODE_CACHE[key] = db_cached
         return db_cached
 
-    search_queries = [query]
-
-    if "malaysia" not in key:
-        search_queries.append(f"{query}, Malaysia")
+    search_queries = [query] if "malaysia" in key else [f"{query}, Malaysia", query]
 
     # A destination string can be over-specified — e.g. a full address
     # copied from an autocomplete suggestion ("Bukit Jalil National
@@ -417,8 +521,9 @@ def geocode_place(query: str) -> dict[str, Any] | None:
         params = {
             "q": search_text,
             "format": "jsonv2",
-            "limit": 1,
+            "limit": 5,
             "addressdetails": 1,
+            "countrycodes": "my",
         }
 
         if NOMINATIM_EMAIL:
@@ -446,15 +551,22 @@ def geocode_place(query: str) -> dict[str, Any] | None:
             logger.error(f"[GEOCODE ERROR] {error}")
             results = []
 
-        if results:
-            raw = results[0]
+        for raw in results:
+            try:
+                result = {
+                    "display_name": raw.get("display_name", query),
+                    "latitude": float(raw["lat"]),
+                    "longitude": float(raw["lon"]),
+                    "source": "OpenStreetMap Nominatim API",
+                }
+            except (KeyError, TypeError, ValueError):
+                continue
 
-            result = {
-                "display_name": raw.get("display_name", query),
-                "latitude": float(raw["lat"]),
-                "longitude": float(raw["lon"]),
-                "source": "OpenStreetMap Nominatim API",
-            }
+            if not is_malaysia_location(result):
+                logger.warning(
+                    f"[GEOCODE OUTSIDE MALAYSIA] Ignoring: {result['display_name']}"
+                )
+                continue
 
             if search_text != query:
                 logger.info(
@@ -462,7 +574,7 @@ def geocode_place(query: str) -> dict[str, Any] | None:
                 )
 
             GEOCODE_CACHE[key] = result
-            cache_set(f"geocode:{key}", result)
+            cache_set(cache_key, result)
 
             logger.info(
                 f"[GEOCODE SUCCESS] {result['display_name']} "
@@ -480,11 +592,21 @@ def geocode_place(query: str) -> dict[str, Any] | None:
 
     if serpapi_result:
         GEOCODE_CACHE[key] = serpapi_result
-        cache_set(f"geocode:{key}", serpapi_result)
+        cache_set(cache_key, serpapi_result)
         return serpapi_result
 
     # Deliberately NOT caching this failure — see comment above.
     return None
+
+
+CURATED_DESTINATION_SUGGESTIONS = [
+    {
+        "name": "Kuala Lumpur",
+        "display_name": "Kuala Lumpur, Malaysia",
+        "latitude": 3.1478,
+        "longitude": 101.6953,
+    },
+]
 
 
 def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -498,15 +620,28 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
     if len(key) < 3:
         return []
 
-    cache_key = f"suggest:{key}:{limit}"
+    curated = [
+        dict(suggestion)
+        for suggestion in CURATED_DESTINATION_SUGGESTIONS
+        if key in suggestion["name"].lower()
+    ]
+
+    # Version the key so earlier venue-only suggestions are not reused.
+    cache_key = f"suggest:venues:v4:{key}:{limit}"
     cached = cache_get(cache_key, max_age_seconds=24 * 3600)
     if cached is not None:
-        return cached
+        cached_names = {item.get("name", "").lower() for item in curated}
+        return (curated + [
+            item for item in cached
+            if item.get("name", "").lower() not in cached_names
+        ])[:limit]
 
     params = {
         "q": key,
         "format": "jsonv2",
-        "limit": limit,
+        # Fetch extra candidates because Nominatim may rank a residential
+        # area or transport stop above the actual venue.
+        "limit": min(max(limit * 5, 15), 50),
         "addressdetails": 1,
         "countrycodes": "my",
     }
@@ -527,10 +662,21 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         logger.error(f"[SUGGEST ERROR] {error}")
         return []
 
-    suggestions = []
+    suggestions = list(curated)
+    ignored_types = {
+        "administrative", "bus_stop", "city", "neighbourhood", "platform",
+        "residential", "road", "station", "stop", "suburb",
+    }
+    seen_locations: set[tuple[str, int, int]] = {
+        (item["name"].lower(), round(item["latitude"], 3), round(item["longitude"], 3))
+        for item in curated
+    }
 
     for item in results:
         if "lat" not in item or "lon" not in item:
+            continue
+
+        if str(item.get("type", "")).lower() in ignored_types:
             continue
 
         display_name = item.get("display_name", "")
@@ -539,6 +685,16 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         # comma-separated address. Fall back to the first address segment
         # if "name" is missing so we still get something short.
         short_name = item.get("name") or display_name.split(",")[0].strip()
+
+        if not short_name:
+            continue
+
+        latitude = float(item["lat"])
+        longitude = float(item["lon"])
+        location_key = (short_name.lower(), round(latitude, 3), round(longitude, 3))
+        if location_key in seen_locations:
+            continue
+        seen_locations.add(location_key)
 
         # Secondary line for context — whatever's left of the address
         # after the name, trimmed down to the first couple of segments.
@@ -550,12 +706,26 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
 
         suggestions.append({
             "name": short_name,
-            "subtitle": subtitle,
             "display_name": display_name,
-            "latitude": float(item["lat"]),
-            "longitude": float(item["lon"]),
+            "latitude": latitude,
+            "longitude": longitude,
         })
 
+    # Prefer official, descriptive venue names over generic OSM labels. For
+    # example, show "Pavilion Kuala Lumpur" instead of a bare "Pavilion"
+    # when both are available for the same search.
+    descriptive_names_exist = any(
+        suggestion["name"].lower().startswith(f"{key} ")
+        for suggestion in suggestions
+    )
+    if descriptive_names_exist:
+        suggestions = [
+            suggestion
+            for suggestion in suggestions
+            if suggestion["name"].lower() != key
+        ]
+
+    suggestions = suggestions[:limit]
     cache_set(cache_key, suggestions)
     return suggestions
 
@@ -695,6 +865,50 @@ def _serpapi_page(
     return data.get("local_results", [])
 
 
+def _serpapi_destination_page(
+    destination_name: str,
+    latitude: float,
+    longitude: float,
+    minimum_rating: float,
+    api_key: str,
+) -> list[dict[str, Any]]:
+    """Fetch a selected venue, including SerpAPI's direct place_results form."""
+    params = {
+        "engine": "google_maps",
+        "type": "search",
+        "q": destination_name,
+        "ll": f"@{latitude},{longitude},13z",
+        "hl": "en",
+        "gl": "my",
+        "min_rating": str(minimum_rating),
+        "api_key": api_key,
+    }
+
+    try:
+        data = _request_json(SERPAPI_URL, params=params)
+    except requests.RequestException as error:
+        logger.error(f"[SERPAPI DESTINATION SEARCH ERROR] {error}")
+        return []
+
+    if data.get("error"):
+        logger.error(f"[SERPAPI DESTINATION SEARCH ERROR] API responded: {data['error']}")
+        return []
+
+    results: list[dict[str, Any]] = []
+    place_result = data.get("place_results")
+    if isinstance(place_result, dict):
+        direct_result = dict(place_result)
+        direct_result["title"] = direct_result.get("title") or destination_name
+        direct_result["gps_coordinates"] = (
+            direct_result.get("gps_coordinates")
+            or {"latitude": latitude, "longitude": longitude}
+        )
+        results.append(direct_result)
+
+    results.extend(data.get("local_results", []))
+    return results
+
+
 def classify_indoor_outdoor(item_type: str, description: str, title: str) -> str | None:
     """Heuristic indoor/outdoor classification from SerpAPI's place type,
     description and name — this is what actually powers weather-aware
@@ -728,10 +942,11 @@ def search_attractions_serpapi(
     interests: list[str],
     minimum_rating: float,
     max_pages: int = 3,
+    destination_name: str = "",
 ) -> list[dict[str, Any]]:
     """Search Google Maps via SerpAPI, paginating up to `max_pages` pages
     (~20 results each) so results aren't hard-capped at 20. Results are
-    cached in SQLite per (location, interests, min rating) so repeat
+    cached in Firestore per (location, interests, min rating) so repeat
     searches for the same destination don't re-spend SerpAPI credits.
 
     NOTE on cost: every extra page is a separate billed SerpAPI request —
@@ -742,21 +957,38 @@ def search_attractions_serpapi(
     extra credits on the rare 0-result case, not on every search.
     """
 
+    keyword = get_serpapi_search_keyword(interests)
+
+    normalized_destination = " ".join(destination_name.lower().split())
+    cache_key = (
+        f"attractions:v4:{round(latitude, 3)}:{round(longitude, 3)}:"
+        f"{keyword}:{minimum_rating}:{max_pages}:{normalized_destination}"
+    )
+    cached = cache_get_with_age(cache_key, ATTRACTION_CACHE_TTL_SECONDS)
+    if cached is not None:
+        logger.info(
+            f"[ATTRACTION CACHE FRESH] key={cache_key} "
+            f"age={int(cached['age_seconds'])}s"
+        )
+        return cached["payload"]
+
+    stale_cached = cache_get_with_age(
+        cache_key,
+        ATTRACTION_STALE_CACHE_TTL_SECONDS,
+    )
+
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
+        if stale_cached is not None:
+            logger.warning(
+                f"[ATTRACTION CACHE STALE] SERPAPI_KEY missing; using "
+                f"{int(stale_cached['age_seconds'])}s old cached results."
+            )
+            return stale_cached["payload"]
+
         logger.warning("[SERPAPI SEARCH] No SERPAPI_KEY configured.")
         return []
-
-    keyword = get_serpapi_search_keyword(interests)
-
-    cache_key = (
-        f"attractions:{round(latitude, 3)}:{round(longitude, 3)}:"
-        f"{keyword}:{minimum_rating}:{max_pages}"
-    )
-    cached = cache_get(cache_key, ATTRACTION_CACHE_TTL_SECONDS)
-    if cached is not None:
-        return cached
 
     logger.info(
         f"[SERPAPI SEARCH] query={keyword!r} near ({latitude}, {longitude}) "
@@ -764,6 +996,48 @@ def search_attractions_serpapi(
     )
 
     raw_results: list[dict[str, Any]] = []
+    priority_place_ids: set[str] = set()
+    priority_signatures: set[tuple[str, float, float]] = set()
+
+    # Look up the selected venue before the wider category search. This lets
+    # a search for a real attraction (for example, Pavilion Kuala Lumpur)
+    # include that attraction as the first recommendation when available.
+    area_destinations = {
+        suggestion["name"].lower()
+        for suggestion in CURATED_DESTINATION_SUGGESTIONS
+    }
+    if normalized_destination and normalized_destination not in area_destinations | {"malaysia"}:
+        priority_cache_key = (
+            f"destination-attraction:v2:{round(latitude, 3)}:{round(longitude, 3)}:"
+            f"{normalized_destination}:{minimum_rating}"
+        )
+        priority_results = cache_get(
+            priority_cache_key,
+            ATTRACTION_CACHE_TTL_SECONDS,
+        )
+
+        if priority_results is None:
+            priority_results = _serpapi_destination_page(
+                destination_name,
+                latitude,
+                longitude,
+                minimum_rating,
+                api_key,
+            )
+            cache_set(priority_cache_key, priority_results)
+
+        for item in priority_results:
+            place_id = item.get("place_id") or item.get("data_id") or ""
+            if place_id:
+                priority_place_ids.add(place_id)
+            coordinates = item.get("gps_coordinates") or {}
+            if "latitude" in coordinates and "longitude" in coordinates:
+                priority_signatures.add((
+                    str(item.get("title", "")).strip().lower(),
+                    round(float(coordinates["latitude"]), 5),
+                    round(float(coordinates["longitude"]), 5),
+                ))
+        raw_results.extend(priority_results)
 
     # A destination picked from the autocomplete dropdown can be a precise
     # single building (e.g. a stadium) rather than a whole city/area — the
@@ -813,6 +1087,13 @@ def search_attractions_serpapi(
             if len(page_results) < 20:
                 break
 
+    if not raw_results and stale_cached is not None:
+        logger.warning(
+            f"[ATTRACTION CACHE STALE] SerpAPI returned no raw results; "
+            f"using {int(stale_cached['age_seconds'])}s old cached results."
+        )
+        return stale_cached["payload"]
+
     logger.info(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps")
 
     seen_place_ids: set[str] = set()
@@ -833,6 +1114,11 @@ def search_attractions_serpapi(
             continue
 
         place_id = item.get("place_id") or item.get("data_id") or ""
+        candidate_signature = (
+            str(title).strip().lower(),
+            round(float(coordinates["latitude"]), 5),
+            round(float(coordinates["longitude"]), 5),
+        )
 
         if place_id and place_id in seen_place_ids:
             continue  # de-dupe across pages
@@ -866,7 +1152,9 @@ def search_attractions_serpapi(
                 "name": title,
                 "latitude": float(coordinates["latitude"]),
                 "longitude": float(coordinates["longitude"]),
-                "tags": tags or [keyword],
+                # A tag-free search is intentionally broad; do not invent a
+                # "tourist attractions" interest tag for the result card.
+                "tags": tags or ([keyword] if interests else []),
                 "estimated_minutes": 90,
                 "rating": float(item.get("rating") or 0),
                 "source": "SerpApi (Google Maps)",
@@ -880,10 +1168,21 @@ def search_attractions_serpapi(
                 "photo_urls": [thumbnail] if thumbnail else [],
                 "image_url": thumbnail,
                 "maps_url": f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else "",
+                "is_destination_match": (
+                    place_id in priority_place_ids
+                    or candidate_signature in priority_signatures
+                ),
             }
         )
 
     logger.info(f"[SERPAPI SEARCH] {len(candidates)} candidate(s) kept after filtering")
+
+    if not candidates and stale_cached is not None:
+        logger.warning(
+            f"[ATTRACTION CACHE STALE] SerpAPI produced no usable candidates; "
+            f"using {int(stale_cached['age_seconds'])}s old cached results."
+        )
+        return stale_cached["payload"]
 
     cache_set(cache_key, candidates)
 
@@ -915,6 +1214,12 @@ def score_attraction(
     if matched:
         score += 40 + 10 * len(matched)
         reasons.append(f"matches interest: {', '.join(sorted(matched))}")
+    elif not requested:
+        reasons.append("matches broad attraction search")
+
+    if attraction.get("is_destination_match"):
+        score += 1000
+        reasons.append("matches searched destination")
 
     rating = float(attraction.get("rating") or 0)
     score += int(rating * 5)
@@ -1058,10 +1363,144 @@ def get_attraction_images(tags: list[str]) -> list[str]:
     return images[:3]
 
 
+def get_default_initial_attractions() -> list[dict[str, Any]]:
+    """Local initial recommendations shown without spending SerpAPI credits."""
+    defaults = [
+        {
+            "name": "Petronas Twin Towers",
+            "latitude": 3.1579,
+            "longitude": 101.7123,
+            "tags": ["culture", "indoor", "heritage"],
+            "estimated_minutes": 90,
+            "rating": 4.7,
+            "source": "Local launch cache",
+            "category": "Landmark",
+            "location": "Kuala Lumpur City Centre",
+            "area": "KLCC, Kuala Lumpur",
+            "description": "An iconic Kuala Lumpur landmark with skyline views, shopping, dining, and easy public transport access.",
+        },
+        {
+            "name": "Islamic Arts Museum Malaysia",
+            "latitude": 3.1417,
+            "longitude": 101.6893,
+            "tags": ["culture", "museum", "indoor"],
+            "estimated_minutes": 120,
+            "rating": 4.7,
+            "source": "Local launch cache",
+            "category": "Museum",
+            "location": "Jalan Lembah Perdana, Kuala Lumpur",
+            "area": "Perdana Botanical Gardens, Kuala Lumpur",
+            "description": "A highly rated museum with Islamic art collections, architecture, and calm indoor galleries.",
+        },
+        {
+            "name": "Central Market Kuala Lumpur",
+            "latitude": 3.1457,
+            "longitude": 101.6950,
+            "tags": ["culture", "shopping", "indoor"],
+            "estimated_minutes": 90,
+            "rating": 4.4,
+            "source": "Local launch cache",
+            "category": "Market",
+            "location": "Jalan Hang Kasturi, Kuala Lumpur",
+            "area": "Pasar Seni, Kuala Lumpur",
+            "description": "A heritage market for Malaysian crafts, souvenirs, batik, snacks, and cultural shopping.",
+        },
+        {
+            "name": "KLCC Park",
+            "latitude": 3.1556,
+            "longitude": 101.7145,
+            "tags": ["nature", "outdoor"],
+            "estimated_minutes": 60,
+            "rating": 4.6,
+            "source": "Local launch cache",
+            "category": "Park",
+            "location": "City Centre, Kuala Lumpur",
+            "area": "KLCC, Kuala Lumpur",
+            "description": "A city park beside the Petronas Twin Towers with walking paths, lake views, and skyline photo spots.",
+        },
+        {
+            "name": "Batu Caves",
+            "latitude": 3.2379,
+            "longitude": 101.6840,
+            "tags": ["culture", "heritage", "outdoor"],
+            "estimated_minutes": 120,
+            "rating": 4.4,
+            "source": "Local launch cache",
+            "category": "Temple",
+            "location": "Gombak, Selangor",
+            "area": "Batu Caves, Selangor",
+            "description": "A famous limestone cave temple complex with colorful steps and strong cultural significance.",
+        },
+    ]
+
+    return prepare_selected_attractions(
+        defaults,
+        reference_lat=3.1478,
+        reference_lon=101.6953,
+    )
+
+
+def get_cached_initial_attractions() -> tuple[list[dict[str, Any]], str]:
+    """Use an existing Kuala Lumpur culture cache for initial page results.
+
+    This gives the page the richer "already searched" result set without
+    spending SerpAPI credits during page load.
+    """
+    default_lat = 3.1478
+    default_lon = 101.6953
+    cache_keys = [
+        (
+            f"attractions:{round(default_lat, 3)}:{round(default_lon, 3)}:"
+            "cultural attractions:4.0:3"
+        ),
+        "attractions:3.152:101.694:cultural attractions:4.0:3",
+        "attractions:3.148:101.695:cultural attractions:4.0:3",
+    ]
+    cached_options = [
+        cached
+        for cache_key in cache_keys
+        if (
+            cached := cache_get_with_age(
+                cache_key,
+                ATTRACTION_STALE_CACHE_TTL_SECONDS,
+            )
+        ) and cached["payload"]
+    ]
+    cached = max(
+        cached_options,
+        key=lambda option: len(option["payload"]),
+        default=None,
+    )
+
+    if cached and cached["payload"]:
+        logger.info(
+            f"[ATTRACTION INITIAL CACHE] using {len(cached['payload'])} "
+            f"cached Kuala Lumpur culture attractions, "
+            f"age={int(cached['age_seconds'])}s"
+        )
+        return (
+            prepare_selected_attractions(
+                cached["payload"],
+                reference_lat=default_lat,
+                reference_lon=default_lon,
+            ),
+            (
+                "Initial recommendations are loaded from your cached "
+                "Kuala Lumpur culture search."
+            ),
+        )
+
+    return (
+        get_default_initial_attractions(),
+        "Starter attractions are served locally to avoid SerpAPI usage on page load.",
+    )
+
+
 def prepare_selected_attractions(
     selected: list[dict[str, Any]],
     reference_lat: float | None = None,
     reference_lon: float | None = None,
+    include_weather: bool = True,
 ) -> list[dict[str, Any]]:
     prepared = []
 
@@ -1110,10 +1549,20 @@ def prepare_selected_attractions(
             )
             item["distance_label"] = f"{item['distance_km']:.1f} km"
 
+        # Most Relevant should still be geographically relevant. A strong
+        # distance penalty prevents places in another state outranking good
+        # attractions close to the selected city, while preserving the exact
+        # venue boost added by score_attraction().
+        distance_penalty = min(float(item["distance_km"] or 0) * 2, 600)
+        item["relevance_score"] = float(item.get("score", 0)) - distance_penalty
+
         prepared.append(item)
 
     # Real-time weather per attraction — one batched Open-Meteo call for
     # every card instead of a static "Sunny"/"Indoor" guess.
+    if not include_weather:
+        return prepared
+
     coords: list[tuple[float, float]] = []
     coord_indexes: list[int] = []
 
@@ -1224,6 +1673,7 @@ def build_attraction_results(
         interest_list,
         minimum_rating,
         max_pages=max_pages,
+        destination_name=destination_text,
     )
 
     live_data = bool(candidates)
@@ -1267,6 +1717,7 @@ def build_attraction_results(
         selected,
         reference_lat=destination_place["latitude"],
         reference_lon=destination_place["longitude"],
+        include_weather=use_weather,
     )
 
     # 7. Sort
@@ -1294,7 +1745,7 @@ def build_attraction_results(
 
         selected.sort(
             key=lambda item: float(
-                item.get("score", 0)
+                item.get("relevance_score", item.get("score", 0))
             ),
             reverse=True,
         )

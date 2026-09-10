@@ -1,0 +1,70 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsNewUserId() {
+      return signedIn() && request.resource.data.user_id == request.auth.uid;
+    }
+
+    function ownsExistingUserId() {
+      return signedIn() && resource.data.user_id == request.auth.uid;
+    }
+
+    function ownsPublicProfile(userId) {
+      return signedIn() && userId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create, update, delete: if ownsPublicProfile(userId);
+    }
+
+    match /Favourites/{favouriteId} {
+      allow create: if ownsNewUserId();
+      allow read, update, delete: if ownsExistingUserId();
+    }
+
+    match /Itinerary/{itineraryId} {
+      allow create: if ownsNewUserId();
+      allow read: if ownsExistingUserId() || resource.data.is_public == true;
+      allow update, delete: if ownsExistingUserId();
+    }
+
+    match /itinerary_stops/{stopId} {
+      allow create, update, delete: if ownsNewUserId() || ownsExistingUserId();
+      allow read: if signedIn();
+    }
+
+    match /collaborators/{collaboratorId} {
+      allow read, create, update, delete: if signedIn();
+    }
+
+    match /comments/{commentId} {
+      allow read: if signedIn();
+      allow create: if ownsNewUserId();
+      allow update, delete: if ownsExistingUserId();
+    }
+
+    match /notifications/{notificationId} {
+      allow create: if signedIn();
+      allow read, update, delete: if ownsExistingUserId();
+    }
+
+    match /itinerary_likes/{likeId} {
+      allow read: if true;
+      allow create, update, delete: if signedIn();
+    }
+
+    match /api_cache/{cacheId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

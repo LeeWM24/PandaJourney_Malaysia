@@ -28,6 +28,7 @@ from services.smart_attraction import (
     build_attraction_results,
     suggest_destinations,
     get_public_place_photo,
+    get_cached_initial_attractions,
     logger as smart_attraction_logger,
 )
 
@@ -152,7 +153,7 @@ def logout():
 
 
 @app.route("/smart-attraction/suggest", methods=["GET"])
-@rate_limit(max_calls=30, window_seconds=60)
+@rate_limit(max_calls=12, window_seconds=60)
 def smart_attraction_suggest():
     """Type-ahead destination suggestions for the smart-attraction filter
     panel's search bar (used when no Google Maps key is configured
@@ -164,6 +165,7 @@ def smart_attraction_suggest():
 
 
 @app.route("/api/public-place-photo", methods=["GET"])
+@rate_limit(max_calls=10, window_seconds=60)
 def public_place_photo():
     place_name = request.args.get("name", "").strip()
 
@@ -180,7 +182,7 @@ def public_place_photo():
 
 @app.route("/", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
-@rate_limit(max_calls=20, window_seconds=60)
+@rate_limit(max_calls=6, window_seconds=60)
 def smart_attraction():
     filters = {
         "destination": "",
@@ -228,107 +230,85 @@ def smart_attraction():
             "score"
         )
 
-        if not filters["destination"]:
+        # Blank destination means "search across Malaysia" so users can filter
+        # purely by interest/rating without being forced to pick one area.
+        search_destination = filters["destination"] or "Malaysia"
+        is_registered_user = request.form.get("is_registered_user") == "1"
+        search_max_pages = 3 if (get_current_user() or is_registered_user) else 1
+
+        try:
+            minimum_rating = float(
+                filters["min_rating"] or 4.0
+            )
+        except ValueError:
             flash(
-                "Please enter a destination to receive recommendations.",
+                "Invalid rating or filter input. "
+                "Please revise your selection.",
                 "error"
             )
-
         else:
             try:
-                minimum_rating = float(
-                    filters["min_rating"] or 4.0
+                attractions, weather_status, source_note, resolved_place = (
+                    build_attraction_results(
+                        destination_text=search_destination,
+                        interest_list=filters["interests"],
+                        minimum_rating=minimum_rating,
+                        use_weather=filters["weather_aware"],
+                        sort_mode=filters["sort"],
+                        destination_lat=(
+                            float(destination_lat) if destination_lat else None
+                        ),
+                        destination_lon=(
+                            float(destination_lon) if destination_lon else None
+                        ),
+                        max_pages=search_max_pages,
+                    )
                 )
-            except ValueError:
+                # Feed the resolved coordinates back into the hidden
+                # destination_lat/destination_lng inputs so that a second search
+                # can reuse the coordinates instead of re-geocoding the text.
+                filters["destination_lat"] = resolved_place["latitude"]
+                filters["destination_lng"] = resolved_place["longitude"]
+
+                if filters["destination"]:
+                    results_label = f"Showing {len(attractions)} attractions"
+                else:
+                    results_label = (
+                        f"Showing {len(attractions)} attractions across Malaysia"
+                    )
+
+            except ValueError as error:
                 flash(
-                    "Invalid rating or filter input. "
-                    "Please revise your selection.",
+                    str(error) or (
+                        "Could not find that destination. "
+                        "Please try a different search term."
+                    ),
                     "error"
                 )
-            else:
-                try:
-                    attractions, weather_status, source_note, resolved_place = (
-                        build_attraction_results(
-                            destination_text=filters["destination"],
-                            interest_list=filters["interests"],
-                            minimum_rating=minimum_rating,
-                            use_weather=filters["weather_aware"],
-                            sort_mode=filters["sort"],
-                            destination_lat=(
-                                float(destination_lat) if destination_lat else None
-                            ),
-                            destination_lon=(
-                                float(destination_lon) if destination_lon else None
-                            ),
-                        )
-                    )
 
-                    # Feed the resolved coordinates back into the hidden
-                    # destination_lat/destination_lng inputs so that a *second*
-                    # search (e.g. just changing minimum rating, without
-                    # re-picking from the autocomplete dropdown) reuses these
-                    # coordinates instead of re-geocoding the destination text —
-                    # which can be an overly-specific address Nominatim can't
-                    # parse as free text (e.g. a full autocomplete-picked address).
-                    filters["destination_lat"] = resolved_place["latitude"]
-                    filters["destination_lng"] = resolved_place["longitude"]
+            except Exception as error:
+                smart_attraction_logger.error(f"[SMART ATTRACTION ERROR] {error}")
 
-                    results_label = (
-                        f"Showing {len(attractions)} attractions"
-                    )
-
-                except ValueError as error:
-                    flash(
-                        str(error) or (
-                            "Could not find that destination. "
-                            "Please try a different search term."
-                        ),
-                        "error"
-                    )
-
-                except Exception as error:
-                    smart_attraction_logger.error(f"[SMART ATTRACTION ERROR] {error}")
-
-                    flash(
-                        "Unable to load attraction recommendations "
-                        "at this time. Please try again.",
-                        "error"
-                    )
-
-                    attractions = []
+                flash(
+                    "Unable to load attraction recommendations "
+                    "at this time. Please try again.",
+                    "error"
+                )
+                attractions = []
 
     else:
         filters["destination"] = "Kuala Lumpur"
         filters["interests"] = ["culture"]
+        attractions, source_note = get_cached_initial_attractions()
+        weather_status = "Showing local starter recommendations. Search to refresh live results."
+        searched = True
 
-        try:
-            attractions, weather_status, source_note, resolved_place = (
-                build_attraction_results(
-                    destination_text=filters["destination"],
-                    interest_list=filters["interests"],
-                    minimum_rating=float(filters["min_rating"]),
-                    use_weather=filters["weather_aware"],
-                    sort_mode=filters["sort"],
-                )
-            )
-
-            filters["destination_lat"] = resolved_place["latitude"]
-            filters["destination_lng"] = resolved_place["longitude"]
-
-            results_label = (
-                f"Showing {len(attractions)} attractions near "
-                f"{filters['destination']}"
-            )
-
-        except Exception as error:
-            smart_attraction_logger.error(f"[SMART ATTRACTION INITIAL LOAD ERROR] {error}")
-
-            attractions = []
-            source_note = (
-                "Could not load live attractions right now. "
-                "Please try searching directly."
-            )
-            results_label = "Set filters and click Search"
+        filters["destination_lat"] = 3.1478
+        filters["destination_lng"] = 101.6953
+        results_label = (
+            f"Showing {len(attractions)} starter attractions near "
+            f"{filters['destination']}"
+        )
 
     return render_template(
         "smart_attraction.html",
@@ -351,6 +331,7 @@ def smart_attraction():
 # =========================
 
 @app.route("/api/location-suggestions")
+@rate_limit(max_calls=15, window_seconds=60)
 def location_suggestions():
     query = request.args.get("q", "").strip()
 
@@ -376,6 +357,7 @@ def location_suggestions():
 
 
 @app.route("/api/edit-stop-suggestions")
+@rate_limit(max_calls=8, window_seconds=60)
 def edit_stop_suggestions():
     query_text = request.args.get("q", "").strip()
     raw_interests = request.args.get("interests", "")
@@ -406,7 +388,8 @@ def edit_stop_suggestions():
                 latitude=float(custom_location["latitude"]),
                 longitude=float(custom_location["longitude"]),
                 interests=interests or ["culture"],
-                minimum_rating=4.0
+                minimum_rating=4.0,
+                max_pages=3 if get_current_user() else 1,
             )
 
             for candidate in candidates[:3]:

@@ -107,7 +107,10 @@ You can copy from .env.example:
 SERPAPI_KEY=your_serpapi_key_here
 NOMINATIM_EMAIL=your_email@example.com
 NOMINATIM_USER_AGENT=PandaJourneyMalaysia/1.0 (your_email@example.com)
+FIREBASE_SERVICE_ACCOUNT_PATH=path/to/your/own/serviceAccountKey.json
 ```
+
+Do not commit or share the real Firebase service account JSON file. Each teammate should keep their own key file outside Git and point `FIREBASE_SERVICE_ACCOUNT_PATH` to their local file path.
 ## 5. Run the Flask Application
 
 Make sure the virtual environment is activated.
