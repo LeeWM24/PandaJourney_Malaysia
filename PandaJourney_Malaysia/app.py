@@ -1,5 +1,8 @@
 import os
 import time
+import hashlib
+import threading
+from datetime import datetime, timezone
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 try:
@@ -29,8 +32,16 @@ from services.smart_attraction import (
     suggest_destinations,
     get_public_place_photo,
     get_cached_initial_attractions,
+    _get_firestore_db,
     logger as smart_attraction_logger,
 )
+
+try:
+    from firebase_admin import auth as firebase_admin_auth
+    from firebase_admin import firestore as firebase_admin_firestore
+except ImportError:
+    firebase_admin_auth = None
+    firebase_admin_firestore = None
 
 
 app = Flask(
@@ -79,6 +90,123 @@ from collections import defaultdict
 from functools import wraps
 
 _rate_limit_hits: dict[str, list[float]] = defaultdict(list)
+
+ACCOUNT_DAILY_SEARCH_LIMIT = 50
+IP_DAILY_SEARCH_LIMIT = 80
+API_USAGE_COLLECTION = "api_usage_limits"
+
+_daily_usage_fallback: dict[str, int] = defaultdict(int)
+_daily_usage_lock = threading.Lock()
+
+
+class DailySearchLimitExceeded(Exception):
+    pass
+
+
+def _verified_firebase_uid() -> str | None:
+    token = request.form.get("_firebase_id_token", "").strip()
+
+    if not token or firebase_admin_auth is None:
+        return None
+
+    try:
+        # Initialises the same Firebase Admin app used by the cache.
+        if _get_firestore_db() is None:
+            return None
+
+        decoded_token = firebase_admin_auth.verify_id_token(token)
+        uid = str(decoded_token.get("uid") or "").strip()
+        return uid or None
+    except Exception as error:
+        smart_attraction_logger.warning(
+            f"[AUTH TOKEN INVALID] {error}"
+        )
+        return None
+
+
+def _daily_usage_keys(uid: str | None, client_ip: str) -> list[tuple[str, int]]:
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    ip_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+
+    keys = [
+        (f"ip:{day}:{ip_hash}", IP_DAILY_SEARCH_LIMIT),
+    ]
+
+    if uid:
+        uid_hash = hashlib.sha256(uid.encode("utf-8")).hexdigest()
+        keys.append(
+            (f"account:{day}:{uid_hash}", ACCOUNT_DAILY_SEARCH_LIMIT)
+        )
+
+    return keys
+
+
+def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
+    usage_keys = _daily_usage_keys(uid, client_ip)
+    db = _get_firestore_db()
+
+    if (
+        db is not None and
+        firebase_admin_firestore is not None
+    ):
+        try:
+            refs = [
+                (
+                    db.collection(API_USAGE_COLLECTION).document(
+                        hashlib.sha256(key.encode("utf-8")).hexdigest()
+                    ),
+                    key,
+                    limit
+                )
+                for key, limit in usage_keys
+            ]
+
+            transaction = db.transaction()
+
+            @firebase_admin_firestore.transactional
+            def update_usage(current_transaction):
+                snapshots = [
+                    ref.get(transaction=current_transaction)
+                    for ref, _, _ in refs
+                ]
+
+                for snapshot, (_, _, limit) in zip(snapshots, refs):
+                    count = int((snapshot.to_dict() or {}).get("count", 0))
+                    if count >= limit:
+                        raise DailySearchLimitExceeded()
+
+                for snapshot, (ref, key, limit) in zip(snapshots, refs):
+                    count = int((snapshot.to_dict() or {}).get("count", 0))
+                    current_transaction.set(
+                        ref,
+                        {
+                            "scope": key.split(":", 1)[0],
+                            "day_utc": key.split(":")[1],
+                            "count": count + 1,
+                            "limit": limit,
+                            "updated_at": firebase_admin_firestore.SERVER_TIMESTAMP,
+                        },
+                        merge=True,
+                    )
+
+            update_usage(transaction)
+            return
+        except DailySearchLimitExceeded:
+            raise
+        except Exception as error:
+            smart_attraction_logger.warning(
+                f"[DAILY QUOTA FIRESTORE FALLBACK] {error}"
+            )
+
+    # Keeps protection active during local development if Admin/Firestore
+    # is temporarily unavailable. Counts reset only when the process restarts.
+    with _daily_usage_lock:
+        for key, limit in usage_keys:
+            if _daily_usage_fallback[key] >= limit:
+                raise DailySearchLimitExceeded()
+
+        for key, _ in usage_keys:
+            _daily_usage_fallback[key] += 1
 
 
 def rate_limit(max_calls: int, window_seconds: int):
@@ -233,8 +361,26 @@ def smart_attraction():
         # Blank destination means "search across Malaysia" so users can filter
         # purely by interest/rating without being forced to pick one area.
         search_destination = filters["destination"] or "Malaysia"
-        is_registered_user = request.form.get("is_registered_user") == "1"
-        search_max_pages = 3 if (get_current_user() or is_registered_user) else 1
+
+        verified_uid = _verified_firebase_uid()
+        client_ip = request.remote_addr or "unknown"
+        quota_available = True
+
+        try:
+            _consume_daily_search_quota(
+                verified_uid,
+                client_ip,
+            )
+        except DailySearchLimitExceeded:
+            quota_available = False
+            flash(
+                "The daily attraction search limit has been reached. "
+                "Please try again tomorrow.",
+                "warning"
+            )
+
+        # Only a server-verified Firebase user receives the larger result set.
+        search_max_pages = 3 if verified_uid else 1
 
         try:
             minimum_rating = float(
@@ -248,6 +394,9 @@ def smart_attraction():
             )
         else:
             try:
+                if not quota_available:
+                    raise DailySearchLimitExceeded()
+
                 attractions, weather_status, source_note, resolved_place = (
                     build_attraction_results(
                         destination_text=search_destination,
@@ -276,6 +425,10 @@ def smart_attraction():
                     results_label = (
                         f"Showing {len(attractions)} attractions across Malaysia"
                     )
+
+            except DailySearchLimitExceeded:
+                attractions = []
+                searched = False
 
             except ValueError as error:
                 flash(
