@@ -4,15 +4,6 @@
 {% block page_title %}My Profile{% endblock %}
 {% block page_subtitle %}Manage your account and profile{% endblock %}
 
-{% block topbar_actions %}
-<button
-  type="button"
-  class="btn btn-danger btn-sm js-open-logout"
-  id="topbar-logout-btn">
-  🚪 Logout
-</button>
-{% endblock %}
-
 {% block extra_head %}
 <style>
 /* =================================
@@ -1295,28 +1286,6 @@
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- =================================
-         Danger Zone
-    ================================= -->
-
-    <div class="danger-zone">
-      <div>
-        <div class="danger-zone-title">
-          Logout from PandaJourney
-        </div>
-
-        <div class="danger-zone-sub">
-          You'll be redirected to the attractions page.
-        </div>
-      </div>
-
-      <button
-        type="button"
-        class="btn btn-danger btn-sm js-open-logout">
-        🚪 Logout
-      </button>
     </div>
 
   </div>
