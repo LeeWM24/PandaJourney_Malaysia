@@ -89,7 +89,32 @@ const avatarFileInput =
 const interestHint =
   document.getElementById("interest-hint");
 
-  const removeFavouriteDialog =
+const favouriteDetailsDialog =
+  document.getElementById(
+    "favourite-details-dialog"
+  );
+
+const favouriteDetailsTitle =
+  document.getElementById(
+    "favourite-details-title"
+  );
+
+const favouriteDetailsMeta =
+  document.getElementById(
+    "favourite-details-meta"
+  );
+
+const favouriteDetailsDescription =
+  document.getElementById(
+    "favourite-details-description"
+  );
+
+const closeFavouriteDetailsBtn =
+  document.getElementById(
+    "close-favourite-details-btn"
+  );
+
+const removeFavouriteDialog =
   document.getElementById(
     "remove-favourite-dialog"
   );
@@ -1367,6 +1392,115 @@ async function loadSavedItineraryCount(
 }
 
 
+// Favourite Attraction Details
+
+function firstAvailable(data, keys) {
+  for (const key of keys) {
+    const value = data?.[key];
+
+    if (
+      value !== undefined &&
+      value !== null &&
+      String(value).trim()
+    ) {
+      return String(value).trim();
+    }
+  }
+
+  return "";
+}
+
+function openFavouriteDetails(data) {
+  if (!favouriteDetailsDialog) {
+    return;
+  }
+
+  const name = firstAvailable(
+    data,
+    ["name", "attraction_name"]
+  ) || "Favourite attraction";
+
+  const location = firstAvailable(
+    data,
+    ["location", "address", "state", "city"]
+  );
+
+  const category = firstAvailable(
+    data,
+    ["category", "type"]
+  );
+
+  const rating = firstAvailable(
+    data,
+    ["rating", "minimum_rating"]
+  );
+
+  const description = firstAvailable(
+    data,
+    ["description", "summary", "details"]
+  );
+
+  if (favouriteDetailsTitle) {
+    favouriteDetailsTitle.textContent = name;
+  }
+
+  if (favouriteDetailsMeta) {
+    favouriteDetailsMeta.innerHTML = "";
+
+    [
+      location ? `📍 ${location}` : "",
+      category ? `🏷️ ${category}` : "",
+      rating ? `⭐ ${rating}` : ""
+    ]
+      .filter(Boolean)
+      .forEach(value => {
+        const pill =
+          document.createElement("span");
+
+        pill.className =
+          "favourite-details-pill";
+
+        pill.textContent = value;
+
+        favouriteDetailsMeta.appendChild(
+          pill
+        );
+      });
+
+    favouriteDetailsMeta.hidden =
+      !favouriteDetailsMeta.children.length;
+  }
+
+  if (favouriteDetailsDescription) {
+    favouriteDetailsDescription.textContent =
+      description ||
+      "This attraction is saved in your favourites. Open the Attractions page to explore its full information.";
+  }
+
+  favouriteDetailsDialog.showModal();
+}
+
+function closeFavouriteDetails() {
+  if (favouriteDetailsDialog?.open) {
+    favouriteDetailsDialog.close();
+  }
+}
+
+closeFavouriteDetailsBtn?.addEventListener(
+  "click",
+  closeFavouriteDetails
+);
+
+favouriteDetailsDialog?.addEventListener(
+  "click",
+  event => {
+    if (event.target === favouriteDetailsDialog) {
+      closeFavouriteDetails();
+    }
+  }
+);
+
+
 // Favourite Attractions
 async function loadFavourites(user) {
   const loadingEl =
@@ -1497,7 +1631,12 @@ async function loadFavourites(user) {
           </div>
 
           <div class="fav-row-name">
-            ${escapeHtml(attractionName)}
+            <button
+              class="fav-name-button"
+              type="button"
+              title="View attraction information">
+              ${escapeHtml(attractionName)}
+            </button>
           </div>
 
           <button
@@ -1506,6 +1645,15 @@ async function loadFavourites(user) {
             Remove
           </button>
         `;
+
+        row
+          .querySelector(".fav-name-button")
+          ?.addEventListener(
+            "click",
+            () => {
+              openFavouriteDetails(data);
+            }
+          );
 
         row
           .querySelector(".fav-remove")
