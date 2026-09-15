@@ -5,7 +5,7 @@ import threading
 import secrets
 import requests
 from functools import wraps
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 try:
@@ -65,6 +65,8 @@ if not configured_secret_key:
     )
 
 app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+    SESSION_REFRESH_EACH_REQUEST=True,
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=(
@@ -272,6 +274,11 @@ def login_required(view_function):
     @wraps(view_function)
     def wrapped(*args, **kwargs):
         if not get_current_user().get("uid"):
+            if request.path.startswith("/api/"):
+                return jsonify({
+                    "error": "Authentication required."
+                }), 401
+
             next_url = request.full_path.rstrip("?")
             return redirect(
                 url_for("login", next=next_url)
@@ -379,6 +386,7 @@ def session_login():
         }), 403
 
     session.clear()
+    session.permanent = True
     session["user"] = {
         "uid": decoded_token["uid"],
         "email": decoded_token.get("email", ""),
@@ -420,6 +428,7 @@ def profile():
 
 
 @app.route("/user-management")
+@login_required
 def user_management():
     return redirect(url_for("profile"))
 
@@ -635,6 +644,7 @@ def smart_attraction():
 # =========================
 
 @app.route("/api/location-suggestions")
+@login_required
 @rate_limit(max_calls=15, window_seconds=60)
 def location_suggestions():
     query = request.args.get("q", "").strip()
@@ -661,6 +671,7 @@ def location_suggestions():
 
 
 @app.route("/api/edit-stop-suggestions")
+@login_required
 @rate_limit(max_calls=8, window_seconds=60)
 def edit_stop_suggestions():
     query_text = request.args.get("q", "").strip()
@@ -735,6 +746,7 @@ def edit_stop_suggestions():
 # =========================
 
 @app.route("/smart-itinerary", methods=["GET", "POST"])
+@login_required
 def smart_itinerary():
     plan = None
     error = None
@@ -771,6 +783,7 @@ def smart_itinerary():
 # =========================
 
 @app.route("/saved-itineraries", methods=["GET"])
+@login_required
 def saved_itineraries():
     return render_template(
         "saved_itineraries.html",
@@ -781,6 +794,7 @@ def saved_itineraries():
 
 @app.route("/saved-itinerary/<itinerary_id>")
 @app.route("/saved-itineraries/<itinerary_id>")
+@login_required
 def saved_itinerary_detail(itinerary_id):
     return render_template(
         "saved_itinerary_detail.html",
@@ -792,6 +806,7 @@ def saved_itinerary_detail(itinerary_id):
 
 @app.route("/saved-itinerary/<itinerary_id>/edit")
 @app.route("/saved-itineraries/<itinerary_id>/edit")
+@login_required
 def saved_itinerary_edit(itinerary_id):
     return render_template(
         "saved_itinerary_edit.html",
@@ -802,6 +817,7 @@ def saved_itinerary_edit(itinerary_id):
 
 
 @app.route("/collaboration", methods=["GET", "POST"])
+@login_required
 def collaboration():
     return render_template(
         "collaboration.html",
@@ -824,6 +840,9 @@ def collaboration():
 @app.route("/public-itineraries", methods=["GET", "POST"])
 def public_itinerary():
     if request.method == "POST":
+        if not get_current_user().get("uid"):
+            return redirect(url_for("login", next=request.path))
+
         action = request.form.get("_action")
 
         if action == "copy":

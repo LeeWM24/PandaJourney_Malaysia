@@ -28,6 +28,13 @@ import {
 const identityName =
   document.querySelector(".identity-name");
 
+const profilePageMessage =
+  document.getElementById("profile-page-message");
+
+function showProfilePageMessage(message, type = "error") {
+  window.PandaFeedback?.show(profilePageMessage, message, type);
+}
+
 const identityEmail =
   document.querySelector(".identity-email");
 
@@ -621,18 +628,12 @@ if (useGoogleAvatarBtn) {
           auth.currentUser;
 
         if (!user) {
-          alert(
-            "You are not logged in."
-          );
-
+          showProfilePageMessage("Your session has expired. Please sign in again.");
           return;
         }
 
         if (!user.photoURL) {
-          alert(
-            "No Google profile photo is available for this account."
-          );
-
+          showProfilePageMessage("No Google profile photo is available for this account.", "warning");
           return;
         }
 
@@ -866,9 +867,7 @@ if (avatarFileInput) {
           file.type
         )
       ) {
-        alert(
-          "Please choose a JPG, PNG, or WebP image."
-        );
+        showProfilePageMessage("Please choose a JPG, PNG, or WebP image.");
 
         avatarFileInput.value =
           "";
@@ -880,9 +879,7 @@ if (avatarFileInput) {
         file.size >
         10 * 1024 * 1024
       ) {
-        alert(
-          "Profile picture must be smaller than 10 MB."
-        );
+        showProfilePageMessage("Profile picture must be smaller than 10 MB.");
 
         avatarFileInput.value =
           "";
@@ -942,9 +939,8 @@ if (avatarFileInput) {
         avatarFileInput.value =
           "";
 
-        alert(
-          error.message ||
-          "Unable to process this image."
+        showProfilePageMessage(
+          error.message || "Unable to process this image."
         );
       } finally {
         isAvatarProcessing =
@@ -1904,8 +1900,11 @@ confirmRemoveFavouriteBtn
           error
         );
 
-        alert(
-          "Unable to remove this favourite. Please try again."
+        showProfilePageMessage(
+          window.PandaFeedback?.friendlyError(
+            error,
+            "Unable to remove this favourite. Please try again."
+          ) || "Unable to remove this favourite. Please try again."
         );
       } finally {
         confirmRemoveFavouriteBtn

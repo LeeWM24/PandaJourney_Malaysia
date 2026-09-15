@@ -32,14 +32,12 @@ class AuthenticationSecurityTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    @patch("app._get_firestore_db", return_value=object())
-    @patch("app.firebase_admin_auth")
+    @patch("app._verify_firebase_id_token")
     def test_verified_firebase_token_creates_session(
         self,
-        firebase_auth,
-        _firestore_db,
+        verify_token,
     ):
-        firebase_auth.verify_id_token.return_value = {
+        verify_token.return_value = {
             "uid": "user-123",
             "email": "user@example.com",
             "name": "Test User",
@@ -58,15 +56,14 @@ class AuthenticationSecurityTests(unittest.TestCase):
                 session["user"]["uid"],
                 "user-123",
             )
+            self.assertTrue(session.permanent)
 
-    @patch("app._get_firestore_db", return_value=object())
-    @patch("app.firebase_admin_auth")
+    @patch("app._verify_firebase_id_token")
     def test_unverified_email_does_not_create_session(
         self,
-        firebase_auth,
-        _firestore_db,
+        verify_token,
     ):
-        firebase_auth.verify_id_token.return_value = {
+        verify_token.return_value = {
             "uid": "user-123",
             "email": "user@example.com",
             "email_verified": False,
@@ -82,16 +79,12 @@ class AuthenticationSecurityTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             self.assertNotIn("user", session)
 
-    @patch("app._get_firestore_db", return_value=object())
-    @patch("app.firebase_admin_auth")
+    @patch("app._verify_firebase_id_token")
     def test_invalid_token_is_rejected(
         self,
-        firebase_auth,
-        _firestore_db,
+        verify_token,
     ):
-        firebase_auth.verify_id_token.side_effect = ValueError(
-            "invalid token"
-        )
+        verify_token.side_effect = app_module.FirebaseTokenRejected()
 
         response = self.client.post(
             "/session-login",
@@ -99,6 +92,27 @@ class AuthenticationSecurityTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+    def test_private_pages_redirect_without_session(self):
+        private_paths = [
+            "/smart-itinerary",
+            "/saved-itineraries",
+            "/saved-itineraries/example-id",
+            "/saved-itineraries/example-id/edit",
+            "/collaboration",
+        ]
+
+        for path in private_paths:
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 302)
+                self.assertIn("/login?next=", response.location)
+
+    def test_private_api_returns_json_unauthorized(self):
+        response = self.client.get("/api/location-suggestions?q=Kuala")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "Authentication required.")
 
 
 if __name__ == "__main__":

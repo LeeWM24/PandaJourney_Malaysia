@@ -192,6 +192,45 @@ button, input, select, textarea { font: inherit; }
 .form-input-icon { position: relative; }
 .form-input-icon .icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 14px; }
 .form-input-icon .form-input { padding-left: 42px; }
+
+.auth-password-wrap { position: relative; }
+.auth-password-wrap .form-input { padding-right: 66px; }
+.auth-password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 13px;
+  padding: 4px;
+  color: var(--primary-dark);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.auth-password-requirements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 10px;
+  margin: 7px 0 0;
+  padding: 0;
+  color: var(--muted-fg);
+  font-size: 11px;
+  line-height: 1.45;
+  list-style: none;
+}
+.auth-password-rule::before { content: "○"; margin-right: 5px; }
+.auth-password-rule.met { color: #166534; }
+.auth-password-rule.met::before { content: "✓"; }
+.auth-password-match {
+  min-height: 16px;
+  margin-top: 7px;
+  color: var(--muted-fg);
+  font-size: 11px;
+}
+.auth-password-match.match { color: #166534; }
+.auth-password-match.mismatch { color: #991b1b; }
 .form-row-2 {display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;

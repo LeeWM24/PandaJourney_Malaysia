@@ -12,7 +12,8 @@ import {
   linkWithCredential,
   EmailAuthProvider,
   sendPasswordResetEmail,
-  signOut
+  signOut,
+  onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 // Firebase Firestore
@@ -42,6 +43,64 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
+
+function getPasswordRules(password) {
+  return {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password)
+  };
+}
+
+function updateRegistrationPasswordGuidance() {
+  const password = document.getElementById("password")?.value || "";
+  const confirmation = document.getElementById("confirmPassword")?.value || "";
+  const rules = getPasswordRules(password);
+
+  document
+    .querySelectorAll("[data-register-password-rule]")
+    .forEach(element => {
+      element.classList.toggle(
+        "met",
+        Boolean(rules[element.dataset.registerPasswordRule])
+      );
+    });
+
+  const matchElement = document.getElementById("register-password-match");
+  if (!matchElement) return;
+
+  if (!confirmation) {
+    matchElement.textContent = "";
+    matchElement.className = "auth-password-match";
+  } else if (password === confirmation) {
+    matchElement.textContent = "✓ Passwords match";
+    matchElement.className = "auth-password-match match";
+  } else {
+    matchElement.textContent = "Passwords do not match";
+    matchElement.className = "auth-password-match mismatch";
+  }
+}
+
+document.querySelectorAll("[data-password-target]").forEach(button => {
+  button.addEventListener("click", () => {
+    const input = document.getElementById(button.dataset.passwordTarget);
+    if (!input) return;
+    const willShow = input.type === "password";
+    input.type = willShow ? "text" : "password";
+    button.textContent = willShow ? "Hide" : "Show";
+    button.setAttribute("aria-label", `${willShow ? "Hide" : "Show"} password`);
+  });
+});
+
+document.getElementById("password")?.addEventListener(
+  "input",
+  updateRegistrationPasswordGuidance
+);
+document.getElementById("confirmPassword")?.addEventListener(
+  "input",
+  updateRegistrationPasswordGuidance
+);
 
 async function createServerSession(user) {
   const idToken = await user.getIdToken(true);
@@ -409,14 +468,23 @@ if (loginForm && document.getElementById("email")) {
         const user = result.user;
 
         if (!user.emailVerified) {
+          let verificationResent = false;
+          try {
+            await sendEmailVerification(user);
+            verificationResent = true;
+          } catch (verificationError) {
+            console.error("Unable to resend verification email:", verificationError);
+          }
 
-            await signOut(auth);
+          await signOut(auth);
 
-            showLoginError(
-            "Please verify your email before logging in."
+          showLoginError(
+            verificationResent
+              ? "Please verify your email before logging in. A new verification email has been sent."
+              : "Please verify your email before logging in. We could not resend the email right now; please try again later."
           );
 
-            return;
+          return;
         }
 
         console.log("Email Login successful!");
@@ -567,10 +635,7 @@ if (registerForm) {
 
     // M3: Password is shorter than 8 characters and Not Strong
     const strongPassword =
-    password.length >= 8 &&
-    /[A-Z]/.test(password) &&
-    /[a-z]/.test(password) &&
-    /[^A-Za-z0-9]/.test(password);
+      Object.values(getPasswordRules(password)).every(Boolean);
 
   if (!strongPassword) {
     errorBox.textContent =
@@ -610,31 +675,34 @@ if (registerForm) {
       console.log("Account created!");
       console.log("UID:", user.uid);
 
-      await updateProfile(user, {
-        displayName: name
-      });
+      const setupResults = await Promise.allSettled([
+        updateProfile(user, { displayName: name }),
+        sendEmailVerification(user),
+        setDoc(
+          doc(db, "users", user.uid),
+          {
+            uid: user.uid,
+            email: user.email,
+            displayName: name,
+            profilePictureUrl: null,
+            authProvider: "password",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        )
+      ]);
 
-      await sendEmailVerification(user);
-
-      await setDoc(
-        doc(db, "users", user.uid),
-        {
-          uid: user.uid,
-          email: user.email,
-          displayName: name,
-          profilePictureUrl: null,
-          authProvider: "password",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        },
-        { merge: true }
-      );
+      const verificationSent = setupResults[1].status === "fulfilled";
+      const profileSaved = setupResults[2].status === "fulfilled";
 
       await signOut(auth);
 
       sessionStorage.setItem(
         "pandajourney-auth-message",
-        "Account created. Check your email and verify it before signing in."
+        verificationSent
+          ? `Account created. Check your email and verify it before signing in.${profileSaved ? "" : " Your profile will be completed when you sign in."}`
+          : "Account created, but the verification email could not be sent. Sign in again to resend it."
       );
       window.location.href = "/login";
 
@@ -771,3 +839,31 @@ function getAuthenticationErrorMessage(error) {
   }
 }
 
+
+let sessionRestorePending = false;
+
+if (googleLogin) {
+  onAuthStateChanged(auth, async user => {
+    if (
+      !user ||
+      !user.emailVerified ||
+      googleLoginPending ||
+      emailLoginPending ||
+      sessionRestorePending
+    ) {
+      return;
+    }
+
+    sessionRestorePending = true;
+    clearLoginError();
+
+    try {
+      await createServerSession(user);
+      localStorage.setItem("pandajourney-authenticated", "true");
+      window.location.replace(getSafeLoginDestination());
+    } catch (error) {
+      showLoginError(getAuthenticationErrorMessage(error));
+      sessionRestorePending = false;
+    }
+  });
+}
