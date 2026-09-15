@@ -39,6 +39,18 @@ const errorElement = document.getElementById("edit-error");
 const contentElement = document.getElementById("edit-content");
 const titleInput = document.getElementById("itinerary-title-input");
 const dateInput = document.getElementById("itinerary-date-input");
+
+if (dateInput) {
+  const now = new Date();
+  const localToday = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
+
+  dateInput.min = localToday;
+}
+
 const daysInput = document.getElementById("itinerary-days-input");
 const dateRangeText = document.getElementById("itinerary-date-range");
 const dayStartGrid = document.getElementById("day-start-grid");
@@ -2179,7 +2191,7 @@ function renderStops() {
             </div>
             <div class="stop-field">
               <label>Visit minutes</label>
-              <input class="stop-input js-stop-duration" type="number" min="0" step="5" value="${escapeHtml(stop.visit_duration_minutes || 0)}" ${canEdit ? "" : "disabled"} aria-label="Visit duration minutes">
+              <input class="stop-input js-stop-duration" type="number" min="5" max="720" step="5" value="${escapeHtml(stop.visit_duration_minutes || 0)}" ${canEdit ? "" : "disabled"} aria-label="Visit duration minutes">
             </div>
           </div>
           <div class="stop-row-actions">
@@ -2243,7 +2255,7 @@ function renderStops() {
       const placeChanges = getSelectedStopPlaceChanges(stop.document_id);
 
       const changes = {
-        stop_name: nameInput?.value.trim() || "Unnamed Stop",
+        stop_name: nameInput?.value.trim() || "",
         day_number: normaliseDayNumber(dayInput?.value || 1),
         visit_duration_minutes: Number(durationInput?.value || 0),
         ...placeChanges
@@ -2257,6 +2269,10 @@ function renderStops() {
           ? createStopFromDraft(editableIndex + 1, changes, saveButton?.dataset.confirmFar === "1", warningElement, saveButton)
           : saveStopChanges(stop.document_id, editableIndex + 1, changes, saveButton?.dataset.confirmFar === "1", warningElement, saveButton)
       ).catch(console.error);
+    });
+
+    row.querySelector(".js-stop-duration")?.addEventListener("input", function () {
+      clearStopValidationError(row.querySelector(".js-stop-warning"));
     });
 
     row.querySelector(".js-delete-stop")?.addEventListener("click", function () {
@@ -2436,8 +2452,45 @@ async function saveRouteDetails() {
   const interest = interests[0] || "";
   const tripDays = getTripDays();
   const travelDate = dateInput?.value || itinerary.travel_date || "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const selectedDate = travelDate
+    ? new Date(`${travelDate}T00:00:00`)
+    : null;
+
+  if (!travelDate) {
+    setRouteSaveMessage("Travel date is required.", true);
+    return;
+  }
+
+  if (!selectedDate || Number.isNaN(selectedDate.getTime())) {
+    setRouteSaveMessage("Please enter a valid travel date.", true);
+    return;
+  }
+
+  if (selectedDate < today) {
+    setRouteSaveMessage("Travel date cannot be in the past.", true);
+    return;
+  }
+
   const endTravelDate = addDaysToDate(travelDate, tripDays - 1);
   const dayStartTimes = getDayStartTimesFromInputs(tripDays);
+  const isToday = selectedDate.getTime() === today.getTime();
+  if (isToday) {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const day1StartMinutes = parseClockMinutes(dayStartTimes["1"]);
+
+    if (day1StartMinutes < currentMinutes) {
+      setRouteSaveMessage(
+        "Day 1 start time cannot be earlier than the current time.",
+        true
+      );
+      return;
+    }
+  }
+
   const title = titleInput?.value.trim() || "Untitled Trip";
 
   if (!startPlace.name || !endPlace.name) {
@@ -2570,6 +2623,21 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     );
     return;
   }
+
+  const visitMinutes = Number(changes.visit_duration_minutes);
+
+  if (
+    !Number.isFinite(visitMinutes) ||
+    visitMinutes < 5 ||
+    visitMinutes > 720
+  ) {
+    showStopValidationError(
+      warningElement,
+      "Visit duration must be between 5 and 720 minutes."
+    );
+    return;
+  }
+
   if (!hasValidStopCoordinates({ ...existingStop, ...changes })) {
     showStopValidationError(
       warningElement,
@@ -2578,7 +2646,7 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     return;
   }
 
-  const nextMinutes = Number(changes.visit_duration_minutes || 0);
+  const nextMinutes = visitMinutes;
   const nextStops = stopDocs.map(stop => {
     return stop.document_id === stopDocumentId
       ? { ...stop, ...changes, visit_duration_minutes: nextMinutes }
@@ -2764,6 +2832,7 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     renderStops();
     return;
   }
+
   const cleanName = String(changes.stop_name || "").trim();
   if (!cleanName || cleanName.toLowerCase() === "new stop") {
     openConfirmModal(
@@ -2773,6 +2842,20 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     );
     return;
   }
+
+  const visitMinutes = Number(changes.visit_duration_minutes);
+  if (
+    !Number.isFinite(visitMinutes) ||
+    visitMinutes < 5 ||
+    visitMinutes > 720
+  ) {
+    showStopValidationError(
+      warningElement,
+      "Visit duration must be between 5 and 720 minutes."
+    );
+    return;
+  }
+
   if (!hasValidStopCoordinates(changes)) {
     showStopValidationError(
       warningElement,
@@ -2794,7 +2877,7 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     rating: normaliseRatingForSave(changes.rating),
     latitude: Number(changes.latitude),
     longitude: Number(changes.longitude),
-    visit_duration_minutes: Number(changes.visit_duration_minutes || 0),
+    visit_duration_minutes: visitMinutes,
     travel_minutes_from_previous: 0
   };
   setRouteSaveMessage(describeRouteCalculation(stopDocs.length + 1));
