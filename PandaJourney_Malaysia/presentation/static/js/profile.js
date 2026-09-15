@@ -34,6 +34,28 @@ const identityEmail =
 const editName =
   document.getElementById("edit-name");
 
+const displayNameCount =
+  document.getElementById("display-name-count");
+
+const DISPLAY_NAME_MAX_LENGTH = 100;
+
+function updateDisplayNameCount() {
+  if (!displayNameCount) {
+    return;
+  }
+
+  const characterCount =
+    Array.from(editName?.value || "").length;
+
+  displayNameCount.textContent =
+    `${characterCount}/${DISPLAY_NAME_MAX_LENGTH}`;
+}
+
+editName?.addEventListener(
+  "input",
+  updateDisplayNameCount
+);
+
 const editEmail =
   document.getElementById("edit-email");
 
@@ -284,6 +306,7 @@ onAuthStateChanged(auth, async user => {
 
   if (editName) {
     editName.value = authName;
+    updateDisplayNameCount();
   }
 
   if (editEmail) {
@@ -318,6 +341,7 @@ onAuthStateChanged(auth, async user => {
         if (editName) {
           editName.value =
             data.displayName;
+          updateDisplayNameCount();
         }
       }
 
@@ -433,6 +457,7 @@ onAuthStateChanged(auth, async user => {
 
 window.toggleEdit = function () {
   isEditing = true;
+  updateDisplayNameCount();
 
   const identityView =
     document.getElementById(
@@ -964,6 +989,7 @@ window.cancelEdit = function () {
   if (editName) {
     editName.value =
       originalDisplayName;
+    updateDisplayNameCount();
   }
 
   restoreOriginalAvatar();
