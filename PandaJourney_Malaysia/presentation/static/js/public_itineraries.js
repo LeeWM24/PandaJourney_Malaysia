@@ -176,12 +176,24 @@ async function savePublicItineraryCopy(item) {
   const savedRef = doc(collection(db, "Itinerary"));
   const newItineraryId = savedRef.id;
 
+  const {
+    id: sourceDocumentId,
+    stopList = [],
+    author,
+    isLiked,
+    isSaved,
+    duration,
+    stops,
+    ...sourceData
+  } = item;
+
   // Create New Saved Itinerary Owned by Current User
   await setDoc(savedRef, {
-    ...item,
+    ...sourceData,
     itinerary_id: newItineraryId,
     user_id: currentUser.uid,
     status: "Draft",
+    is_public: false,
     views: 0,
     likes: 0,
     saves: 0,
@@ -194,9 +206,17 @@ async function savePublicItineraryCopy(item) {
   // Copy Each Itinerary Stop into New Stop Document Belonging to Newly Saved Itinerary
   for (const stop of item.stopList) {
     const stopRef = doc(collection(db, "itinerary_stops"));
+    const {
+      id,
+      document_id,
+      time,
+      place,
+      note,
+      ...stopData
+    } = stop;
 
     await setDoc(stopRef, {
-      ...stop,
+      ...stopData,
       itinerary_id: newItineraryId,
       stop_id: stopRef.id,
       created_at: serverTimestamp(),

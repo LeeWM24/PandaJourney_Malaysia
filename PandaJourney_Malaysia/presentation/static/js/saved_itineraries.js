@@ -1386,6 +1386,7 @@ async function togglePublishStatus(documentId, currentStatus) {
   const nextStatus = currentStatus === "Published" ? "Draft" : "Published";
   await updateDoc(doc(db, ITINERARY_COLLECTION, documentId), {
     status: nextStatus,
+    is_public: nextStatus === "Published",
     updated_at: serverTimestamp(),
     published_at: nextStatus === "Published" ? serverTimestamp() : null
   });
