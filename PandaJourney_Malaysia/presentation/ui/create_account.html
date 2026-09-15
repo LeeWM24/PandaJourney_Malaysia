@@ -102,6 +102,7 @@
               name="name"
               type="text"
               placeholder="Ahmad Faris"
+              autocomplete="name"
               required
             />
 
@@ -127,6 +128,7 @@
               name="email"
               type="email"
               placeholder="you@example.com"
+              autocomplete="email"
               required
             />
 
@@ -151,7 +153,8 @@
               id="password"
               name="password"
               type="password"
-              placeholder="Minimum 8 characters"
+              placeholder="8+ chars, upper, lower & special"
+              autocomplete="new-password"
               required
             />
 
@@ -177,6 +180,7 @@
               name="confirmPassword"
               type="password"
               placeholder="Re-enter your password"
+              autocomplete="new-password"
               required
             />
 
@@ -207,6 +211,8 @@
         <!-- Error -->
         <div
           id="registerError"
+          role="alert"
+          aria-live="assertive"
           style="color:#c0392b; margin-bottom:10px; display:none;"
         ></div>
 
