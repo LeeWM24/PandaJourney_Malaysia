@@ -219,11 +219,25 @@
   cursor: not-allowed;
 }
 
-.profile-field-hint {
+.profile-field-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 7px;
+}
+
+.profile-field-hint {
   color: #87a397;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.profile-character-count {
+  flex-shrink: 0;
+  color: #78968a;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 #profile-identity-card {
@@ -455,6 +469,72 @@
 /* =================================
    Favourites
 ================================= */
+
+.fav-name-button {
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.fav-name-button:hover,
+.fav-name-button:focus-visible {
+  color: #0f8a67;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.fav-name-button:focus-visible {
+  outline: 3px solid rgba(15, 138, 103, 0.18);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.favourite-details-dialog {
+  width: min(520px, calc(100% - 40px));
+}
+
+.favourite-details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.favourite-details-pill {
+  padding: 6px 10px;
+  color: #17654f;
+  background: #eaf8f3;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.favourite-details-description {
+  color: var(--fg-2);
+  line-height: 1.65;
+}
+
+.favourite-details-dialog .logout-dialog-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.favourite-details-dialog .logout-dialog-actions .btn {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+}
 
 .fav-row[hidden] {
   display: none !important;
@@ -793,15 +873,6 @@
             <div class="profile-name identity-name"></div>
             <div class="profile-email identity-email"></div>
 
-            <div class="flex flex-wrap gap-2 mt-2">
-              <span class="provider-badge">
-                Account
-              </span>
-
-              <span class="badge badge-success">
-                ✓ Verified
-              </span>
-            </div>
           </div>
 
           <!-- Identity Edit -->
@@ -837,13 +908,25 @@
                   <input
                     type="text"
                     id="edit-name"
-                    maxlength="50"
+                    maxlength="100"
                     placeholder="Enter your display name"
-                    autocomplete="name">
+                    autocomplete="name"
+                    aria-describedby="display-name-hint display-name-count">
                 </div>
 
-                <div class="profile-field-hint">
-                  This name will appear on your itineraries and profile.
+                <div class="profile-field-meta">
+                  <div
+                    class="profile-field-hint"
+                    id="display-name-hint">
+                    This name will appear on your itineraries and profile.
+                  </div>
+
+                  <div
+                    class="profile-character-count"
+                    id="display-name-count"
+                    aria-live="polite">
+                    0/100
+                  </div>
                 </div>
               </div>
 
@@ -955,13 +1038,8 @@
         ('culture', '🏛️ Culture'),
         ('museum', '🖼️ Museum'),
         ('nature', '🌿 Nature'),
-        ('food', '🍜 Food'),
         ('shopping', '🛍️ Shopping'),
-        ('beach', '🏖️ Beach'),
-        ('adventure', '🥾 Adventure'),
-        ('photography', '📸 Photography'),
-        ('nightlife', '🌙 Nightlife'),
-        ('family', '👨‍👩‍👧 Family')
+        ('food', '🍜 Food')
       ] %}
 
       <div
@@ -1240,6 +1318,51 @@
 
   </div>
 </div>
+
+<!-- =================================
+     Favourite Details Dialog
+================================= -->
+
+<dialog
+  class="logout-dialog favourite-details-dialog"
+  id="favourite-details-dialog"
+  aria-labelledby="favourite-details-title">
+
+  <div class="logout-dialog-icon">
+    ⭐
+  </div>
+
+  <div class="logout-dialog-content">
+    <h3 id="favourite-details-title">
+      Favourite attraction
+    </h3>
+
+    <div
+      class="favourite-details-meta"
+      id="favourite-details-meta">
+    </div>
+
+    <p
+      class="favourite-details-description"
+      id="favourite-details-description">
+    </p>
+  </div>
+
+  <div class="logout-dialog-actions">
+    <button
+      type="button"
+      class="btn btn-ghost"
+      id="close-favourite-details-btn">
+      Close
+    </button>
+
+    <a
+      class="btn btn-primary"
+      href="{{ url_for('smart_attraction') }}">
+      Browse Attractions
+    </a>
+  </div>
+</dialog>
 
 <!-- =================================
      Remove Favourite Dialog

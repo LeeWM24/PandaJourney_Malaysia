@@ -122,13 +122,36 @@ document.addEventListener('DOMContentLoaded', () => {
 // stays up until the new page finishes loading — no need to hide it.
 function bindSearchLoadingOverlay() {
   const form = document.getElementById('filter-form');
+  const tokenInput = document.getElementById('firebase-id-token');
   if (!form) return;
 
-  form.addEventListener('submit', () => {
+  let submissionPending = false;
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+
+    if (submissionPending) return;
+    submissionPending = true;
+
     showLoadingOverlay(
       'Searching attractions...',
       'Fetching live places and weather. This can take a few seconds.'
     );
+
+    try {
+      if (tokenInput) {
+        tokenInput.value = currentUser
+          ? await currentUser.getIdToken()
+          : '';
+      }
+
+      form.submit();
+    } catch (error) {
+      submissionPending = false;
+      hideLoadingOverlay();
+      console.error('Unable to prepare attraction search:', error);
+      showToast('Unable to verify your session. Please try again.', 'error');
+    }
   });
 }
 
@@ -285,13 +308,11 @@ onAuthStateChanged(auth, (user) => {
   currentUser = user;
 
   if (user) {
-    document.getElementById('is_registered_user')?.setAttribute('value', '1');
     restoreFavouritesFromLocalStorage(user);
     renderCards();
     updateFavUI();
     loadFavourites(user);
   } else {
-    document.getElementById('is_registered_user')?.setAttribute('value', '0');
     favourites.clear();
     favouriteDocIds.clear();
     renderCards();

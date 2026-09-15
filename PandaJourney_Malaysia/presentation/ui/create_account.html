@@ -7,6 +7,67 @@
 
   <link rel="stylesheet"
         href="{{ url_for('static', filename='css/app.css') }}" />
+
+  <style>
+    .policy-link {
+      padding: 0;
+      color: #0f7a5a;
+      background: none;
+      border: 0;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .policy-dialog {
+      width: min(560px, calc(100% - 32px));
+      max-height: min(680px, calc(100vh - 48px));
+      padding: 0;
+      color: #18352b;
+      background: #ffffff;
+      border: 0;
+      border-radius: 20px;
+      box-shadow: 0 24px 70px rgba(12, 46, 36, 0.24);
+    }
+
+    .policy-dialog::backdrop {
+      background: rgba(15, 35, 29, 0.55);
+      backdrop-filter: blur(4px);
+    }
+
+    .policy-dialog-content {
+      padding: 26px;
+      overflow-y: auto;
+    }
+
+    .policy-dialog h2 {
+      margin: 0 0 8px;
+      font-size: 22px;
+    }
+
+    .policy-dialog h3 {
+      margin: 20px 0 6px;
+      font-size: 15px;
+    }
+
+    .policy-dialog p,
+    .policy-dialog li {
+      color: #526c62;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .policy-dialog ul {
+      padding-left: 20px;
+    }
+
+    .policy-dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+  </style>
 </head>
 
 <body>
@@ -102,6 +163,7 @@
               name="name"
               type="text"
               placeholder="Ahmad Faris"
+              autocomplete="name"
               required
             />
 
@@ -127,6 +189,7 @@
               name="email"
               type="email"
               placeholder="you@example.com"
+              autocomplete="email"
               required
             />
 
@@ -151,7 +214,8 @@
               id="password"
               name="password"
               type="password"
-              placeholder="Minimum 8 characters"
+              placeholder="8+ chars, upper, lower & special"
+              autocomplete="new-password"
               required
             />
 
@@ -177,6 +241,7 @@
               name="confirmPassword"
               type="password"
               placeholder="Re-enter your password"
+              autocomplete="new-password"
               required
             />
 
@@ -196,9 +261,21 @@
 
           <span>
             I agree to the
-            <a href="#">Terms & Conditions</a>
+            <button
+              type="button"
+              class="policy-link"
+              data-open-policy="termsDialog"
+            >
+              Terms & Conditions
+            </button>
             and
-            <a href="#">Privacy Policy</a>.
+            <button
+              type="button"
+              class="policy-link"
+              data-open-policy="privacyDialog"
+            >
+              Privacy Policy
+            </button>.
           </span>
 
         </label>
@@ -207,6 +284,8 @@
         <!-- Error -->
         <div
           id="registerError"
+          role="alert"
+          aria-live="assertive"
           style="color:#c0392b; margin-bottom:10px; display:none;"
         ></div>
 
@@ -251,10 +330,113 @@
 
 </main>
 
+<dialog class="policy-dialog" id="termsDialog">
+  <div class="policy-dialog-content">
+    <h2>Terms & Conditions</h2>
+    <p>
+      By using PandaJourney Malaysia, you agree to use the service
+      responsibly and only for lawful travel-planning purposes.
+    </p>
+
+    <h3>Account responsibility</h3>
+    <p>
+      You are responsible for keeping your account secure and for the
+      information, itineraries and comments created through your account.
+    </p>
+
+    <h3>Travel information</h3>
+    <p>
+      Recommendations, opening hours, prices and weather information may
+      change. Please verify important details with the relevant provider
+      before travelling or making a purchase.
+    </p>
+
+    <h3>Acceptable use</h3>
+    <p>
+      Do not misuse the service, attempt unauthorised access, upload harmful
+      material or interfere with other users' collaborative itineraries.
+    </p>
+
+    <div class="policy-dialog-actions">
+      <button type="button" class="login-submit" data-close-policy>
+        Close
+      </button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="policy-dialog" id="privacyDialog">
+  <div class="policy-dialog-content">
+    <h2>Privacy Policy</h2>
+    <p>
+      PandaJourney Malaysia uses account and travel-preference information
+      to provide authentication, profiles, favourites, itineraries and
+      collaboration features.
+    </p>
+
+    <h3>Information used</h3>
+    <ul>
+      <li>Account details such as name, email address and profile picture.</li>
+      <li>Travel interests, favourites and saved itineraries.</li>
+      <li>Content you submit through collaboration features.</li>
+    </ul>
+
+    <h3>Authentication and storage</h3>
+    <p>
+      Authentication and application data are handled through Firebase.
+      PandaJourney does not receive or store your Google password.
+    </p>
+
+    <h3>External services</h3>
+    <p>
+      Search, maps, weather and attraction features may send relevant query
+      information to third-party services needed to provide those results.
+    </p>
+
+    <div class="policy-dialog-actions">
+      <button type="button" class="login-submit" data-close-policy>
+        Close
+      </button>
+    </div>
+  </div>
+</dialog>
+
 <!-- Firebase -->
 <script
   type="module"
   src="{{ url_for('static', filename='js/firebase-auth.js') }}">
+</script>
+
+<script>
+  document
+    .querySelectorAll("[data-open-policy]")
+    .forEach(button => {
+      button.addEventListener("click", () => {
+        const dialog = document.getElementById(
+          button.dataset.openPolicy
+        );
+
+        dialog?.showModal();
+      });
+    });
+
+  document
+    .querySelectorAll("[data-close-policy]")
+    .forEach(button => {
+      button.addEventListener("click", () => {
+        button.closest("dialog")?.close();
+      });
+    });
+
+  document
+    .querySelectorAll(".policy-dialog")
+    .forEach(dialog => {
+      dialog.addEventListener("click", event => {
+        if (event.target === dialog) {
+          dialog.close();
+        }
+      });
+    });
 </script>
 
 </body>
