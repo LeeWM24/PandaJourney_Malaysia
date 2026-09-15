@@ -47,6 +47,22 @@ service cloud.firestore {
       return itineraryId + "_" + request.auth.uid;
     }
 
+    function pendingInviteDocumentId(itineraryId) {
+      return itineraryId + "_invite_" + request.auth.token.email;
+    }
+
+    function hasPendingInvitation(itineraryId) {
+      let invitationId = pendingInviteDocumentId(itineraryId);
+      let invitationPath =
+        /databases/$(database)/documents/collaborators/$(invitationId);
+
+      return signedIn() &&
+        request.auth.token.email is string &&
+        exists(invitationPath) &&
+        get(invitationPath).data.email == request.auth.token.email &&
+        get(invitationPath).data.status == "pending_registration";
+    }
+
     function isAcceptedEditor(itineraryId) {
       let collaboratorId = collaboratorDocumentId(itineraryId);
       let collaboratorPath =
@@ -193,11 +209,29 @@ service cloud.firestore {
       // Existing screens query the collaborator list by itinerary.
       allow read: if signedIn();
 
-      // Only the itinerary owner may create invitations.
+      // Owners create invitations. A newly registered invitee may
+      // create only their canonical accepted record when a matching
+      // pending-registration invitation already exists.
       allow create: if signedIn() &&
-        request.resource.data.owner_id == request.auth.uid &&
-        isItineraryOwner(
-          request.resource.data.itinerary_document_id
+        (
+          (
+            request.resource.data.owner_id == request.auth.uid &&
+            isItineraryOwner(
+              request.resource.data.itinerary_document_id
+            )
+          ) ||
+          (
+            request.resource.data.user_id == request.auth.uid &&
+            request.resource.data.email == request.auth.token.email &&
+            request.resource.data.status == "accepted" &&
+            request.resource.data.role in ["viewer", "editor"] &&
+            collaboratorId == collaboratorDocumentId(
+              request.resource.data.itinerary_document_id
+            ) &&
+            hasPendingInvitation(
+              request.resource.data.itinerary_document_id
+            )
+          )
         );
 
       allow update: if signedIn() &&
