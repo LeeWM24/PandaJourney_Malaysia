@@ -146,9 +146,28 @@ if (googleSignup) {
       return;
     }
 
+    const agreeCheckbox = document.getElementById("agree");
+    const registerError = document.getElementById("registerError");
+
+    if (!agreeCheckbox?.checked) {
+      if (registerError) {
+        registerError.textContent =
+          "Please agree to the Terms & Conditions and Privacy Policy.";
+        registerError.style.display = "block";
+      }
+
+      agreeCheckbox?.focus();
+      return;
+    }
+
     googleSignupPending = true;
     googleSignup.disabled = true;
     googleSignup.setAttribute("aria-busy", "true");
+
+    if (registerError) {
+      registerError.textContent = "";
+      registerError.style.display = "none";
+    }
 
     try {
       const result = await signInWithPopup(auth, provider);
@@ -159,16 +178,24 @@ if (googleSignup) {
       console.log("Email:", user.email);
       console.log("UID:", user.uid);
 
+      const userRef = doc(db, "users", user.uid);
+      const userSnapshot = await getDoc(userRef);
+      const googleProfile = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName || "",
+        profilePictureUrl: user.photoURL || null,
+        authProvider: "google",
+        updatedAt: serverTimestamp()
+      };
+
+      if (!userSnapshot.exists()) {
+        googleProfile.createdAt = serverTimestamp();
+      }
+
       await setDoc(
-        doc(db, "users", user.uid),
-        {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || "",
-          profilePictureUrl: user.photoURL || null,
-          authProvider: "google",
-          updatedAt: serverTimestamp()
-        },
+        userRef,
+        googleProfile,
         { merge: true }
       );
 
@@ -181,7 +208,18 @@ if (googleSignup) {
 
     } catch (error) {
       console.error("Google Sign Up failed:", error);
-      alert(error.message);
+
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error("Failed to clear Google sign-up session:", signOutError);
+      }
+
+      if (registerError) {
+        registerError.textContent =
+          getAuthenticationErrorMessage(error);
+        registerError.style.display = "block";
+      }
     } finally {
       googleSignupPending = false;
       googleSignup.disabled = false;
@@ -410,6 +448,9 @@ if (registerForm) {
     const confirmPassword =
       document.getElementById("confirmPassword").value;
 
+    const agree =
+      document.getElementById("agree");
+
     const errorBox =
       document.getElementById("registerError");
 
@@ -426,6 +467,15 @@ if (registerForm) {
         "Please complete all required fields.";
 
       errorBox.style.display = "block";
+      return;
+    }
+
+    if (!agree?.checked) {
+      errorBox.textContent =
+        "Please agree to the Terms & Conditions and Privacy Policy.";
+
+      errorBox.style.display = "block";
+      agree?.focus();
       return;
     }
 
@@ -466,6 +516,7 @@ if (registerForm) {
     }
 
     registrationPending = true;
+    let createdEmailUser = null;
 
     try {
       button.disabled = true;
@@ -480,6 +531,7 @@ if (registerForm) {
         );
 
       const user = result.user;
+      createdEmailUser = user;
 
       console.log("Account created!");
       console.log("UID:", user.uid);
@@ -504,6 +556,8 @@ if (registerForm) {
         { merge: true }
       );
 
+      await signOut(auth);
+
       alert(
         "Account created successfully!\n\n" +
         "Please check your email and click the " +
@@ -517,6 +571,17 @@ if (registerForm) {
         "Create Account failed:",
         error
       );
+
+      if (createdEmailUser) {
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear incomplete registration session:",
+            signOutError
+          );
+        }
+      }
 
       // M5: Email is already registered
       if (
