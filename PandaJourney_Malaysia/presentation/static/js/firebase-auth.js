@@ -43,6 +43,39 @@ const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
 
+async function createServerSession(user) {
+  const idToken = await user.getIdToken(true);
+
+  const response = await fetch(
+    "/session-login",
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        idToken
+      })
+    }
+  );
+
+  const payload = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(
+      payload.error ||
+      "Unable to establish a secure session."
+    );
+
+    error.code = "auth/server-session-failed";
+    throw error;
+  }
+}
+
+
 function getSafeLoginDestination() {
   const requested =
     new URLSearchParams(
@@ -115,6 +148,8 @@ if (googleLogin) {
 
       console.log("User saved to Firestore!");
 
+      await createServerSession(user);
+
       localStorage.setItem(
       "pandajourney-authenticated",
       "true"
@@ -124,6 +159,12 @@ if (googleLogin) {
 
     } catch (error) {
       console.error("Google Login failed:", error);
+
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error("Failed to clear login session:", signOutError);
+      }
 
       showLoginError(
         getAuthenticationErrorMessage(error)
@@ -200,6 +241,8 @@ if (googleSignup) {
       );
 
       console.log("User saved to Firestore!");
+      await createServerSession(user);
+
       localStorage.setItem(
         "pandajourney-authenticated",
         "true"
@@ -399,6 +442,8 @@ if (loginForm && document.getElementById("email")) {
           { merge: true }
         );
 
+        await createServerSession(user);
+
         localStorage.setItem(
           "pandajourney-authenticated",
           "true"
@@ -407,6 +452,12 @@ if (loginForm && document.getElementById("email")) {
 
       } catch (error) {
         console.error("Email Login failed:", error);
+
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          console.error("Failed to clear login session:", signOutError);
+        }
 
         showLoginError(
           getAuthenticationErrorMessage(error)
@@ -672,6 +723,10 @@ function getAuthenticationErrorMessage(error) {
     case "auth/user-not-found":
     case "auth/wrong-password":
       return "Invalid email address or password.";
+
+    case "auth/server-session-failed":
+      return error.message ||
+        "Unable to establish a secure session. Please try again.";
 
     // M3: Google sign-in was cancelled
     case "auth/popup-closed-by-user":
