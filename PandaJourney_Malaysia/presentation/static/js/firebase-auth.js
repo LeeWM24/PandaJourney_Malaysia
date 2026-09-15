@@ -66,9 +66,17 @@ provider.setCustomParameters({
 
 // Google Login
 const googleLogin = document.getElementById("googleLogin");
+let googleLoginPending = false;
 
 if (googleLogin) {
   googleLogin.addEventListener("click", async () => {
+    if (googleLoginPending) {
+      return;
+    }
+
+    googleLoginPending = true;
+    googleLogin.disabled = true;
+    googleLogin.setAttribute("aria-busy", "true");
     clearLoginError();
     try {
       const result = await signInWithPopup(auth, provider);
@@ -120,15 +128,28 @@ if (googleLogin) {
       showLoginError(
         getAuthenticationErrorMessage(error)
       );
+    } finally {
+      googleLoginPending = false;
+      googleLogin.disabled = false;
+      googleLogin.removeAttribute("aria-busy");
     }
   });
 }
 
 // Google Sign Up
 const googleSignup = document.getElementById("googleSignup");
+let googleSignupPending = false;
 
 if (googleSignup) {
   googleSignup.addEventListener("click", async () => {
+    if (googleSignupPending) {
+      return;
+    }
+
+    googleSignupPending = true;
+    googleSignup.disabled = true;
+    googleSignup.setAttribute("aria-busy", "true");
+
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -161,6 +182,10 @@ if (googleSignup) {
     } catch (error) {
       console.error("Google Sign Up failed:", error);
       alert(error.message);
+    } finally {
+      googleSignupPending = false;
+      googleSignup.disabled = false;
+      googleSignup.removeAttribute("aria-busy");
     }
   });
 }
@@ -174,6 +199,10 @@ const forgotPasswordMessage =
 
 if (forgotPasswordBtn) {
   forgotPasswordBtn.addEventListener("click", async () => {
+    if (forgotPasswordBtn.disabled) {
+      return;
+    }
+
     const emailInput = document.getElementById("email");
     const email = emailInput?.value.trim() || "";
 
@@ -245,11 +274,19 @@ function showForgotPasswordMessage(message, type) {
 
 // Email Login
 const loginForm = document.querySelector(".login-form");
+const loginSubmitButton =
+  loginForm?.querySelector('button[type="submit"]');
+let emailLoginPending = false;
 
 if (loginForm && document.getElementById("email")) {
   if (!document.getElementById("registerForm")) {
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+
+      if (emailLoginPending) {
+        return;
+      }
+
       clearLoginError();
 
       const email =
@@ -264,6 +301,14 @@ if (loginForm && document.getElementById("email")) {
           "Please enter your email address and password."
         );
         return;
+      }
+
+      emailLoginPending = true;
+
+      if (loginSubmitButton) {
+        loginSubmitButton.disabled = true;
+        loginSubmitButton.textContent = "Signing in...";
+        loginSubmitButton.setAttribute("aria-busy", "true");
       }
 
       try {
@@ -328,6 +373,14 @@ if (loginForm && document.getElementById("email")) {
         showLoginError(
           getAuthenticationErrorMessage(error)
         );
+      } finally {
+        emailLoginPending = false;
+
+        if (loginSubmitButton) {
+          loginSubmitButton.disabled = false;
+          loginSubmitButton.textContent = "Sign in";
+          loginSubmitButton.removeAttribute("aria-busy");
+        }
       }
     });
   }
@@ -335,10 +388,15 @@ if (loginForm && document.getElementById("email")) {
 
 // Email Create Account
 const registerForm = document.getElementById("registerForm");
+let registrationPending = false;
 
 if (registerForm) {
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+
+    if (registrationPending) {
+      return;
+    }
 
     const name =
       document.getElementById("name").value.trim();
@@ -407,8 +465,11 @@ if (registerForm) {
       return;
     }
 
+    registrationPending = true;
+
     try {
       button.disabled = true;
+      button.setAttribute("aria-busy", "true");
       button.textContent = "Creating Account...";
 
       const result =
@@ -490,7 +551,9 @@ if (registerForm) {
 
       errorBox.style.display = "block";
 
+      registrationPending = false;
       button.disabled = false;
+      button.removeAttribute("aria-busy");
       button.textContent = "Create Account";
     }
   });
