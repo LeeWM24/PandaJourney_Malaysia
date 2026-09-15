@@ -66,9 +66,17 @@ provider.setCustomParameters({
 
 // Google Login
 const googleLogin = document.getElementById("googleLogin");
+let googleLoginPending = false;
 
 if (googleLogin) {
   googleLogin.addEventListener("click", async () => {
+    if (googleLoginPending) {
+      return;
+    }
+
+    googleLoginPending = true;
+    googleLogin.disabled = true;
+    googleLogin.setAttribute("aria-busy", "true");
     clearLoginError();
     try {
       const result = await signInWithPopup(auth, provider);
@@ -120,15 +128,47 @@ if (googleLogin) {
       showLoginError(
         getAuthenticationErrorMessage(error)
       );
+    } finally {
+      googleLoginPending = false;
+      googleLogin.disabled = false;
+      googleLogin.removeAttribute("aria-busy");
     }
   });
 }
 
 // Google Sign Up
 const googleSignup = document.getElementById("googleSignup");
+let googleSignupPending = false;
 
 if (googleSignup) {
   googleSignup.addEventListener("click", async () => {
+    if (googleSignupPending) {
+      return;
+    }
+
+    const agreeCheckbox = document.getElementById("agree");
+    const registerError = document.getElementById("registerError");
+
+    if (!agreeCheckbox?.checked) {
+      if (registerError) {
+        registerError.textContent =
+          "Please agree to the Terms & Conditions and Privacy Policy.";
+        registerError.style.display = "block";
+      }
+
+      agreeCheckbox?.focus();
+      return;
+    }
+
+    googleSignupPending = true;
+    googleSignup.disabled = true;
+    googleSignup.setAttribute("aria-busy", "true");
+
+    if (registerError) {
+      registerError.textContent = "";
+      registerError.style.display = "none";
+    }
+
     try {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
@@ -138,16 +178,24 @@ if (googleSignup) {
       console.log("Email:", user.email);
       console.log("UID:", user.uid);
 
+      const userRef = doc(db, "users", user.uid);
+      const userSnapshot = await getDoc(userRef);
+      const googleProfile = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName || "",
+        profilePictureUrl: user.photoURL || null,
+        authProvider: "google",
+        updatedAt: serverTimestamp()
+      };
+
+      if (!userSnapshot.exists()) {
+        googleProfile.createdAt = serverTimestamp();
+      }
+
       await setDoc(
-        doc(db, "users", user.uid),
-        {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || "",
-          profilePictureUrl: user.photoURL || null,
-          authProvider: "google",
-          updatedAt: serverTimestamp()
-        },
+        userRef,
+        googleProfile,
         { merge: true }
       );
 
@@ -160,7 +208,22 @@ if (googleSignup) {
 
     } catch (error) {
       console.error("Google Sign Up failed:", error);
-      alert(error.message);
+
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error("Failed to clear Google sign-up session:", signOutError);
+      }
+
+      if (registerError) {
+        registerError.textContent =
+          getAuthenticationErrorMessage(error);
+        registerError.style.display = "block";
+      }
+    } finally {
+      googleSignupPending = false;
+      googleSignup.disabled = false;
+      googleSignup.removeAttribute("aria-busy");
     }
   });
 }
@@ -174,6 +237,10 @@ const forgotPasswordMessage =
 
 if (forgotPasswordBtn) {
   forgotPasswordBtn.addEventListener("click", async () => {
+    if (forgotPasswordBtn.disabled) {
+      return;
+    }
+
     const emailInput = document.getElementById("email");
     const email = emailInput?.value.trim() || "";
 
@@ -245,11 +312,19 @@ function showForgotPasswordMessage(message, type) {
 
 // Email Login
 const loginForm = document.querySelector(".login-form");
+const loginSubmitButton =
+  loginForm?.querySelector('button[type="submit"]');
+let emailLoginPending = false;
 
 if (loginForm && document.getElementById("email")) {
   if (!document.getElementById("registerForm")) {
     loginForm.addEventListener("submit", async (event) => {
       event.preventDefault();
+
+      if (emailLoginPending) {
+        return;
+      }
+
       clearLoginError();
 
       const email =
@@ -264,6 +339,14 @@ if (loginForm && document.getElementById("email")) {
           "Please enter your email address and password."
         );
         return;
+      }
+
+      emailLoginPending = true;
+
+      if (loginSubmitButton) {
+        loginSubmitButton.disabled = true;
+        loginSubmitButton.textContent = "Signing in...";
+        loginSubmitButton.setAttribute("aria-busy", "true");
       }
 
       try {
@@ -328,6 +411,14 @@ if (loginForm && document.getElementById("email")) {
         showLoginError(
           getAuthenticationErrorMessage(error)
         );
+      } finally {
+        emailLoginPending = false;
+
+        if (loginSubmitButton) {
+          loginSubmitButton.disabled = false;
+          loginSubmitButton.textContent = "Sign in";
+          loginSubmitButton.removeAttribute("aria-busy");
+        }
       }
     });
   }
@@ -335,10 +426,15 @@ if (loginForm && document.getElementById("email")) {
 
 // Email Create Account
 const registerForm = document.getElementById("registerForm");
+let registrationPending = false;
 
 if (registerForm) {
   registerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+
+    if (registrationPending) {
+      return;
+    }
 
     const name =
       document.getElementById("name").value.trim();
@@ -351,6 +447,9 @@ if (registerForm) {
 
     const confirmPassword =
       document.getElementById("confirmPassword").value;
+
+    const agree =
+      document.getElementById("agree");
 
     const errorBox =
       document.getElementById("registerError");
@@ -368,6 +467,15 @@ if (registerForm) {
         "Please complete all required fields.";
 
       errorBox.style.display = "block";
+      return;
+    }
+
+    if (!agree?.checked) {
+      errorBox.textContent =
+        "Please agree to the Terms & Conditions and Privacy Policy.";
+
+      errorBox.style.display = "block";
+      agree?.focus();
       return;
     }
 
@@ -407,8 +515,12 @@ if (registerForm) {
       return;
     }
 
+    registrationPending = true;
+    let createdEmailUser = null;
+
     try {
       button.disabled = true;
+      button.setAttribute("aria-busy", "true");
       button.textContent = "Creating Account...";
 
       const result =
@@ -419,6 +531,7 @@ if (registerForm) {
         );
 
       const user = result.user;
+      createdEmailUser = user;
 
       console.log("Account created!");
       console.log("UID:", user.uid);
@@ -443,6 +556,8 @@ if (registerForm) {
         { merge: true }
       );
 
+      await signOut(auth);
+
       alert(
         "Account created successfully!\n\n" +
         "Please check your email and click the " +
@@ -456,6 +571,17 @@ if (registerForm) {
         "Create Account failed:",
         error
       );
+
+      if (createdEmailUser) {
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          console.error(
+            "Failed to clear incomplete registration session:",
+            signOutError
+          );
+        }
+      }
 
       // M5: Email is already registered
       if (
@@ -490,7 +616,9 @@ if (registerForm) {
 
       errorBox.style.display = "block";
 
+      registrationPending = false;
       button.disabled = false;
+      button.removeAttribute("aria-busy");
       button.textContent = "Create Account";
     }
   });
