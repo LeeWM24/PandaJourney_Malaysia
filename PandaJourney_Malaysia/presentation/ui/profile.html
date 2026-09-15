@@ -470,6 +470,56 @@
    Favourites
 ================================= */
 
+.fav-name-button {
+  padding: 0;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.fav-name-button:hover,
+.fav-name-button:focus-visible {
+  color: #0f8a67;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.fav-name-button:focus-visible {
+  outline: 3px solid rgba(15, 138, 103, 0.18);
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.favourite-details-dialog {
+  width: min(520px, calc(100% - 40px));
+}
+
+.favourite-details-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.favourite-details-pill {
+  padding: 6px 10px;
+  color: #17654f;
+  background: #eaf8f3;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.favourite-details-description {
+  color: var(--fg-2);
+  line-height: 1.65;
+}
+
 .fav-row[hidden] {
   display: none !important;
 }
@@ -1252,6 +1302,51 @@
 
   </div>
 </div>
+
+<!-- =================================
+     Favourite Details Dialog
+================================= -->
+
+<dialog
+  class="logout-dialog favourite-details-dialog"
+  id="favourite-details-dialog"
+  aria-labelledby="favourite-details-title">
+
+  <div class="logout-dialog-icon">
+    ⭐
+  </div>
+
+  <div class="logout-dialog-content">
+    <h3 id="favourite-details-title">
+      Favourite attraction
+    </h3>
+
+    <div
+      class="favourite-details-meta"
+      id="favourite-details-meta">
+    </div>
+
+    <p
+      class="favourite-details-description"
+      id="favourite-details-description">
+    </p>
+  </div>
+
+  <div class="logout-dialog-actions">
+    <button
+      type="button"
+      class="btn btn-ghost"
+      id="close-favourite-details-btn">
+      Close
+    </button>
+
+    <a
+      class="btn btn-primary"
+      href="/attractions">
+      Browse Attractions
+    </a>
+  </div>
+</dialog>
 
 <!-- =================================
      Remove Favourite Dialog
