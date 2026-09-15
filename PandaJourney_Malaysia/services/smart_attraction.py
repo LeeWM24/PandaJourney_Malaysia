@@ -1253,7 +1253,7 @@ def recommend_attractions(
         tags = {tag.lower() for tag in attraction.get("tags", [])}
         rating = float(attraction.get("rating") or 0)
 
-        if rating and rating < minimum_rating:
+        if rating < minimum_rating:
             continue
 
         if (
