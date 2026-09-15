@@ -122,6 +122,14 @@ class DailySearchLimitExceeded(Exception):
     pass
 
 
+class FirebaseTokenRejected(Exception):
+    pass
+
+
+class FirebaseAuthUnavailable(Exception):
+    pass
+
+
 def _verified_firebase_uid() -> str | None:
     token = request.form.get("_firebase_id_token", "").strip()
 
@@ -292,6 +300,52 @@ def _ensure_firebase_auth_ready() -> bool:
         return False
 
 
+def _verify_firebase_id_token(id_token: str) -> dict:
+    """Verify with Admin SDK, or Firebase Auth REST when Admin is unavailable."""
+    if _ensure_firebase_auth_ready():
+        try:
+            return firebase_admin_auth.verify_id_token(
+                id_token,
+                check_revoked=False,
+            )
+        except Exception as error:
+            app.logger.warning(
+                "Firebase Admin token verification failed; trying REST: %s",
+                error,
+            )
+
+    api_key = os.getenv(
+        "FIREBASE_WEB_API_KEY",
+        "AIzaSyAX3NQdMKHFGwoySHcNAYW8dHFSnZBo_MI",
+    ).strip()
+
+    try:
+        response = requests.post(
+            "https://identitytoolkit.googleapis.com/v1/accounts:lookup",
+            params={"key": api_key},
+            json={"idToken": id_token},
+            timeout=10,
+        )
+    except requests.RequestException as error:
+        raise FirebaseAuthUnavailable() from error
+
+    if response.status_code in {400, 401, 403}:
+        raise FirebaseTokenRejected()
+    if not response.ok:
+        raise FirebaseAuthUnavailable()
+
+    users = response.json().get("users") or []
+    if not users:
+        raise FirebaseTokenRejected()
+
+    user = users[0]
+    return {
+        "uid": user.get("localId", ""),
+        "email": user.get("email", ""),
+        "name": user.get("displayName", ""),
+        "email_verified": bool(user.get("emailVerified", False)),
+    }
+
 @app.route("/session-login", methods=["POST"])
 def session_login():
     payload = request.get_json(silent=True) or {}
@@ -302,17 +356,9 @@ def session_login():
             "error": "Firebase ID token is required."
         }), 400
 
-    if not _ensure_firebase_auth_ready():
-        return jsonify({
-            "error": "Authentication service is unavailable."
-        }), 503
-
     try:
-        decoded_token = firebase_admin_auth.verify_id_token(
-            id_token,
-            check_revoked=False,
-        )
-    except Exception as error:
+        decoded_token = _verify_firebase_id_token(id_token)
+    except FirebaseTokenRejected as error:
         app.logger.warning(
             "Rejected Firebase session token: %s",
             error,
@@ -320,6 +366,11 @@ def session_login():
         return jsonify({
             "error": "Invalid or expired authentication token."
         }), 401
+    except FirebaseAuthUnavailable as error:
+        app.logger.error("Firebase Auth verification unavailable: %s", error)
+        return jsonify({
+            "error": "Authentication service is temporarily unavailable."
+        }), 503
 
     if not decoded_token.get("email_verified", False):
         return jsonify({
