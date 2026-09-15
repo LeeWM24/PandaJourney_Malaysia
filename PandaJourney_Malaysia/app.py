@@ -38,10 +38,10 @@ from services.smart_attraction import (
 
 try:
     from firebase_admin import auth as firebase_admin_auth
-    from firebase_admin import firestore as firebase_admin_firestore
+    from google.cloud import firestore as google_cloud_firestore
 except ImportError:
     firebase_admin_auth = None
-    firebase_admin_firestore = None
+    google_cloud_firestore = None
 
 
 app = Flask(
@@ -147,7 +147,7 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
 
     if (
         db is not None and
-        firebase_admin_firestore is not None
+        google_cloud_firestore is not None
     ):
         try:
             refs = [
@@ -163,7 +163,7 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
 
             transaction = db.transaction()
 
-            @firebase_admin_firestore.transactional
+            @google_cloud_firestore.transactional
             def update_usage(current_transaction):
                 snapshots = [
                     ref.get(transaction=current_transaction)
@@ -184,7 +184,7 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
                             "day_utc": key.split(":")[1],
                             "count": count + 1,
                             "limit": limit,
-                            "updated_at": firebase_admin_firestore.SERVER_TIMESTAMP,
+                            "updated_at": google_cloud_firestore.SERVER_TIMESTAMP,
                         },
                         merge=True,
                     )
