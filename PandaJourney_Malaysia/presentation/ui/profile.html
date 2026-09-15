@@ -1260,6 +1260,8 @@
         class="edit-profile-confirm hidden"
         id="edit-actions">
 
+        <div id="profile-edit-message" role="alert" aria-live="assertive" hidden></div>
+
         <div class="edit-profile-confirm-note">
           <span class="edit-profile-confirm-icon">
             ✓
@@ -1287,6 +1289,7 @@
           <button
             type="button"
             class="btn btn-primary btn-sm"
+            id="save-profile-btn"
             onclick="saveProfile()">
             ✓ Confirm Changes
           </button>
@@ -1424,6 +1427,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/ui-status.js') }}"></script>
 <script
   type="module"
   src="{{ url_for('static', filename='js/profile.js') }}?v={{ asset_version('js/profile.js') }}">

@@ -33,6 +33,18 @@ Welcome back,
     display: none;
   }
 
+  .dashboard-retry {
+    flex-shrink: 0;
+    margin-left: auto;
+    color: #991b1b;
+    background: transparent;
+    border: 1px solid #fca5a5;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font: inherit;
+    cursor: pointer;
+  }
+
 
   /* =================================
      Recent Itineraries
@@ -513,6 +525,7 @@ Welcome back,
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/ui-status.js') }}"></script>
 <script
   type="module"
   src="{{ url_for('static', filename='js/dashboard.js') }}">

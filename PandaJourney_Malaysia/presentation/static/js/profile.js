@@ -1095,14 +1095,18 @@ window.cancelEdit = function () {
 
 window.saveProfile =
 async function () {
+  const messageElement =
+    document.getElementById("profile-edit-message");
+  const saveButton =
+    document.getElementById("save-profile-btn");
   const user =
     auth.currentUser;
 
   if (!user) {
-    alert(
-      "You are not logged in."
+    window.PandaFeedback?.show(
+      messageElement,
+      "Your session has expired. Please sign in again."
     );
-
     return;
   }
 
@@ -1111,18 +1115,37 @@ async function () {
     "";
 
   if (!newDisplayName) {
-    alert(
-      "Please enter valid profile information."
+    window.PandaFeedback?.show(
+      messageElement,
+      "Please enter a display name."
     );
+    editName?.focus();
+    return;
+  }
 
+  if (Array.from(newDisplayName).length > 100) {
+    window.PandaFeedback?.show(
+      messageElement,
+      "Display name must not exceed 100 characters."
+    );
+    editName?.focus();
     return;
   }
 
   if (isAvatarProcessing) {
-    alert(
-      "Please wait for the profile picture to finish processing."
+    window.PandaFeedback?.show(
+      messageElement,
+      "Please wait for the profile picture to finish processing.",
+      "warning"
     );
+    return;
+  }
 
+  if (!navigator.onLine) {
+    window.PandaFeedback?.show(
+      messageElement,
+      "You are offline. Check your internet connection before saving."
+    );
     return;
   }
 
@@ -1137,6 +1160,12 @@ async function () {
     );
 
   try {
+    window.PandaFeedback?.clear(messageElement);
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.setAttribute("aria-busy", "true");
+      saveButton.textContent = "Saving...";
+    }
     await updateProfile(
       user,
       {
@@ -1328,10 +1357,19 @@ async function () {
     error
   );
 
-  alert(
-    error.message ||
-    "Unable to update the user profile."
+  window.PandaFeedback?.show(
+    messageElement,
+    window.PandaFeedback?.friendlyError(
+      error,
+      "Unable to update your profile. Your previous information is unchanged."
+    ) || "Unable to update your profile. Please try again."
   );
+  } finally {
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.removeAttribute("aria-busy");
+      saveButton.textContent = "✓ Confirm Changes";
+    }
   }
 };
 

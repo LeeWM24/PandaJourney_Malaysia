@@ -62,7 +62,7 @@ const dashboardErrorElement =
 // Utility Functions
 // =================================
 
-function showDashboardLoadError() {
+function showDashboardLoadError(error) {
   if (!dashboardErrorElement) {
     return;
   }
@@ -70,11 +70,15 @@ function showDashboardLoadError() {
   dashboardErrorElement.innerHTML = `
     <span aria-hidden="true">⚠️</span>
     <span>
-      Unable to load this information. Please try again.
+      ${window.PandaFeedback?.friendlyError(error, "Unable to load this information. Please try again.") || "Unable to load this information. Please try again."}
     </span>
+    <button type="button" class="dashboard-retry" id="dashboard-retry">Retry</button>
   `;
 
   dashboardErrorElement.hidden = false;
+  document
+    .getElementById("dashboard-retry")
+    ?.addEventListener("click", loadDashboard);
 }
 
 
@@ -217,7 +221,7 @@ async function loadDashboardUser(user) {
       error
     );
 
-    showDashboardLoadError();
+    showDashboardLoadError(error);
   }
 
   if (dashboardName) {
@@ -360,7 +364,7 @@ async function loadFavouriteCount(user) {
     favouriteCountElement.textContent =
       "—";
 
-    showDashboardLoadError();
+    showDashboardLoadError(error);
   }
 }
 
@@ -404,7 +408,7 @@ async function loadItineraryData(user) {
       error
     );
 
-    showDashboardLoadError();
+    showDashboardLoadError(error);
 
     if (savedCountElement) {
       savedCountElement.textContent =

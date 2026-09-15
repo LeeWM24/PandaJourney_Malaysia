@@ -384,6 +384,13 @@ if (loginForm && document.getElementById("email")) {
         return;
       }
 
+      if (!navigator.onLine) {
+        showLoginError(
+          "You are offline. Check your internet connection and try again."
+        );
+        return;
+      }
+
       emailLoginPending = true;
 
       if (loginSubmitButton) {
@@ -539,6 +546,13 @@ if (registerForm) {
       return;
     }
 
+    if (!navigator.onLine) {
+      errorBox.textContent =
+        "You are offline. Check your internet connection and try again.";
+      errorBox.style.display = "block";
+      return;
+    }
+
     // M2: Invalid email address
     const emailPattern =
       /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -618,12 +632,10 @@ if (registerForm) {
 
       await signOut(auth);
 
-      alert(
-        "Account created successfully!\n\n" +
-        "Please check your email and click the " +
-        "verification link before logging in."
+      sessionStorage.setItem(
+        "pandajourney-auth-message",
+        "Account created. Check your email and verify it before signing in."
       );
-
       window.location.href = "/login";
 
     } catch (error) {
@@ -670,8 +682,10 @@ if (registerForm) {
       // M6: Account or profile creation error
       } else {
         errorBox.textContent =
-          error.message ||
-          "Unable to create the account or user profile.";
+          window.PandaFeedback?.friendlyError(
+            error,
+            "Unable to create the account. Please try again."
+          ) || "Unable to create the account. Please try again.";
       }
 
       errorBox.style.display = "block";
@@ -736,6 +750,15 @@ function getAuthenticationErrorMessage(error) {
     case "auth/server-session-failed":
       return error.message ||
         "Unable to establish a secure session. Please try again.";
+
+    case "auth/network-request-failed":
+      return "Network error. Check your internet connection and try again.";
+
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a while and try again.";
+
+    case "auth/popup-blocked":
+      return "The browser blocked the Google sign-in window. Allow pop-ups and try again.";
 
     // M3: Google sign-in was cancelled
     case "auth/popup-closed-by-user":
