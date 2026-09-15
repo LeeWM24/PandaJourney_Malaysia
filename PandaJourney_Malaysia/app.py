@@ -39,9 +39,11 @@ from services.smart_attraction import (
 )
 
 try:
+    import firebase_admin
     from firebase_admin import auth as firebase_admin_auth
     from google.cloud import firestore as google_cloud_firestore
 except ImportError:
+    firebase_admin = None
     firebase_admin_auth = None
     google_cloud_firestore = None
 
@@ -271,6 +273,25 @@ def login_required(view_function):
     return wrapped
 
 
+def _ensure_firebase_auth_ready() -> bool:
+    """Initialise token verification without requiring Firestore access."""
+    if firebase_admin is None or firebase_admin_auth is None:
+        return False
+
+    try:
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(options={
+                "projectId": os.getenv(
+                    "GOOGLE_CLOUD_PROJECT",
+                    "pandajourney-ef50a",
+                )
+            })
+        return True
+    except Exception as error:
+        app.logger.error("Firebase Auth initialisation failed: %s", error)
+        return False
+
+
 @app.route("/session-login", methods=["POST"])
 def session_login():
     payload = request.get_json(silent=True) or {}
@@ -281,7 +302,7 @@ def session_login():
             "error": "Firebase ID token is required."
         }), 400
 
-    if firebase_admin_auth is None or _get_firestore_db() is None:
+    if not _ensure_firebase_auth_ready():
         return jsonify({
             "error": "Authentication service is unavailable."
         }), 503
@@ -289,7 +310,7 @@ def session_login():
     try:
         decoded_token = firebase_admin_auth.verify_id_token(
             id_token,
-            check_revoked=True,
+            check_revoked=False,
         )
     except Exception as error:
         app.logger.warning(
@@ -386,6 +407,7 @@ def public_place_photo():
 
 
 @app.route("/", methods=["GET", "POST"])
+@app.route("/attractions", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
 @rate_limit(max_calls=6, window_seconds=60)
 def smart_attraction():

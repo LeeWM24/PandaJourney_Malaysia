@@ -389,6 +389,7 @@ function protectPublicPageNavigation() {
 
         const isAttractionPage =
           url.pathname === "/" ||
+          url.pathname === "/attractions" ||
           url.pathname ===
             "/smart-attraction";
 

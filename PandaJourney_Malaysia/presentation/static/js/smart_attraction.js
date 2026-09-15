@@ -785,7 +785,14 @@ async function toggleFavourite(id) {
   if (!attraction) return;
 
   if (!currentUser) {
-    showToast('Please log in to save favourites.');
+    sessionStorage.setItem(
+      'pandajourney-auth-message',
+      'Sign in to save this attraction to your favourites.'
+    );
+    const returnTo =
+      window.location.pathname + window.location.search;
+    window.location.href =
+      `/login?next=${encodeURIComponent(returnTo)}`;
     return;
   }
 
