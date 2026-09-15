@@ -18,6 +18,26 @@ service cloud.firestore {
       return signedIn() && userId == request.auth.uid;
     }
 
+    function ownsItinerary(itineraryDocumentId) {
+      return signedIn() && get(/databases/$(database)/documents/Itinerary/$(itineraryDocumentId)).data.user_id == request.auth.uid;
+    }
+
+    function collaboratorPath(itineraryId) {
+      return /databases/$(database)/documents/collaborators/$(itineraryId + "_" + request.auth.uid);
+    }
+
+    function isAcceptedCollaborator(itineraryId) {
+      return signedIn() && exists(collaboratorPath(itineraryId)) && get(collaboratorPath(itineraryId)).data.status == "accepted";
+    }
+
+    function isEditorCollaborator(itineraryId) {
+      return isAcceptedCollaborator(itineraryId) && get(collaboratorPath(itineraryId)).data.role == "editor";
+    }
+
+    function isCollaboratorOwner(itineraryId) {
+      return signedIn() && get(/databases/$(database)/documents/Itinerary/$(itineraryId)).data.user_id == request.auth.uid;
+    }
+
     match /users/{userId} {
       allow read: if signedIn();
       allow create, update, delete: if ownsPublicProfile(userId);
@@ -30,28 +50,37 @@ service cloud.firestore {
 
     match /Itinerary/{itineraryId} {
       allow create: if ownsNewUserId();
-      allow read: if ownsExistingUserId() || resource.data.is_public == true;
-      allow update, delete: if ownsExistingUserId();
+      allow read: if ownsExistingUserId() || resource.data.is_public == true || isAcceptedCollaborator(itineraryId);
+      allow update: if ownsExistingUserId() || (isEditorCollaborator(itineraryId) && request.resource.data.user_id == resource.data.user_id && request.resource.data.status == resource.data.status && request.resource.data.is_public == resource.data.is_public);
+      allow delete: if ownsExistingUserId();
     }
 
     match /itinerary_stops/{stopId} {
-      allow create, update, delete: if ownsNewUserId() || ownsExistingUserId();
       allow read: if signedIn();
+      allow create: if signedIn() && (ownsItinerary(request.resource.data.itinerary_document_id) || isEditorCollaborator(request.resource.data.itinerary_document_id));
+      allow update, delete: if signedIn() && (ownsItinerary(resource.data.itinerary_document_id) || isEditorCollaborator(resource.data.itinerary_document_id));
     }
 
     match /collaborators/{collaboratorId} {
-      allow read, create, update, delete: if signedIn();
+      allow read: if signedIn() && ( resource.data.user_id == request.auth.uid || isCollaboratorOwner(resource.data.itinerary_document_id));
+      allow create: if signedIn() && isCollaboratorOwner(request.resource.data.itinerary_document_id);
+      allow update: if signedIn() && ( isCollaboratorOwner(resource.data.itinerary_document_id) || (resource.data.user_id == request.auth.uid
+            && request.resource.data.user_id == resource.data.user_id
+            && request.resource.data.itinerary_document_id == resource.data.itinerary_document_id
+            && request.resource.data.role == resource.data.role));
+      allow delete: if signedIn() && isCollaboratorOwner(resource.data.itinerary_document_id);
     }
 
     match /comments/{commentId} {
       allow read: if signedIn();
-      allow create: if ownsNewUserId();
-      allow update, delete: if ownsExistingUserId();
+      allow create: if signedIn() && request.resource.data.author_id == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.author_id == request.auth.uid;
     }
 
     match /notifications/{notificationId} {
-      allow create: if signedIn();
-      allow read, update, delete: if ownsExistingUserId();
+      allow create: if signedIn() && request.resource.data.actor_id == request.auth.uid;
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.actor_id == request.auth.uid;
     }
 
     match /itinerary_likes/{likeId} {

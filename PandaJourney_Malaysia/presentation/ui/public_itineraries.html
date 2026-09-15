@@ -929,6 +929,9 @@ Explore community favorites, search destinations, and save routes in a tap.
         saveButton.addEventListener('click', async (event) => {
           const button = event.currentTarget;
 
+          if (button.disabled) return;
+          button.disabled = true;
+
           try {
 
             // Unsave
@@ -967,6 +970,8 @@ Explore community favorites, search destinations, and save routes in a tap.
 
           } catch (error) {
             console.error('Save / Unsave update failed:', error);
+          } finally {
+            button.disabled = false;
           }
         });
       }

@@ -2022,7 +2022,7 @@ function renderStops() {
     const row = document.createElement("div");
     row.className = `edit-stop-row ${isRouteMarker ? "route-marker-row" : ""}`;
     if (editingStopId === stop.document_id) row.classList.add("is-editing");
-    row.draggable = canEdit && !isDraft && !isRouteMarker;
+    row.draggable = canEdit && !isDraft && !isRouteMarker && editingStopId !== stop.document_id;
     row.dataset.stopId = stop.document_id;
     const calculatedStop = editableIndex >= 0
       ? calculatedStops[editableIndex] || stop
@@ -2198,7 +2198,10 @@ function renderStops() {
     }
 
     row.addEventListener("dragstart", function () {
-      if (isDraft || isRouteMarker) return;
+      if (isDraft || isRouteMarker || event.target.closest("input, textarea, select, button, a")) {
+        event.preventDefault();
+        return;
+      }
       draggedStopId = stop.document_id;
       row.classList.add("dragging");
     });

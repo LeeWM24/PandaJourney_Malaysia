@@ -173,6 +173,18 @@ async function savePublicItineraryCopy(item) {
     throw new Error("Please login before saving.");
   }
 
+  const existingSaveQuery = query(
+    collection(db, "Itinerary"),
+    where("user_id", "==", currentUser.uid),
+    where("source_itinerary_id", "==", item.id)
+  );
+
+  const existingSaveSnapshot = await getDocs(existingSaveQuery);
+
+  if (!existingSaveSnapshot.empty) {
+    return existingSaveSnapshot.docs[0].id;
+  }
+
   const savedRef = doc(collection(db, "Itinerary"));
   const newItineraryId = savedRef.id;
 
