@@ -164,8 +164,16 @@ const savePasswordBtn =
 const googlePasswordNote =
   document.getElementById("google-password-note");
 
+const passwordMatchHint =
+  document.getElementById("password-match-hint");
+
+const passwordRequirementElements =
+  document.querySelectorAll("[data-password-rule]");
+
 
 const FAVOURITES_COLLECTION = "Favourites";
+const FAVOURITES_PAGE_SIZE = 5;
+let favouriteCurrentPage = 1;
 
 
 // State
@@ -1637,11 +1645,38 @@ async function loadFavourites(user) {
     listEl.style.display = "block";
     listEl.innerHTML = "";
 
-    const favouriteDocs =
-      snapshot.docs;
+    const collator = new Intl.Collator(
+      "en",
+      { sensitivity: "base", numeric: true }
+    );
 
-    favouriteDocs.forEach(
-      (docSnap, index) => {
+    const favouriteDocs = [...snapshot.docs].sort((left, right) => {
+      const leftData = left.data();
+      const rightData = right.data();
+      const leftName = leftData.name || leftData.attraction_name || "Unnamed Attraction";
+      const rightName = rightData.name || rightData.attraction_name || "Unnamed Attraction";
+      return collator.compare(leftName, rightName);
+    });
+
+    const totalPages = Math.ceil(
+      favouriteDocs.length / FAVOURITES_PAGE_SIZE
+    );
+    favouriteCurrentPage = Math.min(
+      Math.max(favouriteCurrentPage, 1),
+      totalPages
+    );
+
+    const renderFavouritePage = () => {
+      listEl.innerHTML = "";
+      const startIndex =
+        (favouriteCurrentPage - 1) * FAVOURITES_PAGE_SIZE;
+      const pageDocs = favouriteDocs.slice(
+        startIndex,
+        startIndex + FAVOURITES_PAGE_SIZE
+      );
+
+      pageDocs.forEach(
+      docSnap => {
         const data =
           docSnap.data();
 
@@ -1654,14 +1689,6 @@ async function loadFavourites(user) {
           document.createElement("div");
 
         row.className = "fav-row";
-
-        if (index >= 5) {
-          row.classList.add(
-            "fav-row-extra"
-          );
-
-          row.hidden = true;
-        }
 
         row.innerHTML = `
           <div class="recent-icon">
@@ -1710,59 +1737,35 @@ async function loadFavourites(user) {
       }
     );
 
-    // Show All / Show Less
-    if (favouriteDocs.length > 5) {
-      const toggleButton =
-        document.createElement(
-          "button"
-        );
+      if (totalPages > 1) {
+        const pagination = document.createElement("nav");
+        pagination.className = "fav-pagination";
+        pagination.setAttribute("aria-label", "Favourite attractions pages");
 
-      toggleButton.type = "button";
+        const addPageButton = (label, page, disabled, current = false) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `btn btn-ghost btn-sm fav-page-button${current ? " active" : ""}`;
+          button.textContent = label;
+          button.disabled = disabled;
+          if (current) button.setAttribute("aria-current", "page");
+          button.addEventListener("click", () => {
+            favouriteCurrentPage = page;
+            renderFavouritePage();
+          });
+          pagination.appendChild(button);
+        };
 
-      toggleButton.className =
-        "btn btn-ghost btn-sm fav-toggle";
-
-      toggleButton.textContent =
-        `Show all (${favouriteDocs.length})`;
-
-      toggleButton.setAttribute(
-        "aria-expanded",
-        "false"
-      );
-
-      toggleButton.addEventListener(
-        "click",
-        () => {
-          const willExpand =
-            toggleButton.getAttribute(
-              "aria-expanded"
-            ) === "false";
-
-          listEl
-            .querySelectorAll(
-              ".fav-row-extra"
-            )
-            .forEach(row => {
-              row.hidden =
-                !willExpand;
-            });
-
-          toggleButton.setAttribute(
-            "aria-expanded",
-            String(willExpand)
-          );
-
-          toggleButton.textContent =
-            willExpand
-              ? "Show less"
-              : `Show all (${favouriteDocs.length})`;
+        addPageButton("Previous", favouriteCurrentPage - 1, favouriteCurrentPage === 1);
+        for (let page = 1; page <= totalPages; page += 1) {
+          addPageButton(String(page), page, page === favouriteCurrentPage, page === favouriteCurrentPage);
         }
-      );
+        addPageButton("Next", favouriteCurrentPage + 1, favouriteCurrentPage === totalPages);
+        listEl.appendChild(pagination);
+      }
+    };
 
-      listEl.appendChild(
-        toggleButton
-      );
-    }
+    renderFavouritePage();
 
   } catch (error) {
     console.error(
@@ -1964,6 +1967,66 @@ async function loadSharedItineraryCount(
 let canChangePassword = false;
 
 
+function getPasswordRules(password) {
+  return {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password)
+  };
+}
+
+
+function updatePasswordGuidance() {
+  const password = newPasswordInput?.value || "";
+  const confirmation = confirmNewPasswordInput?.value || "";
+  const rules = getPasswordRules(password);
+
+  passwordRequirementElements.forEach(element => {
+    element.classList.toggle(
+      "met",
+      Boolean(rules[element.dataset.passwordRule])
+    );
+  });
+
+  if (!passwordMatchHint) {
+    return;
+  }
+
+  if (!confirmation) {
+    passwordMatchHint.textContent = "";
+    passwordMatchHint.className = "password-match-hint";
+  } else if (password === confirmation) {
+    passwordMatchHint.textContent = "✓ Passwords match";
+    passwordMatchHint.className = "password-match-hint match";
+  } else {
+    passwordMatchHint.textContent = "Passwords do not match";
+    passwordMatchHint.className = "password-match-hint mismatch";
+  }
+}
+
+
+newPasswordInput?.addEventListener("input", updatePasswordGuidance);
+confirmNewPasswordInput?.addEventListener("input", updatePasswordGuidance);
+
+document
+  .querySelectorAll("[data-password-target]")
+  .forEach(button => {
+    button.addEventListener("click", () => {
+      const input = document.getElementById(button.dataset.passwordTarget);
+      if (!input) return;
+
+      const willShow = input.type === "password";
+      input.type = willShow ? "text" : "password";
+      button.textContent = willShow ? "Hide" : "Show";
+      button.setAttribute(
+        "aria-label",
+        `${willShow ? "Hide" : "Show"} ${input.id.replaceAll("-", " ")}`
+      );
+    });
+  });
+
+
 function configurePasswordSection(user) {
   if (
     !openChangePasswordBtn ||
@@ -1981,6 +2044,7 @@ function configurePasswordSection(user) {
     );
 
   changePasswordForm.reset();
+  updatePasswordGuidance();
   changePasswordForm.classList.add(
     "hidden"
   );
@@ -2050,6 +2114,15 @@ function showPasswordMessage(
 
 function resetPasswordForm() {
   changePasswordForm?.reset();
+  updatePasswordGuidance();
+
+  document
+    .querySelectorAll("[data-password-target]")
+    .forEach(button => {
+      const input = document.getElementById(button.dataset.passwordTarget);
+      if (input) input.type = "password";
+      button.textContent = "Show";
+    });
 
   changePasswordForm
     ?.classList
@@ -2113,11 +2186,8 @@ changePasswordForm
         return;
       }
 
-      const strongPassword =
-      newPassword.length >= 8 &&
-      /[A-Z]/.test(newPassword) &&
-      /[a-z]/.test(newPassword) &&
-      /[^A-Za-z0-9]/.test(newPassword);
+      const passwordRules = getPasswordRules(newPassword);
+      const strongPassword = Object.values(passwordRules).every(Boolean);
 
     if (!strongPassword) {
       showPasswordMessage(

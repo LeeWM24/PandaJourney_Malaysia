@@ -527,13 +527,23 @@
   white-space: nowrap;
 }
 
-.fav-row[hidden] {
-  display: none !important;
+.fav-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 16px;
 }
 
-.fav-toggle {
-  display: flex;
-  margin: 14px auto 0;
+.fav-page-button.active {
+  color: #ffffff;
+  background: #0f7a5a;
+}
+
+.fav-page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 /* =================================
@@ -586,6 +596,70 @@
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap .form-input {
+  padding-right: 64px;
+}
+
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  padding: 4px;
+  color: #0f7a5a;
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-requirements {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #78968a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.password-requirement::before {
+  content: "○";
+  margin-right: 5px;
+}
+
+.password-requirement.met {
+  color: #166534;
+}
+
+.password-requirement.met::before {
+  content: "✓";
+}
+
+.password-match-hint {
+  min-height: 16px;
+  margin-top: 7px;
+  color: #78968a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.password-match-hint.match {
+  color: #166534;
+}
+
+.password-match-hint.mismatch {
+  color: #991b1b;
 }
 
 .password-message {
@@ -1149,12 +1223,15 @@
               Current Password
             </label>
 
-            <input
-              class="form-input"
-              id="current-password"
-              type="password"
-              autocomplete="current-password"
-              required>
+            <div class="password-input-wrap">
+              <input
+                class="form-input"
+                id="current-password"
+                type="password"
+                autocomplete="current-password"
+                required>
+              <button type="button" class="password-visibility-toggle" data-password-target="current-password" aria-label="Show current password">Show</button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -1164,13 +1241,23 @@
               New Password
             </label>
 
-            <input
-              class="form-input"
-              id="new-password"
-              type="password"
-              autocomplete="new-password"
-              minlength="8"
-              required>
+            <div class="password-input-wrap">
+              <input
+                class="form-input"
+                id="new-password"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+                aria-describedby="password-requirements"
+                required>
+              <button type="button" class="password-visibility-toggle" data-password-target="new-password" aria-label="Show new password">Show</button>
+            </div>
+            <ul class="password-requirements" id="password-requirements">
+              <li class="password-requirement" data-password-rule="length">At least 8 characters</li>
+              <li class="password-requirement" data-password-rule="uppercase">One uppercase letter</li>
+              <li class="password-requirement" data-password-rule="lowercase">One lowercase letter</li>
+              <li class="password-requirement" data-password-rule="special">One special character</li>
+            </ul>
           </div>
 
           <div class="form-group">
@@ -1180,13 +1267,18 @@
               Confirm New Password
             </label>
 
-            <input
-              class="form-input"
-              id="confirm-new-password"
-              type="password"
-              autocomplete="new-password"
-              minlength="8"
-              required>
+            <div class="password-input-wrap">
+              <input
+                class="form-input"
+                id="confirm-new-password"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+                aria-describedby="password-match-hint"
+                required>
+              <button type="button" class="password-visibility-toggle" data-password-target="confirm-new-password" aria-label="Show confirmed password">Show</button>
+            </div>
+            <div class="password-match-hint" id="password-match-hint" aria-live="polite"></div>
           </div>
         </div>
 
