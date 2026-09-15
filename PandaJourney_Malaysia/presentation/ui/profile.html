@@ -219,11 +219,25 @@
   cursor: not-allowed;
 }
 
-.profile-field-hint {
+.profile-field-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   margin-top: 7px;
+}
+
+.profile-field-hint {
   color: #87a397;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.profile-character-count {
+  flex-shrink: 0;
+  color: #78968a;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 #profile-identity-card {
@@ -793,15 +807,6 @@
             <div class="profile-name identity-name"></div>
             <div class="profile-email identity-email"></div>
 
-            <div class="flex flex-wrap gap-2 mt-2">
-              <span class="provider-badge">
-                Account
-              </span>
-
-              <span class="badge badge-success">
-                ✓ Verified
-              </span>
-            </div>
           </div>
 
           <!-- Identity Edit -->
@@ -837,13 +842,25 @@
                   <input
                     type="text"
                     id="edit-name"
-                    maxlength="50"
+                    maxlength="100"
                     placeholder="Enter your display name"
-                    autocomplete="name">
+                    autocomplete="name"
+                    aria-describedby="display-name-hint display-name-count">
                 </div>
 
-                <div class="profile-field-hint">
-                  This name will appear on your itineraries and profile.
+                <div class="profile-field-meta">
+                  <div
+                    class="profile-field-hint"
+                    id="display-name-hint">
+                    This name will appear on your itineraries and profile.
+                  </div>
+
+                  <div
+                    class="profile-character-count"
+                    id="display-name-count"
+                    aria-live="polite">
+                    0/100
+                  </div>
                 </div>
               </div>
 
