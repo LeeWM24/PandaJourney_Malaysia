@@ -1188,12 +1188,16 @@ function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints =
 }
 
 function getDayRouteGoogleMaps(dayNumber, stops = stopDocs) {
-  const numberedStops = stops.map((stop, index) => ({
-    stop,
-    marker: String(index + 1),
-    dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
-    point: getPointFromStop(stop)
-  }));
+  const numberedStops = stops.map((stop) => ({
+      stop,
+      dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
+      point: getPointFromStop(stop)
+    }))
+    .filter(item => item.point)
+    .map((item, index) => ({
+      ...item,
+      marker: String(index + 1)
+    }));
   const dayStops = numberedStops.filter(item => {
     return item.dayNumber === dayNumber && item.point;
   });
@@ -1280,12 +1284,11 @@ function getDayRouteDashArray(dayNumber) {
 function getDayMapSections(stops) {
   const startPoint = getItineraryPoint("start");
   const endPoint = getItineraryPoint("end");
-  const numberedStops = stops.map((stop, index) => ({
-    stop,
-    marker: index + 1,
-    dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
-    point: getPointFromStop(stop)
-  })).filter(item => item.point);
+  const numberedStops = stops
+    .map((stop) => ({stop, dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1), point: getPointFromStop(stop)}))
+    .filter(item => item.point)
+    .map((item, index) => ({...item, marker: index + 1}));
+
   const dayNumbers = [...new Set(numberedStops.map(item => item.dayNumber))];
   const sections = dayNumbers.map(dayNumber => {
     const dayStops = numberedStops.filter(item => item.dayNumber === dayNumber);
@@ -1356,17 +1359,21 @@ async function renderEditRouteMap() {
     });
   }
 
-  stopDocs.forEach((stop, index) => {
+  let visibleStopNumber = 0;
+
+  stopDocs.forEach((stop) => {
     const point = getPointFromStop(stop);
 
     if (!point) return;
 
+    visibleStopNumber += 1;
+
     mapPoints.push({
-      label: `${index + 1}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(stop.day_number || stop.day || 1)})`,
+      label: `${visibleStopNumber}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(stop.day_number || stop.day || 1)})`,
       latitude: point.latitude,
       longitude: point.longitude,
       type: "stop",
-      number: index + 1
+      number: visibleStopNumber
     });
   });
 
@@ -1754,11 +1761,15 @@ function setEditingState() {
     routeHoursInput,
     routeHoursUnlimitedInput,
     saveRouteDetailsButton,
-    addStopButton,
-    inviteEmailInput
+    addStopButton
   ].forEach(element => {
     if (element) element.disabled = !canEdit;
   });
+
+  if (inviteEmailInput) {
+    inviteEmailInput.disabled = !isOwner;
+  }
+
   routeInterestInput?.querySelectorAll('input[name="route_interests"]').forEach(input => {
     input.disabled = !canEdit;
   });
@@ -3540,6 +3551,12 @@ document.addEventListener("click", function (event) {
 
 inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
+
+  if (!isOwner) {
+    setInviteMessage("Only the itinerary owner can invite collaborators.", true);
+    return;
+  }
+
   const submitButton = inviteForm.querySelector('button[type="submit"]');
   const email = normaliseEmail(inviteEmailInput?.value);
 
