@@ -2,6 +2,8 @@ import os
 import time
 import hashlib
 import threading
+import secrets
+from functools import wraps
 from datetime import datetime, timezone
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
@@ -51,7 +53,22 @@ app = Flask(
     static_url_path="/static"
 )
 
-app.secret_key = os.getenv("SECRET_KEY", "panda-demo-secret")
+configured_secret_key = os.getenv("SECRET_KEY", "").strip()
+app.secret_key = configured_secret_key or secrets.token_hex(32)
+
+if not configured_secret_key:
+    app.logger.warning(
+        "SECRET_KEY is not configured; sessions will reset when the server restarts."
+    )
+
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(
+        os.getenv("SESSION_COOKIE_SECURE", "").lower()
+        in {"1", "true", "yes"}
+    ),
+)
 
 
 def asset_version(relative_path: str) -> int:
@@ -240,6 +257,64 @@ def get_current_user():
     return session.get("user", {})
 
 
+def login_required(view_function):
+    @wraps(view_function)
+    def wrapped(*args, **kwargs):
+        if not get_current_user().get("uid"):
+            next_url = request.full_path.rstrip("?")
+            return redirect(
+                url_for("login", next=next_url)
+            )
+
+        return view_function(*args, **kwargs)
+
+    return wrapped
+
+
+@app.route("/session-login", methods=["POST"])
+def session_login():
+    payload = request.get_json(silent=True) or {}
+    id_token = str(payload.get("idToken") or "").strip()
+
+    if not id_token:
+        return jsonify({
+            "error": "Firebase ID token is required."
+        }), 400
+
+    if firebase_admin_auth is None or _get_firestore_db() is None:
+        return jsonify({
+            "error": "Authentication service is unavailable."
+        }), 503
+
+    try:
+        decoded_token = firebase_admin_auth.verify_id_token(
+            id_token,
+            check_revoked=True,
+        )
+    except Exception as error:
+        app.logger.warning(
+            "Rejected Firebase session token: %s",
+            error,
+        )
+        return jsonify({
+            "error": "Invalid or expired authentication token."
+        }), 401
+
+    if not decoded_token.get("email_verified", False):
+        return jsonify({
+            "error": "Please verify your email before logging in."
+        }), 403
+
+    session.clear()
+    session["user"] = {
+        "uid": decoded_token["uid"],
+        "email": decoded_token.get("email", ""),
+        "displayName": decoded_token.get("name", ""),
+    }
+
+    return jsonify({"ok": True})
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     return render_template("login.html")
@@ -251,6 +326,7 @@ def create_account():
 
 
 @app.route("/dashboard")
+@login_required
 def dashboard():
     return render_template(
         "dashboard.html",
@@ -260,6 +336,7 @@ def dashboard():
 
 
 @app.route("/profile", methods=["GET"])
+@login_required
 def profile():
     return render_template(
         "profile.html",
