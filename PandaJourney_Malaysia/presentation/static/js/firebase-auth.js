@@ -521,6 +521,15 @@ if (registerForm) {
       return;
     }
 
+    if (Array.from(name).length > 100) {
+      errorBox.textContent =
+        "Full name must not exceed 100 characters.";
+
+      errorBox.style.display = "block";
+      document.getElementById("name")?.focus();
+      return;
+    }
+
     if (!agree?.checked) {
       errorBox.textContent =
         "Please agree to the Terms & Conditions and Privacy Policy.";
