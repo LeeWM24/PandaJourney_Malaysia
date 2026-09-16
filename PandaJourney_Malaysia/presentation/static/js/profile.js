@@ -665,7 +665,7 @@ if (useGoogleAvatarBtn) {
         }
 
         if (!user.photoURL) {
-          showProfilePageMessage("No Google profile photo is available for this account.", "warning");
+          showProfilePageMessage("No sign-in account photo is available for this account.", "warning");
           return;
         }
 
@@ -2128,7 +2128,7 @@ function configurePasswordSection(user) {
     );
 
     googlePasswordNote.textContent =
-      "Your Google email is already verified. For security, Google will ask you to confirm this account before a password is added.";
+      `Your Google email is already verified. Google will ask you to confirm this account first. After adding a password, sign in with your email address (${user.email}) and the new password — not your display name.`;
 
     googlePasswordNote
       .classList
@@ -2581,7 +2581,7 @@ changePasswordForm
           }
 
           showPasswordMessage(
-            "Password sign-in added successfully. You can now use Google or your email and password with the same account.",
+            `Password sign-in added successfully. You can now use Google, or sign in with ${user.email} and your new password. Your display name cannot be used to sign in.`,
             "success"
           );
         } else {
