@@ -719,7 +719,6 @@ def edit_stop_suggestions():
                 longitude=float(custom_location["longitude"]),
                 interests=interests or ["culture"],
                 minimum_rating=4.0,
-                max_pages=3 if get_current_user() else 1,
             )
 
             for candidate in candidates[:3]:
