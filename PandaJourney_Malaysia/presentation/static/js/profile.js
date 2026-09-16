@@ -1,6 +1,7 @@
 import {
   auth,
-  db
+  db,
+  provider
 } from "./firebase-config.js";
 
 import {
@@ -8,6 +9,7 @@ import {
   updateProfile,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  reauthenticateWithPopup,
   updatePassword,
   linkWithCredential
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
@@ -2106,7 +2108,7 @@ function configurePasswordSection(user) {
     );
 
     googlePasswordNote.textContent =
-      "Your account currently uses Google. Add a password to sign in with the same email and keep the same profile, favourites and itineraries.";
+      "Your Google email is already verified. For security, Google will ask you to confirm this account before a password is added.";
 
     googlePasswordNote
       .classList
@@ -2312,14 +2314,53 @@ changePasswordForm
         }
 
         if (linkingPasswordProvider) {
+          showPasswordMessage(
+            "Confirm your Google account in the popup to continue.",
+            "info"
+          );
+
+          const reauthenticationResult =
+            await reauthenticateWithPopup(
+              user,
+              provider
+            );
+
+          if (
+            reauthenticationResult.user.uid !==
+            user.uid
+          ) {
+            const mismatchError =
+              new Error(
+                "The selected Google account does not match this profile."
+              );
+            mismatchError.code =
+              "auth/user-mismatch";
+            throw mismatchError;
+          }
+
+          await reauthenticationResult.user.reload();
+
+          if (
+            !reauthenticationResult.user
+              .emailVerified
+          ) {
+            const verificationError =
+              new Error(
+                "This Google email has not been verified."
+              );
+            verificationError.code =
+              "auth/unverified-email";
+            throw verificationError;
+          }
+
           const credential =
             EmailAuthProvider.credential(
-              user.email,
+              reauthenticationResult.user.email,
               newPassword
             );
 
           await linkWithCredential(
-            user,
+            reauthenticationResult.user,
             credential
           );
 
@@ -2396,6 +2437,30 @@ changePasswordForm
         ) {
           message =
             "The current password is incorrect.";
+        } else if (
+          error.code ===
+            "auth/user-mismatch" ||
+          error.code ===
+            "auth/unverified-email"
+        ) {
+          message =
+            error.code === "auth/user-mismatch"
+              ? "Please confirm the same Google account used by this profile."
+              : "Your Google email must be verified before adding password sign-in.";
+        } else if (
+          error.code ===
+            "auth/popup-closed-by-user" ||
+          error.code ===
+            "auth/cancelled-popup-request"
+        ) {
+          message =
+            "Google confirmation was cancelled. No password sign-in was added.";
+        } else if (
+          error.code ===
+          "auth/popup-blocked"
+        ) {
+          message =
+            "The Google confirmation popup was blocked. Allow popups and try again.";
         } else if (
           error.code ===
           "auth/weak-password"
