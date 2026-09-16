@@ -138,18 +138,14 @@ class FirebaseAuthUnavailable(Exception):
 def _verified_firebase_uid() -> str | None:
     token = request.form.get("_firebase_id_token", "").strip()
 
-    if not token or firebase_admin_auth is None:
+    if not token:
         return None
 
     try:
-        # Initialises the same Firebase Admin app used by the cache.
-        if _get_firestore_db() is None:
-            return None
-
-        decoded_token = firebase_admin_auth.verify_id_token(token)
+        decoded_token = _verify_firebase_id_token(token)
         uid = str(decoded_token.get("uid") or "").strip()
         return uid or None
-    except Exception as error:
+    except (FirebaseTokenRejected, FirebaseAuthUnavailable) as error:
         smart_attraction_logger.warning(
             f"[AUTH TOKEN INVALID] {error}"
         )
