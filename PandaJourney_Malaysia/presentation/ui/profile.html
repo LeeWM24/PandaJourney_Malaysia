@@ -666,13 +666,13 @@
 .password-requirements {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 5px;
-  margin: 8px 0 0;
+  gap: 7px;
+  margin: 10px 0 0;
   padding: 0;
   list-style: none;
-  color: #78968a;
-  font-size: 11px;
-  line-height: 1.45;
+  color: #991b1b;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .password-requirement {
@@ -680,8 +680,12 @@
 }
 
 .password-requirement::before {
-  content: "○";
-  margin-right: 5px;
+  content: "✕";
+  display: inline-block;
+  width: 14px;
+  margin-right: 6px;
+  color: #b91c1c;
+  font-weight: 800;
 }
 
 .password-requirement.met {
@@ -690,14 +694,15 @@
 
 .password-requirement.met::before {
   content: "✓";
+  color: #166534;
 }
 
 .password-match-hint {
-  min-height: 16px;
-  margin-top: 7px;
+  min-height: 18px;
+  margin-top: 8px;
   color: #78968a;
-  font-size: 11px;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .password-match-hint.match {
@@ -706,6 +711,11 @@
 
 .password-match-hint.mismatch {
   color: #991b1b;
+}
+
+.password-match-hint.mismatch::before {
+  content: "✕ ";
+  font-weight: 800;
 }
 
 .password-message {
