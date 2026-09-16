@@ -12,7 +12,8 @@ import {
   linkWithCredential,
   EmailAuthProvider,
   sendPasswordResetEmail,
-  signOut
+  signOut,
+  onAuthStateChanged
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 // Firebase Firestore
@@ -43,6 +44,103 @@ const db = getFirestore(app);
 
 const provider = new GoogleAuthProvider();
 
+function getPasswordRules(password) {
+  return {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password)
+  };
+}
+
+function updateRegistrationPasswordGuidance() {
+  const password = document.getElementById("password")?.value || "";
+  const confirmation = document.getElementById("confirmPassword")?.value || "";
+  const rules = getPasswordRules(password);
+
+  document
+    .querySelectorAll("[data-register-password-rule]")
+    .forEach(element => {
+      element.classList.toggle(
+        "met",
+        Boolean(rules[element.dataset.registerPasswordRule])
+      );
+    });
+
+  const matchElement = document.getElementById("register-password-match");
+  if (!matchElement) return;
+
+  if (!confirmation) {
+    matchElement.textContent = "";
+    matchElement.className = "auth-password-match";
+  } else if (password === confirmation) {
+    matchElement.textContent = "✓ Passwords match";
+    matchElement.className = "auth-password-match match";
+  } else {
+    matchElement.textContent = "Passwords do not match";
+    matchElement.className = "auth-password-match mismatch";
+  }
+}
+
+document.querySelectorAll("[data-password-target]").forEach(button => {
+  button.addEventListener("click", () => {
+    const input = document.getElementById(button.dataset.passwordTarget);
+    if (!input) return;
+    const willShow = input.type === "password";
+    input.type = willShow ? "text" : "password";
+    button.textContent = willShow ? "Hide" : "Show";
+    button.setAttribute("aria-label", `${willShow ? "Hide" : "Show"} password`);
+  });
+});
+
+document.getElementById("password")?.addEventListener(
+  "input",
+  updateRegistrationPasswordGuidance
+);
+document.getElementById("confirmPassword")?.addEventListener(
+  "input",
+  updateRegistrationPasswordGuidance
+);
+
+async function createServerSession(user) {
+  const idToken = await user.getIdToken(true);
+
+  const response = await fetch(
+    "/session-login",
+    {
+      method: "POST",
+      credentials: "same-origin",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        idToken
+      })
+    }
+  );
+
+  const payload = await response
+    .json()
+    .catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(
+      payload.error ||
+      "Unable to establish a secure session."
+    );
+
+    if (response.status === 503) {
+      error.code = "auth/backend-unavailable";
+    } else if (response.status === 401) {
+      error.code = "auth/session-token-expired";
+    } else {
+      error.code = "auth/server-session-failed";
+    }
+    throw error;
+  }
+}
+
+
 function getSafeLoginDestination() {
   const requested =
     new URLSearchParams(
@@ -57,7 +155,7 @@ function getSafeLoginDestination() {
     return requested;
   }
 
-  return "/profile";
+  return "/dashboard";
 }
 
 provider.setCustomParameters({
@@ -115,6 +213,8 @@ if (googleLogin) {
 
       console.log("User saved to Firestore!");
 
+      await createServerSession(user);
+
       localStorage.setItem(
       "pandajourney-authenticated",
       "true"
@@ -124,6 +224,12 @@ if (googleLogin) {
 
     } catch (error) {
       console.error("Google Login failed:", error);
+
+      try {
+        await signOut(auth);
+      } catch (signOutError) {
+        console.error("Failed to clear login session:", signOutError);
+      }
 
       showLoginError(
         getAuthenticationErrorMessage(error)
@@ -200,6 +306,8 @@ if (googleSignup) {
       );
 
       console.log("User saved to Firestore!");
+      await createServerSession(user);
+
       localStorage.setItem(
         "pandajourney-authenticated",
         "true"
@@ -341,6 +449,13 @@ if (loginForm && document.getElementById("email")) {
         return;
       }
 
+      if (!navigator.onLine) {
+        showLoginError(
+          "You are offline. Check your internet connection and try again."
+        );
+        return;
+      }
+
       emailLoginPending = true;
 
       if (loginSubmitButton) {
@@ -359,14 +474,23 @@ if (loginForm && document.getElementById("email")) {
         const user = result.user;
 
         if (!user.emailVerified) {
+          let verificationResent = false;
+          try {
+            await sendEmailVerification(user);
+            verificationResent = true;
+          } catch (verificationError) {
+            console.error("Unable to resend verification email:", verificationError);
+          }
 
-            await signOut(auth);
+          await signOut(auth);
 
-            showLoginError(
-            "Please verify your email before logging in."
+          showLoginError(
+            verificationResent
+              ? "Please verify your email before logging in. A new verification email has been sent. Check your spam or junk folder if it is not in your inbox."
+              : "Please verify your email before logging in. We could not resend the email right now; please try again later."
           );
 
-            return;
+          return;
         }
 
         console.log("Email Login successful!");
@@ -399,6 +523,8 @@ if (loginForm && document.getElementById("email")) {
           { merge: true }
         );
 
+        await createServerSession(user);
+
         localStorage.setItem(
           "pandajourney-authenticated",
           "true"
@@ -407,6 +533,12 @@ if (loginForm && document.getElementById("email")) {
 
       } catch (error) {
         console.error("Email Login failed:", error);
+
+        try {
+          await signOut(auth);
+        } catch (signOutError) {
+          console.error("Failed to clear login session:", signOutError);
+        }
 
         showLoginError(
           getAuthenticationErrorMessage(error)
@@ -470,12 +602,28 @@ if (registerForm) {
       return;
     }
 
+    if (Array.from(name).length > 100) {
+      errorBox.textContent =
+        "Full name must not exceed 100 characters.";
+
+      errorBox.style.display = "block";
+      document.getElementById("name")?.focus();
+      return;
+    }
+
     if (!agree?.checked) {
       errorBox.textContent =
         "Please agree to the Terms & Conditions and Privacy Policy.";
 
       errorBox.style.display = "block";
       agree?.focus();
+      return;
+    }
+
+    if (!navigator.onLine) {
+      errorBox.textContent =
+        "You are offline. Check your internet connection and try again.";
+      errorBox.style.display = "block";
       return;
     }
 
@@ -493,10 +641,7 @@ if (registerForm) {
 
     // M3: Password is shorter than 8 characters and Not Strong
     const strongPassword =
-    password.length >= 8 &&
-    /[A-Z]/.test(password) &&
-    /[a-z]/.test(password) &&
-    /[^A-Za-z0-9]/.test(password);
+      Object.values(getPasswordRules(password)).every(Boolean);
 
   if (!strongPassword) {
     errorBox.textContent =
@@ -536,34 +681,35 @@ if (registerForm) {
       console.log("Account created!");
       console.log("UID:", user.uid);
 
-      await updateProfile(user, {
-        displayName: name
-      });
+      const setupResults = await Promise.allSettled([
+        updateProfile(user, { displayName: name }),
+        sendEmailVerification(user),
+        setDoc(
+          doc(db, "users", user.uid),
+          {
+            uid: user.uid,
+            email: user.email,
+            displayName: name,
+            profilePictureUrl: null,
+            authProvider: "password",
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        )
+      ]);
 
-      await sendEmailVerification(user);
-
-      await setDoc(
-        doc(db, "users", user.uid),
-        {
-          uid: user.uid,
-          email: user.email,
-          displayName: name,
-          profilePictureUrl: null,
-          authProvider: "password",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        },
-        { merge: true }
-      );
+      const verificationSent = setupResults[1].status === "fulfilled";
+      const profileSaved = setupResults[2].status === "fulfilled";
 
       await signOut(auth);
 
-      alert(
-        "Account created successfully!\n\n" +
-        "Please check your email and click the " +
-        "verification link before logging in."
+      sessionStorage.setItem(
+        "pandajourney-auth-message",
+        verificationSent
+          ? `Account created. Check your email and verify it before signing in. If you cannot find the email, check your spam or junk folder.${profileSaved ? "" : " Your profile will be completed when you sign in."}`
+          : "Account created, but the verification email could not be sent. Sign in again to resend it. Also check your spam or junk folder."
       );
-
       window.location.href = "/login";
 
     } catch (error) {
@@ -610,8 +756,10 @@ if (registerForm) {
       // M6: Account or profile creation error
       } else {
         errorBox.textContent =
-          error.message ||
-          "Unable to create the account or user profile.";
+          window.PandaFeedback?.friendlyError(
+            error,
+            "Unable to create the account. Please try again."
+          ) || "Unable to create the account. Please try again.";
       }
 
       errorBox.style.display = "block";
@@ -623,16 +771,29 @@ if (registerForm) {
     }
   });
 }
-function showLoginError(message) {
-  const errorBox = document.getElementById("loginError");
+function showLoginMessage(message, type = "error") {
+  const messageBox = document.getElementById("loginError");
 
-  if (!errorBox) {
+  if (!messageBox) {
     console.error(message);
     return;
   }
 
-  errorBox.textContent = message;
-  errorBox.style.display = "block";
+  messageBox.textContent = message;
+  messageBox.className = `login-message ${type} show`;
+  messageBox.setAttribute(
+    "role",
+    type === "error" ? "alert" : "status"
+  );
+  messageBox.setAttribute(
+    "aria-live",
+    type === "error" ? "assertive" : "polite"
+  );
+  messageBox.style.display = "block";
+}
+
+function showLoginError(message) {
+  showLoginMessage(message, "error");
 }
 
 function clearLoginError() {
@@ -659,8 +820,11 @@ if (storedAuthenticationMessage) {
     "pandajourney-auth-message"
   );
 
-  showLoginError(
-    storedAuthenticationMessage
+  showLoginMessage(
+    storedAuthenticationMessage,
+    storedAuthenticationMessage.startsWith("Account created")
+      ? "success"
+      : "warning"
   );
 }
 
@@ -673,6 +837,25 @@ function getAuthenticationErrorMessage(error) {
     case "auth/wrong-password":
       return "Invalid email address or password.";
 
+    case "auth/backend-unavailable":
+      return "Sign-in succeeded, but PandaJourney could not reach its server. Please wait a moment and try again.";
+
+    case "auth/session-token-expired":
+      return "Your sign-in token expired before the session was created. Please sign in again.";
+
+    case "auth/server-session-failed":
+      return error.message ||
+        "Sign-in succeeded, but the secure PandaJourney session could not be created. Please try again.";
+
+    case "auth/network-request-failed":
+      return "Network error. Check your internet connection and try again.";
+
+    case "auth/too-many-requests":
+      return "Too many attempts. Please wait a while and try again.";
+
+    case "auth/popup-blocked":
+      return "The browser blocked the Google sign-in window. Allow pop-ups and try again.";
+
     // M3: Google sign-in was cancelled
     case "auth/popup-closed-by-user":
     case "auth/cancelled-popup-request":
@@ -684,3 +867,31 @@ function getAuthenticationErrorMessage(error) {
   }
 }
 
+
+let sessionRestorePending = false;
+
+if (googleLogin) {
+  onAuthStateChanged(auth, async user => {
+    if (
+      !user ||
+      !user.emailVerified ||
+      googleLoginPending ||
+      emailLoginPending ||
+      sessionRestorePending
+    ) {
+      return;
+    }
+
+    sessionRestorePending = true;
+    clearLoginError();
+
+    try {
+      await createServerSession(user);
+      localStorage.setItem("pandajourney-authenticated", "true");
+      window.location.replace(getSafeLoginDestination());
+    } catch (error) {
+      showLoginError(getAuthenticationErrorMessage(error));
+      sessionRestorePending = false;
+    }
+  });
+}

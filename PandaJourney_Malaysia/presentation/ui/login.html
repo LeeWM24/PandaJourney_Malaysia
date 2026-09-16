@@ -10,7 +10,7 @@
 
   <link
     rel="stylesheet"
-    href="{{ url_for('static', filename='css/app.css') }}"
+    href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_version('css/app.css') }}"
   />
 </head>
 
@@ -116,7 +116,7 @@
               Password
             </label>
 
-            <div class="form-input-icon">
+            <div class="form-input-icon auth-password-wrap">
               <span class="icon">🔒</span>
 
               <input
@@ -128,6 +128,13 @@
                 autocomplete="current-password"
                 required
               />
+              <button
+                type="button"
+                class="auth-password-toggle"
+                data-password-target="password"
+                aria-label="Show password">
+                Show
+              </button>
             </div>
           </div>
 
@@ -174,9 +181,10 @@
     </section>
   </main>
 
+  <script src="{{ url_for('static', filename='js/ui-status.js') }}"></script>
   <script
     type="module"
-    src="{{ url_for('static', filename='js/firebase-auth.js') }}"
+    src="{{ url_for('static', filename='js/firebase-auth.js') }}?v={{ asset_version('js/firebase-auth.js') }}"
   ></script>
 </body>
 </html>

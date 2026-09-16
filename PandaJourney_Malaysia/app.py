@@ -2,7 +2,10 @@ import os
 import time
 import hashlib
 import threading
-from datetime import datetime, timezone
+import secrets
+import requests
+from functools import wraps
+from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 
 try:
@@ -37,9 +40,11 @@ from services.smart_attraction import (
 )
 
 try:
+    import firebase_admin
     from firebase_admin import auth as firebase_admin_auth
     from google.cloud import firestore as google_cloud_firestore
 except ImportError:
+    firebase_admin = None
     firebase_admin_auth = None
     google_cloud_firestore = None
 
@@ -51,7 +56,24 @@ app = Flask(
     static_url_path="/static"
 )
 
-app.secret_key = os.getenv("SECRET_KEY", "panda-demo-secret")
+configured_secret_key = os.getenv("SECRET_KEY", "").strip()
+app.secret_key = configured_secret_key or secrets.token_hex(32)
+
+if not configured_secret_key:
+    app.logger.warning(
+        "SECRET_KEY is not configured; sessions will reset when the server restarts."
+    )
+
+app.config.update(
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=30),
+    SESSION_REFRESH_EACH_REQUEST=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=(
+        os.getenv("SESSION_COOKIE_SECURE", "").lower()
+        in {"1", "true", "yes"}
+    ),
+)
 
 
 def asset_version(relative_path: str) -> int:
@@ -100,6 +122,14 @@ _daily_usage_lock = threading.Lock()
 
 
 class DailySearchLimitExceeded(Exception):
+    pass
+
+
+class FirebaseTokenRejected(Exception):
+    pass
+
+
+class FirebaseAuthUnavailable(Exception):
     pass
 
 
@@ -251,6 +281,132 @@ def get_current_user():
     return session.get("user", {})
 
 
+def login_required(view_function):
+    @wraps(view_function)
+    def wrapped(*args, **kwargs):
+        if not get_current_user().get("uid"):
+            if request.path.startswith("/api/"):
+                return jsonify({
+                    "error": "Authentication required."
+                }), 401
+
+            next_url = request.full_path.rstrip("?")
+            return redirect(
+                url_for("login", next=next_url)
+            )
+
+        return view_function(*args, **kwargs)
+
+    return wrapped
+
+
+def _ensure_firebase_auth_ready() -> bool:
+    """Initialise token verification without requiring Firestore access."""
+    if firebase_admin is None or firebase_admin_auth is None:
+        return False
+
+    try:
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(options={
+                "projectId": os.getenv(
+                    "GOOGLE_CLOUD_PROJECT",
+                    "pandajourney-ef50a",
+                )
+            })
+        return True
+    except Exception as error:
+        app.logger.error("Firebase Auth initialisation failed: %s", error)
+        return False
+
+
+def _verify_firebase_id_token(id_token: str) -> dict:
+    """Verify with Admin SDK, or Firebase Auth REST when Admin is unavailable."""
+    if _ensure_firebase_auth_ready():
+        try:
+            return firebase_admin_auth.verify_id_token(
+                id_token,
+                check_revoked=False,
+            )
+        except Exception as error:
+            app.logger.warning(
+                "Firebase Admin token verification failed; trying REST: %s",
+                error,
+            )
+
+    api_key = os.getenv(
+        "FIREBASE_WEB_API_KEY",
+        "AIzaSyAX3NQdMKHFGwoySHcNAYW8dHFSnZBo_MI",
+    ).strip()
+
+    try:
+        response = requests.post(
+            "https://identitytoolkit.googleapis.com/v1/accounts:lookup",
+            params={"key": api_key},
+            json={"idToken": id_token},
+            timeout=10,
+        )
+    except requests.RequestException as error:
+        raise FirebaseAuthUnavailable() from error
+
+    if response.status_code in {400, 401, 403}:
+        raise FirebaseTokenRejected()
+    if not response.ok:
+        raise FirebaseAuthUnavailable()
+
+    users = response.json().get("users") or []
+    if not users:
+        raise FirebaseTokenRejected()
+
+    user = users[0]
+    return {
+        "uid": user.get("localId", ""),
+        "email": user.get("email", ""),
+        "name": user.get("displayName", ""),
+        "email_verified": bool(user.get("emailVerified", False)),
+    }
+
+@app.route("/session-login", methods=["POST"])
+def session_login():
+    payload = request.get_json(silent=True) or {}
+    id_token = str(payload.get("idToken") or "").strip()
+
+    if not id_token:
+        return jsonify({
+            "error": "Firebase ID token is required."
+        }), 400
+
+    try:
+        decoded_token = _verify_firebase_id_token(id_token)
+    except FirebaseTokenRejected as error:
+        app.logger.warning(
+            "Rejected Firebase session token: %s",
+            error,
+        )
+        return jsonify({
+            "error": "Invalid or expired authentication token."
+        }), 401
+    except FirebaseAuthUnavailable as error:
+        app.logger.error("Firebase Auth verification unavailable: %s", error)
+        return jsonify({
+            "error": "Authentication service is temporarily unavailable."
+        }), 503
+
+    if not decoded_token.get("email_verified", False):
+        return jsonify({
+            "error": "Please verify your email before logging in."
+        }), 403
+
+    session.clear()
+    session.permanent = True
+    session["user"] = {
+        "uid": decoded_token["uid"],
+        "email": decoded_token.get("email", ""),
+        "displayName": decoded_token.get("name", ""),
+    }
+
+    return jsonify({"ok": True})
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     return render_template("login.html")
@@ -262,6 +418,7 @@ def create_account():
 
 
 @app.route("/dashboard")
+@login_required
 def dashboard():
     return render_template(
         "dashboard.html",
@@ -271,6 +428,7 @@ def dashboard():
 
 
 @app.route("/profile", methods=["GET"])
+@login_required
 def profile():
     return render_template(
         "profile.html",
@@ -281,11 +439,12 @@ def profile():
 
 
 @app.route("/user-management")
+@login_required
 def user_management():
     return redirect(url_for("profile"))
 
 
-@app.route("/logout", methods=["GET", "POST"])
+@app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))
@@ -320,6 +479,7 @@ def public_place_photo():
 
 
 @app.route("/", methods=["GET", "POST"])
+@app.route("/attractions", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
 @rate_limit(max_calls=6, window_seconds=60)
 def smart_attraction():
@@ -494,6 +654,7 @@ def smart_attraction():
 # =========================
 
 @app.route("/api/location-suggestions")
+@login_required
 @rate_limit(max_calls=15, window_seconds=60)
 def location_suggestions():
     query = request.args.get("q", "").strip()
@@ -520,6 +681,7 @@ def location_suggestions():
 
 
 @app.route("/api/edit-stop-suggestions")
+@login_required
 @rate_limit(max_calls=8, window_seconds=60)
 def edit_stop_suggestions():
     query_text = request.args.get("q", "").strip()
@@ -594,6 +756,7 @@ def edit_stop_suggestions():
 # =========================
 
 @app.route("/smart-itinerary", methods=["GET", "POST"])
+@login_required
 def smart_itinerary():
     plan = None
     error = None
@@ -638,6 +801,7 @@ def smart_itinerary():
 # =========================
 
 @app.route("/saved-itineraries", methods=["GET"])
+@login_required
 def saved_itineraries():
     return render_template(
         "saved_itineraries.html",
@@ -648,6 +812,7 @@ def saved_itineraries():
 
 @app.route("/saved-itinerary/<itinerary_id>")
 @app.route("/saved-itineraries/<itinerary_id>")
+@login_required
 def saved_itinerary_detail(itinerary_id):
     return render_template(
         "saved_itinerary_detail.html",
@@ -659,6 +824,7 @@ def saved_itinerary_detail(itinerary_id):
 
 @app.route("/saved-itinerary/<itinerary_id>/edit")
 @app.route("/saved-itineraries/<itinerary_id>/edit")
+@login_required
 def saved_itinerary_edit(itinerary_id):
     return render_template(
         "saved_itinerary_edit.html",
@@ -669,6 +835,7 @@ def saved_itinerary_edit(itinerary_id):
 
 
 @app.route("/collaboration", methods=["GET", "POST"])
+@login_required
 def collaboration():
     return render_template(
         "collaboration.html",
@@ -691,6 +858,9 @@ def collaboration():
 @app.route("/public-itineraries", methods=["GET", "POST"])
 def public_itinerary():
     if request.method == "POST":
+        if not get_current_user().get("uid"):
+            return redirect(url_for("login", next=request.path))
+
         action = request.form.get("_action")
 
         if action == "copy":

@@ -4,15 +4,6 @@
 {% block page_title %}My Profile{% endblock %}
 {% block page_subtitle %}Manage your account and profile{% endblock %}
 
-{% block topbar_actions %}
-<button
-  type="button"
-  class="btn btn-danger btn-sm js-open-logout"
-  id="topbar-logout-btn">
-  🚪 Logout
-</button>
-{% endblock %}
-
 {% block extra_head %}
 <style>
 /* =================================
@@ -221,7 +212,7 @@
 
 .profile-field-meta {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-top: 7px;
@@ -536,13 +527,27 @@
   white-space: nowrap;
 }
 
-.fav-row[hidden] {
-  display: none !important;
+.fav-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 16px;
 }
 
-.fav-toggle {
-  display: flex;
-  margin: 14px auto 0;
+.fav-page-button.active {
+  color: #ffffff;
+  background: var(--primary-dark);
+}
+
+.fav-page-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.fav-page-button.active:disabled {
+  opacity: 1;
 }
 
 /* =================================
@@ -591,10 +596,86 @@
   gap: 14px;
 }
 
+#current-password-group.hidden {
+  display: none !important;
+}
+
+.change-password-form.link-password-mode .change-password-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .change-password-actions {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.password-input-wrap {
+  position: relative;
+}
+
+.password-input-wrap .form-input {
+  padding-right: 64px;
+}
+
+.password-visibility-toggle {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  padding: 4px;
+  color: var(--primary-dark);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+
+.password-requirements {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: #78968a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.password-requirement {
+  white-space: nowrap;
+}
+
+.password-requirement::before {
+  content: "○";
+  margin-right: 5px;
+}
+
+.password-requirement.met {
+  color: #166534;
+}
+
+.password-requirement.met::before {
+  content: "✓";
+}
+
+.password-match-hint {
+  min-height: 16px;
+  margin-top: 7px;
+  color: #78968a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.password-match-hint.match {
+  color: #166534;
+}
+
+.password-match-hint.mismatch {
+  color: #991b1b;
 }
 
 .password-message {
@@ -711,6 +792,7 @@
 
 {% block content %}
 <div class="page-inner">
+  <div id="profile-page-message" role="alert" aria-live="assertive" hidden></div>
   <div class="profile-wrap">
 
     <!-- =================================
@@ -946,8 +1028,10 @@
                     readonly>
                 </div>
 
-                <div class="profile-field-hint">
-                  Your login email cannot be changed here.
+                <div class="profile-field-meta">
+                  <div class="profile-field-hint">
+                    Your login email cannot be changed here.
+                  </div>
                 </div>
               </div>
             </div>
@@ -1131,7 +1215,9 @@
             Account Security
           </div>
 
-          <div class="profile-security-sub">
+          <div
+            class="profile-security-sub"
+            id="password-security-subtitle">
             Update the password used to sign in to your account.
           </div>
         </div>
@@ -1149,19 +1235,22 @@
         class="change-password-form hidden">
 
         <div class="change-password-fields">
-          <div class="form-group">
+          <div class="form-group" id="current-password-group">
             <label
               class="form-label"
               for="current-password">
               Current Password
             </label>
 
-            <input
-              class="form-input"
-              id="current-password"
-              type="password"
-              autocomplete="current-password"
-              required>
+            <div class="password-input-wrap">
+              <input
+                class="form-input"
+                id="current-password"
+                type="password"
+                autocomplete="current-password"
+                required>
+              <button type="button" class="password-visibility-toggle" data-password-target="current-password" aria-label="Show current password">Show</button>
+            </div>
           </div>
 
           <div class="form-group">
@@ -1171,13 +1260,23 @@
               New Password
             </label>
 
-            <input
-              class="form-input"
-              id="new-password"
-              type="password"
-              autocomplete="new-password"
-              minlength="8"
-              required>
+            <div class="password-input-wrap">
+              <input
+                class="form-input"
+                id="new-password"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+                aria-describedby="password-requirements"
+                required>
+              <button type="button" class="password-visibility-toggle" data-password-target="new-password" aria-label="Show new password">Show</button>
+            </div>
+            <ul class="password-requirements" id="password-requirements">
+              <li class="password-requirement" data-password-rule="length">At least 8 characters</li>
+              <li class="password-requirement" data-password-rule="uppercase">One uppercase letter</li>
+              <li class="password-requirement" data-password-rule="lowercase">One lowercase letter</li>
+              <li class="password-requirement" data-password-rule="special">One special character</li>
+            </ul>
           </div>
 
           <div class="form-group">
@@ -1187,13 +1286,18 @@
               Confirm New Password
             </label>
 
-            <input
-              class="form-input"
-              id="confirm-new-password"
-              type="password"
-              autocomplete="new-password"
-              minlength="8"
-              required>
+            <div class="password-input-wrap">
+              <input
+                class="form-input"
+                id="confirm-new-password"
+                type="password"
+                autocomplete="new-password"
+                minlength="8"
+                aria-describedby="password-match-hint"
+                required>
+              <button type="button" class="password-visibility-toggle" data-password-target="confirm-new-password" aria-label="Show confirmed password">Show</button>
+            </div>
+            <div class="password-match-hint" id="password-match-hint" aria-live="polite"></div>
           </div>
         </div>
 
@@ -1224,7 +1328,7 @@
       <div
         class="google-password-note hidden"
         id="google-password-note">
-        Your password is managed through your Google Account.
+        Your account currently uses Google. You can add password sign-in without creating a separate profile.
       </div>
     </div>
 
@@ -1260,6 +1364,8 @@
         class="edit-profile-confirm hidden"
         id="edit-actions">
 
+        <div id="profile-edit-message" role="alert" aria-live="assertive" hidden></div>
+
         <div class="edit-profile-confirm-note">
           <span class="edit-profile-confirm-icon">
             ✓
@@ -1287,33 +1393,12 @@
           <button
             type="button"
             class="btn btn-primary btn-sm"
+            id="save-profile-btn"
             onclick="saveProfile()">
             ✓ Confirm Changes
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- =================================
-         Danger Zone
-    ================================= -->
-
-    <div class="danger-zone">
-      <div>
-        <div class="danger-zone-title">
-          Logout from PandaJourney
-        </div>
-
-        <div class="danger-zone-sub">
-          You'll be redirected to the attractions page.
-        </div>
-      </div>
-
-      <button
-        type="button"
-        class="btn btn-danger btn-sm js-open-logout">
-        🚪 Logout
-      </button>
     </div>
 
   </div>
@@ -1424,6 +1509,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='js/ui-status.js') }}"></script>
 <script
   type="module"
   src="{{ url_for('static', filename='js/profile.js') }}?v={{ asset_version('js/profile.js') }}">

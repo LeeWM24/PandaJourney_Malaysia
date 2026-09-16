@@ -8,7 +8,8 @@ import {
   updateProfile,
   EmailAuthProvider,
   reauthenticateWithCredential,
-  updatePassword
+  updatePassword,
+  linkWithCredential
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 import {
@@ -27,6 +28,13 @@ import {
 
 const identityName =
   document.querySelector(".identity-name");
+
+const profilePageMessage =
+  document.getElementById("profile-page-message");
+
+function showProfilePageMessage(message, type = "error") {
+  window.PandaFeedback?.show(profilePageMessage, message, type);
+}
 
 const identityEmail =
   document.querySelector(".identity-email");
@@ -55,6 +63,15 @@ editName?.addEventListener(
   "input",
   updateDisplayNameCount
 );
+
+window.addEventListener("beforeunload", event => {
+  if (!isEditing) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = "";
+});
 
 const editEmail =
   document.getElementById("edit-email");
@@ -164,8 +181,23 @@ const savePasswordBtn =
 const googlePasswordNote =
   document.getElementById("google-password-note");
 
+const currentPasswordGroup =
+  document.getElementById("current-password-group");
+
+const passwordSecuritySubtitle =
+  document.getElementById("password-security-subtitle");
+
+const passwordMatchHint =
+  document.getElementById("password-match-hint");
+
+const passwordRequirementElements =
+  document.querySelectorAll("[data-password-rule]");
+
 
 const FAVOURITES_COLLECTION = "Favourites";
+const FAVOURITES_PAGE_SIZE = 5;
+let favouriteCurrentPage = 1;
+let linkingPasswordProvider = false;
 
 
 // State
@@ -613,18 +645,12 @@ if (useGoogleAvatarBtn) {
           auth.currentUser;
 
         if (!user) {
-          alert(
-            "You are not logged in."
-          );
-
+          showProfilePageMessage("Your session has expired. Please sign in again.");
           return;
         }
 
         if (!user.photoURL) {
-          alert(
-            "No Google profile photo is available for this account."
-          );
-
+          showProfilePageMessage("No Google profile photo is available for this account.", "warning");
           return;
         }
 
@@ -858,9 +884,7 @@ if (avatarFileInput) {
           file.type
         )
       ) {
-        alert(
-          "Please choose a JPG, PNG, or WebP image."
-        );
+        showProfilePageMessage("Please choose a JPG, PNG, or WebP image.");
 
         avatarFileInput.value =
           "";
@@ -872,9 +896,7 @@ if (avatarFileInput) {
         file.size >
         10 * 1024 * 1024
       ) {
-        alert(
-          "Profile picture must be smaller than 10 MB."
-        );
+        showProfilePageMessage("Profile picture must be smaller than 10 MB.");
 
         avatarFileInput.value =
           "";
@@ -934,9 +956,8 @@ if (avatarFileInput) {
         avatarFileInput.value =
           "";
 
-        alert(
-          error.message ||
-          "Unable to process this image."
+        showProfilePageMessage(
+          error.message || "Unable to process this image."
         );
       } finally {
         isAvatarProcessing =
@@ -1095,14 +1116,18 @@ window.cancelEdit = function () {
 
 window.saveProfile =
 async function () {
+  const messageElement =
+    document.getElementById("profile-edit-message");
+  const saveButton =
+    document.getElementById("save-profile-btn");
   const user =
     auth.currentUser;
 
   if (!user) {
-    alert(
-      "You are not logged in."
+    window.PandaFeedback?.show(
+      messageElement,
+      "Your session has expired. Please sign in again."
     );
-
     return;
   }
 
@@ -1111,18 +1136,37 @@ async function () {
     "";
 
   if (!newDisplayName) {
-    alert(
-      "Please enter valid profile information."
+    window.PandaFeedback?.show(
+      messageElement,
+      "Please enter a display name."
     );
+    editName?.focus();
+    return;
+  }
 
+  if (Array.from(newDisplayName).length > 100) {
+    window.PandaFeedback?.show(
+      messageElement,
+      "Display name must not exceed 100 characters."
+    );
+    editName?.focus();
     return;
   }
 
   if (isAvatarProcessing) {
-    alert(
-      "Please wait for the profile picture to finish processing."
+    window.PandaFeedback?.show(
+      messageElement,
+      "Please wait for the profile picture to finish processing.",
+      "warning"
     );
+    return;
+  }
 
+  if (!navigator.onLine) {
+    window.PandaFeedback?.show(
+      messageElement,
+      "You are offline. Check your internet connection before saving."
+    );
     return;
   }
 
@@ -1137,6 +1181,12 @@ async function () {
     );
 
   try {
+    window.PandaFeedback?.clear(messageElement);
+    if (saveButton) {
+      saveButton.disabled = true;
+      saveButton.setAttribute("aria-busy", "true");
+      saveButton.textContent = "Saving...";
+    }
     await updateProfile(
       user,
       {
@@ -1328,10 +1378,19 @@ async function () {
     error
   );
 
-  alert(
-    error.message ||
-    "Unable to update the user profile."
+  window.PandaFeedback?.show(
+    messageElement,
+    window.PandaFeedback?.friendlyError(
+      error,
+      "Unable to update your profile. Your previous information is unchanged."
+    ) || "Unable to update your profile. Please try again."
   );
+  } finally {
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.removeAttribute("aria-busy");
+      saveButton.textContent = "✓ Confirm Changes";
+    }
   }
 };
 
@@ -1599,11 +1658,38 @@ async function loadFavourites(user) {
     listEl.style.display = "block";
     listEl.innerHTML = "";
 
-    const favouriteDocs =
-      snapshot.docs;
+    const collator = new Intl.Collator(
+      "en",
+      { sensitivity: "base", numeric: true }
+    );
 
-    favouriteDocs.forEach(
-      (docSnap, index) => {
+    const favouriteDocs = [...snapshot.docs].sort((left, right) => {
+      const leftData = left.data();
+      const rightData = right.data();
+      const leftName = leftData.name || leftData.attraction_name || "Unnamed Attraction";
+      const rightName = rightData.name || rightData.attraction_name || "Unnamed Attraction";
+      return collator.compare(leftName, rightName);
+    });
+
+    const totalPages = Math.ceil(
+      favouriteDocs.length / FAVOURITES_PAGE_SIZE
+    );
+    favouriteCurrentPage = Math.min(
+      Math.max(favouriteCurrentPage, 1),
+      totalPages
+    );
+
+    const renderFavouritePage = () => {
+      listEl.innerHTML = "";
+      const startIndex =
+        (favouriteCurrentPage - 1) * FAVOURITES_PAGE_SIZE;
+      const pageDocs = favouriteDocs.slice(
+        startIndex,
+        startIndex + FAVOURITES_PAGE_SIZE
+      );
+
+      pageDocs.forEach(
+      docSnap => {
         const data =
           docSnap.data();
 
@@ -1616,14 +1702,6 @@ async function loadFavourites(user) {
           document.createElement("div");
 
         row.className = "fav-row";
-
-        if (index >= 5) {
-          row.classList.add(
-            "fav-row-extra"
-          );
-
-          row.hidden = true;
-        }
 
         row.innerHTML = `
           <div class="recent-icon">
@@ -1672,59 +1750,35 @@ async function loadFavourites(user) {
       }
     );
 
-    // Show All / Show Less
-    if (favouriteDocs.length > 5) {
-      const toggleButton =
-        document.createElement(
-          "button"
-        );
+      if (totalPages > 1) {
+        const pagination = document.createElement("nav");
+        pagination.className = "fav-pagination";
+        pagination.setAttribute("aria-label", "Favourite attractions pages");
 
-      toggleButton.type = "button";
+        const addPageButton = (label, page, disabled, current = false) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = `btn btn-ghost btn-sm fav-page-button${current ? " active" : ""}`;
+          button.textContent = label;
+          button.disabled = disabled;
+          if (current) button.setAttribute("aria-current", "page");
+          button.addEventListener("click", () => {
+            favouriteCurrentPage = page;
+            renderFavouritePage();
+          });
+          pagination.appendChild(button);
+        };
 
-      toggleButton.className =
-        "btn btn-ghost btn-sm fav-toggle";
-
-      toggleButton.textContent =
-        `Show all (${favouriteDocs.length})`;
-
-      toggleButton.setAttribute(
-        "aria-expanded",
-        "false"
-      );
-
-      toggleButton.addEventListener(
-        "click",
-        () => {
-          const willExpand =
-            toggleButton.getAttribute(
-              "aria-expanded"
-            ) === "false";
-
-          listEl
-            .querySelectorAll(
-              ".fav-row-extra"
-            )
-            .forEach(row => {
-              row.hidden =
-                !willExpand;
-            });
-
-          toggleButton.setAttribute(
-            "aria-expanded",
-            String(willExpand)
-          );
-
-          toggleButton.textContent =
-            willExpand
-              ? "Show less"
-              : `Show all (${favouriteDocs.length})`;
+        addPageButton("Previous", favouriteCurrentPage - 1, favouriteCurrentPage === 1);
+        for (let page = 1; page <= totalPages; page += 1) {
+          addPageButton(String(page), page, page === favouriteCurrentPage, page === favouriteCurrentPage);
         }
-      );
+        addPageButton("Next", favouriteCurrentPage + 1, favouriteCurrentPage === totalPages);
+        listEl.appendChild(pagination);
+      }
+    };
 
-      listEl.appendChild(
-        toggleButton
-      );
-    }
+    renderFavouritePage();
 
   } catch (error) {
     console.error(
@@ -1863,8 +1917,11 @@ confirmRemoveFavouriteBtn
           error
         );
 
-        alert(
-          "Unable to remove this favourite. Please try again."
+        showProfilePageMessage(
+          window.PandaFeedback?.friendlyError(
+            error,
+            "Unable to remove this favourite. Please try again."
+          ) || "Unable to remove this favourite. Please try again."
         );
       } finally {
         confirmRemoveFavouriteBtn
@@ -1926,6 +1983,66 @@ async function loadSharedItineraryCount(
 let canChangePassword = false;
 
 
+function getPasswordRules(password) {
+  return {
+    length: password.length >= 8,
+    uppercase: /[A-Z]/.test(password),
+    lowercase: /[a-z]/.test(password),
+    special: /[^A-Za-z0-9]/.test(password)
+  };
+}
+
+
+function updatePasswordGuidance() {
+  const password = newPasswordInput?.value || "";
+  const confirmation = confirmNewPasswordInput?.value || "";
+  const rules = getPasswordRules(password);
+
+  passwordRequirementElements.forEach(element => {
+    element.classList.toggle(
+      "met",
+      Boolean(rules[element.dataset.passwordRule])
+    );
+  });
+
+  if (!passwordMatchHint) {
+    return;
+  }
+
+  if (!confirmation) {
+    passwordMatchHint.textContent = "";
+    passwordMatchHint.className = "password-match-hint";
+  } else if (password === confirmation) {
+    passwordMatchHint.textContent = "✓ Passwords match";
+    passwordMatchHint.className = "password-match-hint match";
+  } else {
+    passwordMatchHint.textContent = "Passwords do not match";
+    passwordMatchHint.className = "password-match-hint mismatch";
+  }
+}
+
+
+newPasswordInput?.addEventListener("input", updatePasswordGuidance);
+confirmNewPasswordInput?.addEventListener("input", updatePasswordGuidance);
+
+document
+  .querySelectorAll("[data-password-target]")
+  .forEach(button => {
+    button.addEventListener("click", () => {
+      const input = document.getElementById(button.dataset.passwordTarget);
+      if (!input) return;
+
+      const willShow = input.type === "password";
+      input.type = willShow ? "text" : "password";
+      button.textContent = willShow ? "Hide" : "Show";
+      button.setAttribute(
+        "aria-label",
+        `${willShow ? "Hide" : "Show"} ${input.id.replaceAll("-", " ")}`
+      );
+    });
+  });
+
+
 function configurePasswordSection(user) {
   if (
     !openChangePasswordBtn ||
@@ -1942,34 +2059,94 @@ function configurePasswordSection(user) {
         "password"
     );
 
+  const hasGoogleProvider =
+    user.providerData.some(
+      provider =>
+        provider.providerId ===
+        "google.com"
+    );
+
+  linkingPasswordProvider =
+    !canChangePassword && hasGoogleProvider;
+
+  changePasswordForm.classList.toggle(
+    "link-password-mode",
+    linkingPasswordProvider
+  );
+
   changePasswordForm.reset();
+  updatePasswordGuidance();
   changePasswordForm.classList.add(
     "hidden"
   );
 
   if (passwordMessage) {
     passwordMessage.textContent = "";
-
     passwordMessage.className =
       "password-message";
   }
 
-  if (canChangePassword) {
-    openChangePasswordBtn
-      .classList
-      .remove("hidden");
+  openChangePasswordBtn
+    .classList
+    .toggle(
+      "hidden",
+      !canChangePassword && !hasGoogleProvider
+    );
+
+  if (linkingPasswordProvider) {
+    openChangePasswordBtn.textContent =
+      "🔗 Add Password Sign-In";
+
+    currentPasswordGroup
+      ?.classList
+      .add("hidden");
+
+    currentPasswordInput?.removeAttribute(
+      "required"
+    );
+
+    googlePasswordNote.textContent =
+      "Your account currently uses Google. Add a password to sign in with the same email and keep the same profile, favourites and itineraries.";
 
     googlePasswordNote
       .classList
-      .add("hidden");
+      .remove("hidden");
+
+    if (passwordSecuritySubtitle) {
+      passwordSecuritySubtitle.textContent =
+        "Add another secure sign-in method to this account.";
+    }
+
+    if (savePasswordBtn) {
+      savePasswordBtn.textContent =
+        "Add Password Sign-In";
+    }
   } else {
-    openChangePasswordBtn
-      .classList
-      .add("hidden");
+    openChangePasswordBtn.textContent =
+      "🔒 Change Password";
+
+    currentPasswordGroup
+      ?.classList
+      .remove("hidden");
+
+    currentPasswordInput?.setAttribute(
+      "required",
+      ""
+    );
 
     googlePasswordNote
       .classList
-      .remove("hidden");
+      .add("hidden");
+
+    if (passwordSecuritySubtitle) {
+      passwordSecuritySubtitle.textContent =
+        "Update the password used to sign in to your account.";
+    }
+
+    if (savePasswordBtn) {
+      savePasswordBtn.textContent =
+        "Update Password";
+    }
   }
 }
 
@@ -1977,7 +2154,7 @@ function configurePasswordSection(user) {
 openChangePasswordBtn?.addEventListener(
   "click",
   () => {
-    if (!canChangePassword) {
+    if (!canChangePassword && !linkingPasswordProvider) {
       return;
     }
 
@@ -1989,7 +2166,11 @@ openChangePasswordBtn?.addEventListener(
       .classList
       .add("hidden");
 
-    currentPasswordInput?.focus();
+    if (linkingPasswordProvider) {
+      newPasswordInput?.focus();
+    } else {
+      currentPasswordInput?.focus();
+    }
   }
 );
 
@@ -2012,12 +2193,21 @@ function showPasswordMessage(
 
 function resetPasswordForm() {
   changePasswordForm?.reset();
+  updatePasswordGuidance();
+
+  document
+    .querySelectorAll("[data-password-target]")
+    .forEach(button => {
+      const input = document.getElementById(button.dataset.passwordTarget);
+      if (input) input.type = "password";
+      button.textContent = "Show";
+    });
 
   changePasswordForm
     ?.classList
     .add("hidden");
 
-  if (canChangePassword) {
+  if (canChangePassword || linkingPasswordProvider) {
     openChangePasswordBtn
       ?.classList
       .remove("hidden");
@@ -2067,7 +2257,7 @@ changePasswordForm
       const confirmPassword =
         confirmNewPasswordInput?.value || "";
 
-      if (!currentPassword) {
+      if (!linkingPasswordProvider && !currentPassword) {
         showPasswordMessage(
           "Please enter your current password.",
           "error"
@@ -2075,11 +2265,8 @@ changePasswordForm
         return;
       }
 
-      const strongPassword =
-      newPassword.length >= 8 &&
-      /[A-Z]/.test(newPassword) &&
-      /[a-z]/.test(newPassword) &&
-      /[^A-Za-z0-9]/.test(newPassword);
+      const passwordRules = getPasswordRules(newPassword);
+      const strongPassword = Object.values(passwordRules).every(Boolean);
 
     if (!strongPassword) {
       showPasswordMessage(
@@ -2102,6 +2289,7 @@ changePasswordForm
       }
 
       if (
+        !linkingPasswordProvider &&
         currentPassword ===
         newPassword
       ) {
@@ -2118,31 +2306,79 @@ changePasswordForm
             true;
 
           savePasswordBtn.textContent =
-            "Updating...";
+            linkingPasswordProvider
+              ? "Adding..."
+              : "Updating...";
         }
 
-        const credential =
-          EmailAuthProvider.credential(
-            user.email,
-            currentPassword
+        if (linkingPasswordProvider) {
+          const credential =
+            EmailAuthProvider.credential(
+              user.email,
+              newPassword
+            );
+
+          await linkWithCredential(
+            user,
+            credential
           );
 
-        await reauthenticateWithCredential(
-          user,
-          credential
-        );
+          canChangePassword = true;
+          linkingPasswordProvider = false;
+          changePasswordForm.classList.remove(
+            "link-password-mode"
+          );
 
-        await updatePassword(
-          user,
-          newPassword
-        );
+          currentPasswordGroup
+            ?.classList
+            .remove("hidden");
+
+          currentPasswordInput?.setAttribute(
+            "required",
+            ""
+          );
+
+          googlePasswordNote
+            ?.classList
+            .add("hidden");
+
+          openChangePasswordBtn.textContent =
+            "🔒 Change Password";
+
+          if (passwordSecuritySubtitle) {
+            passwordSecuritySubtitle.textContent =
+              "Update the password used to sign in to your account.";
+          }
+
+          showPasswordMessage(
+            "Password sign-in added successfully. You can now use Google or your email and password with the same account.",
+            "success"
+          );
+        } else {
+          const credential =
+            EmailAuthProvider.credential(
+              user.email,
+              currentPassword
+            );
+
+          await reauthenticateWithCredential(
+            user,
+            credential
+          );
+
+          await updatePassword(
+            user,
+            newPassword
+          );
+
+          showPasswordMessage(
+            "Password updated successfully.",
+            "success"
+          );
+        }
 
         changePasswordForm.reset();
-
-        showPasswordMessage(
-          "Password updated successfully.",
-          "success"
-        );
+        updatePasswordGuidance();
       } catch (error) {
         console.error(
           "Failed to update password:",
@@ -2178,6 +2414,32 @@ changePasswordForm
         ) {
           message =
             "Network error. Please check your connection.";
+        } else if (
+          error.code ===
+          "auth/provider-already-linked"
+        ) {
+          message =
+            "Password sign-in is already connected to this account.";
+        } else if (
+          error.code ===
+            "auth/credential-already-in-use" ||
+          error.code ===
+            "auth/email-already-in-use"
+        ) {
+          message =
+            "This email/password sign-in belongs to another Firebase account and cannot be linked automatically.";
+        } else if (
+          error.code ===
+          "auth/requires-recent-login"
+        ) {
+          message =
+            "For security, sign out and sign in with Google again before adding a password.";
+        } else if (
+          error.code ===
+          "auth/operation-not-allowed"
+        ) {
+          message =
+            "Email/password sign-in is not enabled for this Firebase project.";
         }
 
         showPasswordMessage(
@@ -2190,7 +2452,9 @@ changePasswordForm
             false;
 
           savePasswordBtn.textContent =
-            "Update Password";
+            linkingPasswordProvider
+              ? "Add Password Sign-In"
+              : "Update Password";
         }
       }
     }

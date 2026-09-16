@@ -6,7 +6,7 @@
   <title>Create Account — PandaJourney Malaysia</title>
 
   <link rel="stylesheet"
-        href="{{ url_for('static', filename='css/app.css') }}" />
+        href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_version('css/app.css') }}" />
 
   <style>
     .policy-link {
@@ -164,6 +164,7 @@
               type="text"
               placeholder="Ahmad Faris"
               autocomplete="name"
+              maxlength="100"
               required
             />
 
@@ -205,7 +206,7 @@
             Password
           </label>
 
-          <div class="form-input-icon">
+          <div class="form-input-icon auth-password-wrap">
 
             <span class="icon">🔒</span>
 
@@ -219,7 +220,16 @@
               required
             />
 
+            <button type="button" class="auth-password-toggle" data-password-target="password" aria-label="Show password">Show</button>
+
           </div>
+
+          <ul class="auth-password-requirements" id="register-password-requirements">
+            <li class="auth-password-rule" data-register-password-rule="length">At least 8 characters</li>
+            <li class="auth-password-rule" data-register-password-rule="uppercase">One uppercase letter</li>
+            <li class="auth-password-rule" data-register-password-rule="lowercase">One lowercase letter</li>
+            <li class="auth-password-rule" data-register-password-rule="special">One special character</li>
+          </ul>
 
         </div>
 
@@ -231,7 +241,7 @@
             Confirm Password
           </label>
 
-          <div class="form-input-icon">
+          <div class="form-input-icon auth-password-wrap">
 
             <span class="icon">🔒</span>
 
@@ -245,7 +255,11 @@
               required
             />
 
+            <button type="button" class="auth-password-toggle" data-password-target="confirmPassword" aria-label="Show confirmed password">Show</button>
+
           </div>
+
+          <div class="auth-password-match" id="register-password-match" aria-live="polite"></div>
 
         </div>
 
@@ -401,10 +415,12 @@
   </div>
 </dialog>
 
+<script src="{{ url_for('static', filename='js/ui-status.js') }}"></script>
+
 <!-- Firebase -->
 <script
   type="module"
-  src="{{ url_for('static', filename='js/firebase-auth.js') }}">
+  src="{{ url_for('static', filename='js/firebase-auth.js') }}?v={{ asset_version('js/firebase-auth.js') }}">
 </script>
 
 <script>

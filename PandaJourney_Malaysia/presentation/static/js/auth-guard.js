@@ -29,11 +29,20 @@ const logoutForm =
 const logoutError =
   document.getElementById("logout-error");
 
+const sessionExpiryWarning =
+  document.getElementById("session-expiry-warning");
+
+const keepSessionActiveButton =
+  document.getElementById("keep-session-active");
+
 
 // Inactivity Logout Configuration
 // 30 minutes
 const INACTIVITY_LIMIT_MS =
   30 * 60 * 1000;
+
+const INACTIVITY_WARNING_MS =
+  5 * 60 * 1000;
 
 const LAST_ACTIVITY_KEY =
   "pandajourney-last-activity";
@@ -42,6 +51,7 @@ const INACTIVITY_MESSAGE_KEY =
   "pandajourney-auth-message";
 
 let inactivityTimer = null;
+let inactivityWarningTimer = null;
 let activityListenersAdded = false;
 let lastActivityRecordedAt = 0;
 let logoutInProgress = false;
@@ -172,6 +182,8 @@ function handleActivityStorageChange(event) {
 
 function scheduleInactivityLogout() {
   clearTimeout(inactivityTimer);
+  clearTimeout(inactivityWarningTimer);
+  hideInactivityWarning();
 
   const lastActivity = Number(
     localStorage.getItem(
@@ -192,12 +204,42 @@ function scheduleInactivityLogout() {
     performAutomaticLogout,
     remaining
   );
+
+  if (remaining > INACTIVITY_WARNING_MS) {
+    inactivityWarningTimer = setTimeout(
+      showInactivityWarning,
+      remaining - INACTIVITY_WARNING_MS
+    );
+  } else {
+    showInactivityWarning();
+  }
 }
+
+function showInactivityWarning() {
+  if (sessionExpiryWarning && auth.currentUser && !logoutInProgress) {
+    sessionExpiryWarning.hidden = false;
+  }
+}
+
+function hideInactivityWarning() {
+  if (sessionExpiryWarning) {
+    sessionExpiryWarning.hidden = true;
+  }
+}
+
+keepSessionActiveButton?.addEventListener("click", () => {
+  lastActivityRecordedAt = 0;
+  recordUserActivity();
+  keepSessionActiveButton.blur();
+});
 
 
 function stopInactivityMonitoring() {
   clearTimeout(inactivityTimer);
+  clearTimeout(inactivityWarningTimer);
   inactivityTimer = null;
+  inactivityWarningTimer = null;
+  hideInactivityWarning();
 }
 
 
@@ -389,6 +431,7 @@ function protectPublicPageNavigation() {
 
         const isAttractionPage =
           url.pathname === "/" ||
+          url.pathname === "/attractions" ||
           url.pathname ===
             "/smart-attraction";
 
