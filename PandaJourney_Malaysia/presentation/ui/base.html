@@ -104,7 +104,10 @@
 <div class="app-shell">
 
   <aside class="sidebar">
-    <div class="sidebar-logo">
+    <a
+      href="{{ url_for('dashboard') }}"
+      class="sidebar-logo"
+      aria-label="Go to Dashboard">
       <div class="sidebar-brand">
         <img
           src="{{ url_for('static', filename='images/logo.png') }}"
@@ -115,7 +118,7 @@
         <span class="sidebar-brand-name">PandaJourney</span>
       </div>
       <div class="sidebar-brand-sub">Malaysia Smart Tourism</div>
-    </div>
+    </a>
 
     <nav class="sidebar-nav">
       <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">

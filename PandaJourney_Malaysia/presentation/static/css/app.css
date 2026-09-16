@@ -148,7 +148,7 @@ button, input, select, textarea { font: inherit; }
 /* App shell */
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 240px 1fr; }
 .sidebar { position: sticky; top: 0; height: 100vh; background: var(--sidebar); color: var(--sidebar-text); border-right: 1px solid rgba(255,255,255,.08); display: flex; flex-direction: column; z-index: 20; }
-.sidebar-logo { padding: 26px 24px 22px; border-bottom: 1px solid rgba(255,255,255,.09); }
+.sidebar-logo { display: block; padding: 26px 24px 22px; border-bottom: 1px solid rgba(255,255,255,.09); text-decoration: none; }
 .sidebar-brand { display: flex; align-items: center; gap: 10px; }
 .sidebar-brand-name { color: white; font-family: var(--font-display); font-size: 19px; font-weight: 700; }
 .sidebar-brand-sub { padding-left: 32px; margin-top: 8px; color: #8ac7a2; font-size: 11px; }
