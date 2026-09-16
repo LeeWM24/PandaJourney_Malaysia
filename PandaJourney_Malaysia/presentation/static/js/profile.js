@@ -2069,6 +2069,11 @@ function configurePasswordSection(user) {
   linkingPasswordProvider =
     !canChangePassword && hasGoogleProvider;
 
+  changePasswordForm.classList.toggle(
+    "link-password-mode",
+    linkingPasswordProvider
+  );
+
   changePasswordForm.reset();
   updatePasswordGuidance();
   changePasswordForm.classList.add(
@@ -2320,6 +2325,9 @@ changePasswordForm
 
           canChangePassword = true;
           linkingPasswordProvider = false;
+          changePasswordForm.classList.remove(
+            "link-password-mode"
+          );
 
           currentPasswordGroup
             ?.classList
