@@ -218,6 +218,243 @@ def detect_interest_tags_from_text(text: str, selected_interests: list[str]) -> 
     return matched_tags
 
 
+GENERIC_PLACE_FEATURES = {
+    "attraction",
+    "establishment",
+    "point of interest",
+    "tourist attraction",
+    "tourist attractions",
+}
+
+BROAD_PLACE_CATEGORIES = {
+    "cafe",
+    "food",
+    "food court",
+    "garden",
+    "mall",
+    "museum",
+    "park",
+    "restaurant",
+    "shopping mall",
+}
+
+ABOUT_GROUP_KEYWORDS = {
+    "food": [
+        "cafe",
+        "coffee",
+        "cuisine",
+        "delivery",
+        "dessert",
+        "dine",
+        "dining",
+        "food",
+        "halal",
+        "meal",
+        "restaurant",
+        "takeaway",
+        "vegetarian",
+    ],
+    "culture": [
+        "art",
+        "artwork",
+        "batik",
+        "craft",
+        "cultural",
+        "exhibit",
+        "gallery",
+        "handicraft",
+        "heritage",
+        "historical",
+        "history",
+        "museum",
+    ],
+    "shopping": [
+        "boutique",
+        "brand",
+        "cinema",
+        "dining",
+        "electronics",
+        "entertainment",
+        "fashion",
+        "market",
+        "mall",
+        "retail",
+        "shopping",
+        "store",
+    ],
+    "nature": [
+        "beach",
+        "forest",
+        "garden",
+        "hiking",
+        "lake",
+        "nature",
+        "outdoor",
+        "park",
+        "recreation",
+        "trail",
+        "viewpoint",
+        "waterfall",
+    ],
+}
+
+
+def clean_source_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def format_source_feature(value: Any) -> str:
+    text = clean_source_text(value).replace("_", " ")
+
+    if not text:
+        return ""
+
+    if text.islower():
+        text = text.title()
+
+    return text
+
+
+def append_source_feature(features: list[str], value: Any) -> None:
+    text = format_source_feature(value)
+
+    if not text:
+        return
+
+    if text.lower() in GENERIC_PLACE_FEATURES:
+        return
+
+    if text.lower() not in {feature.lower() for feature in features}:
+        features.append(text)
+
+
+def flatten_serpapi_fact_values(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        flattened: list[str] = []
+
+        for key, nested_value in value.items():
+            if isinstance(nested_value, bool):
+                if nested_value:
+                    flattened.append(str(key))
+                continue
+
+            flattened.extend(flatten_serpapi_fact_values(nested_value))
+
+        return flattened
+
+    if isinstance(value, list):
+        flattened = []
+
+        for item in value:
+            flattened.extend(flatten_serpapi_fact_values(item))
+
+        return flattened
+
+    text = clean_source_text(value)
+    return [text] if text else []
+
+
+def collect_serpapi_place_features(item: dict[str, Any]) -> list[str]:
+    features: list[str] = []
+
+    for value in flatten_serpapi_fact_values(item.get("types")):
+        append_source_feature(features, value)
+
+    for value in flatten_serpapi_fact_values(item.get("extensions")):
+        append_source_feature(features, value)
+
+    for value in flatten_serpapi_fact_values(item.get("service_options")):
+        append_source_feature(features, value)
+
+    for key in ("type", "category"):
+        append_source_feature(features, item.get(key))
+
+    return features[:8]
+
+
+def get_about_group(place: dict[str, Any]) -> str:
+    text = " ".join(
+        [
+            str(place.get("category", "")),
+            " ".join(str(tag) for tag in place.get("tags", [])),
+            " ".join(str(feature) for feature in place.get("place_features", [])),
+        ]
+    ).lower()
+
+    for group, keywords in ABOUT_GROUP_KEYWORDS.items():
+        if any(keyword in text for keyword in keywords):
+            return group
+
+    return "generic"
+
+
+def get_group_highlights(place: dict[str, Any], group: str) -> list[str]:
+    keywords = ABOUT_GROUP_KEYWORDS.get(group, [])
+    category_text = clean_source_text(place.get("category")).lower()
+    highlights: list[str] = []
+
+    for feature in place.get("place_features", []):
+        feature_text = clean_source_text(feature)
+        feature_key = feature_text.lower()
+
+        if not feature_text:
+            continue
+
+        if (
+            feature_key == category_text
+            and category_text in BROAD_PLACE_CATEGORIES
+        ):
+            continue
+
+        if keywords and not any(keyword in feature_key for keyword in keywords):
+            continue
+
+        append_source_feature(highlights, feature_text)
+
+    return highlights[:6]
+
+
+def build_place_about_fields(place: dict[str, Any]) -> dict[str, Any]:
+    source_description = clean_source_text(
+        place.get("source_description")
+        or place.get("description")
+    )
+    source_snippet = clean_source_text(
+        place.get("source_snippet")
+        or place.get("snippet")
+    )
+
+    if source_description:
+        return {
+            "about_text": source_description,
+            "about_heading": "",
+            "place_highlights": get_group_highlights(place, get_about_group(place)),
+        }
+
+    if source_snippet:
+        return {
+            "about_text": source_snippet,
+            "about_heading": "",
+            "place_highlights": get_group_highlights(place, get_about_group(place)),
+        }
+
+    group = get_about_group(place)
+    highlights = get_group_highlights(place, group)
+
+    if not highlights:
+        return {
+            "about_text": "",
+            "about_heading": "",
+            "place_highlights": [],
+        }
+
+    return {
+        "about_text": "",
+        "about_heading": "",
+        "place_highlights": highlights,
+    }
+
+
 def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
     """Limit available Maximum Stops options based on available travelling hours.
 
@@ -1514,6 +1751,10 @@ def search_attractions_serpapi(
             tags = ["attraction"]
             match_reason = "general attraction candidate"
 
+        source_description = clean_source_text(item.get("description"))
+        source_snippet = clean_source_text(item.get("snippet"))
+        place_features = collect_serpapi_place_features(item)
+
         candidate = {
             "name": title,
             "latitude": float(coordinates["latitude"]),
@@ -1528,7 +1769,18 @@ def search_attractions_serpapi(
             "source": f"SerpApi - one search: {search_keyword}",
             "category": item.get("type") or item.get("category") or "Attraction",
             "address": address,
+            "source_description": source_description,
+            "source_snippet": source_snippet,
+            "source_types": flatten_serpapi_fact_values(item.get("types")),
+            "source_extensions": item.get("extensions") or [],
+            "service_options": item.get("service_options") or {},
+            "place_features": place_features,
         }
+
+        if source_description:
+            candidate["description"] = source_description
+
+        candidate.update(build_place_about_fields(candidate))
 
         candidates.append(candidate)
 
@@ -2296,6 +2548,12 @@ def prepare_selected_attractions(
         
         item["photo_urls"] = item.get("photo_urls") or get_attraction_images([tag.lower() for tag in item.get("tags", [])])
         item["image_url"] = item.get("image_url") or item["photo_urls"][0]
+
+        about_fields = build_place_about_fields(item)
+        item["about_text"] = item.get("about_text") or about_fields["about_text"]
+        item["about_heading"] = item.get("about_heading") or about_fields["about_heading"]
+        item["place_highlights"] = item.get("place_highlights") or about_fields["place_highlights"]
+
         item["description"] = item.get(
             "description",
             f"{item['name']} is a popular {item['category'].lower()} destination in Malaysia with excellent visitor facilities.",

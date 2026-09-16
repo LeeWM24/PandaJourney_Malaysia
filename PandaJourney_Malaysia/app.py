@@ -435,6 +435,7 @@ def smart_itinerary():
     plan = None
     error = None
     map_data = None
+    generated_from_post = False
 
     print("[SMART ITINERARY ROUTE]", request.method, flush=True)
 
@@ -444,6 +445,7 @@ def smart_itinerary():
         try:
             plan = make_plan(request.form)
             map_data = build_map_data(plan)
+            generated_from_post = bool(plan and map_data)
 
         except Exception as error_message:
             print("[SMART ERROR]", error_message, flush=True)
@@ -456,6 +458,8 @@ def smart_itinerary():
         plan=plan,
         error=error,
         map_data=map_data,
+        generated_from_post=generated_from_post,
+        planner_url=url_for("smart_itinerary"),
         form=request.form if request.method == "POST" else get_default_itinerary_form()
     )
 

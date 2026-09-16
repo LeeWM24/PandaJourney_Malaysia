@@ -643,47 +643,6 @@
     display: none !important;
   }
 
-  .itinerary-detail-meta-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 9px;
-    margin-top: 13px;
-  }
-
-  .itinerary-detail-meta-row[hidden] {
-    display: none !important;
-  }
-
-  .itinerary-detail-category {
-    display: inline-flex;
-    align-items: center;
-    padding: 5px 11px;
-    border-radius: 999px;
-    background: #e8f7ef;
-    color: #047857;
-    border: 1px solid #bfe7cf;
-    font-size: 12px;
-    font-weight: 800;
-  }
-
-  .itinerary-detail-category[hidden] {
-    display: none !important;
-  }
-
-  .itinerary-detail-rating {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    color: #b77900;
-    font-size: 13px;
-    font-weight: 900;
-  }
-
-  .itinerary-detail-rating[hidden] {
-    display: none !important;
-  }
-
   .detail-body {
     padding: 14px 20px 20px;
     overflow-y: auto;
@@ -710,6 +669,7 @@
 
   .detail-row {
     display: flex;
+    flex-wrap: wrap;
     gap: 10px;
     margin: 8px 0 18px;
   }
@@ -719,8 +679,9 @@
   }
 
   .detail-cell {
-    min-width: 145px;
-    padding: 14px 16px;
+    flex: 1 1 140px;
+    min-width: 130px;
+    padding: 12px 14px;
     border-radius: 14px;
     background: var(--muted-bg);
     text-align: center;
@@ -729,6 +690,13 @@
   .detail-cell strong {
     display: block;
     margin-bottom: 6px;
+  }
+
+  .detail-cell span {
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
   }
 
   .detail-section {
@@ -956,10 +924,6 @@
 
         <div id="itinerary-detail-location-main" class="itinerary-detail-main-location"></div>
 
-        <div id="itinerary-detail-meta-row" class="itinerary-detail-meta-row" hidden>
-          <span id="itinerary-detail-category" class="itinerary-detail-category" hidden></span>
-          <span id="itinerary-detail-rating" class="itinerary-detail-rating" hidden></span>
-        </div>
       </div>
 
       <div class="detail-body">
@@ -971,6 +935,14 @@
           <div id="itinerary-detail-duration-cell" class="detail-cell" hidden>
             <strong>Planned Visit</strong>
             <span id="itinerary-detail-duration"></span>
+          </div>
+          <div id="itinerary-detail-category-cell" class="detail-cell" hidden>
+            <strong>Category</strong>
+            <span id="itinerary-detail-category"></span>
+          </div>
+          <div id="itinerary-detail-rating-cell" class="detail-cell" hidden>
+            <strong>Rating</strong>
+            <span id="itinerary-detail-rating"></span>
           </div>
         </div>
 

@@ -80,6 +80,26 @@ const ITINERARY_PLACEHOLDER_IMAGE =
   `);
 
 
+const PROJECT_DEMO_IMAGE_MARKERS = [
+  "images.unsplash.com/photo-1512453979798-5ea266f8880c",
+  "images.unsplash.com/photo-1500530855697-b586d89ba3ee",
+  "images.unsplash.com/photo-1494526585095-c41746248156",
+  "images.unsplash.com/photo-1534452203293-494d7ddbf7e0",
+  "images.unsplash.com/photo-1519677100203-a0e668c92439",
+  "images.unsplash.com/photo-1500534314209-a25ddb2bd429",
+  "images.unsplash.com/photo-1495121605193-b116b5b9c5d8",
+  "images.unsplash.com/photo-1470337458703-46ad1756a187",
+  "images.unsplash.com/photo-1533196350647-8cef3c2d9f85",
+  "images.unsplash.com/photo-1504674900247-0877df9cc836",
+  "images.unsplash.com/photo-1540189549336-e6e99c3679fe",
+  "images.unsplash.com/photo-1528716321682-0a570e4cc34e",
+  "images.unsplash.com/photo-1493558103817-58b2924bce98",
+  "images.unsplash.com/photo-1507525428034-b723cf961d3e",
+  "images.unsplash.com/photo-1526481280694-3df0480fd2f7",
+  "images.unsplash.com/photo-1596422846543-75c6fc197f07"
+];
+
+
 let currentUser = null;
 
 let savedItineraryDocumentId = "";
@@ -418,6 +438,409 @@ function getFallbackAttractionDescription(
 }
 
 
+function cleanAboutText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+
+function getShortSourceDescription(value) {
+  const text =
+    cleanAboutText(value);
+
+  if (!hasUsableDetailText(text)) {
+    return "";
+  }
+
+  const sentences =
+    text.match(/[^.!?]+[.!?]+|[^.!?]+$/g) ||
+    [];
+
+  return sentences
+    .slice(0, 2)
+    .join(" ")
+    .trim();
+}
+
+
+function getDetailTextList(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap(getDetailTextList);
+  }
+
+  if (value && typeof value === "object") {
+    return Object
+      .entries(value)
+      .flatMap(function ([key, nestedValue]) {
+        if (typeof nestedValue === "boolean") {
+          return nestedValue ? [key] : [];
+        }
+
+        return getDetailTextList(nestedValue);
+      });
+  }
+
+  const text =
+    cleanAboutText(value)
+      .replace(/_/g, " ");
+
+  return text ? [text] : [];
+}
+
+
+function uniqueDetailValues(values) {
+  const seen =
+    new Set();
+
+  return values
+    .map(formatCategoryLabel)
+    .filter(function (value) {
+      const key =
+        value.toLowerCase();
+
+      if (!value || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+
+function uniqueCleanValues(values) {
+  const seen =
+    new Set();
+
+  return values
+    .map(cleanAboutText)
+    .filter(function (value) {
+      const key =
+        value.toLowerCase();
+
+      if (!value || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+
+function getAboutFeatureValues(detail = {}) {
+  return uniqueDetailValues([
+    ...getDetailTextList(detail.place_highlights),
+    ...getDetailTextList(detail.place_features),
+    ...getDetailTextList(detail.source_types),
+    ...getDetailTextList(detail.source_extensions),
+    ...getDetailTextList(detail.service_options)
+  ]);
+}
+
+
+function getAboutArea(detail = {}) {
+  const directArea =
+    cleanAboutText(
+      detail.area ||
+      detail.neighbourhood ||
+      detail.city ||
+      ""
+    );
+
+  if (directArea && directArea.toLowerCase() !== "malaysia") {
+    return directArea;
+  }
+
+  const nameAreaMatch =
+    cleanAboutText(detail.name)
+      .match(/(?:·|-)\s*([^·-]+)$/);
+
+  if (nameAreaMatch?.[1]) {
+    return nameAreaMatch[1].trim();
+  }
+
+  const addressParts =
+    cleanAboutText(
+      detail.address ||
+      detail.location ||
+      ""
+    )
+      .split(",")
+      .map(part => part.trim())
+      .filter(Boolean)
+      .filter(part => part.toLowerCase() !== "malaysia");
+
+  return (
+    addressParts.find(part => !/^\d/.test(part) && !/^jalan\b/i.test(part)) ||
+    addressParts[0] ||
+    ""
+  );
+}
+
+
+function hasFeatureKeyword(feature, keywords) {
+  const text =
+    feature.toLowerCase();
+
+  return keywords.some(keyword => text.includes(keyword));
+}
+
+
+function getPrimaryAboutGroup(detail = {}) {
+  const interestText =
+    getDetailTextList([
+      detail.matched_interests,
+      detail.interest_tags,
+      detail.interests,
+      detail.tags
+    ])
+      .join(" ")
+      .toLowerCase();
+
+  const categoryText =
+    [
+      attractionCategory(detail),
+      ...getAboutFeatureValues(detail)
+    ]
+      .join(" ")
+      .toLowerCase();
+
+  const hasAny =
+    (text, keywords) =>
+      keywords.some(keyword => text.includes(keyword));
+
+  if (hasAny(interestText, ["culture", "heritage", "museum", "art", "gallery"])) {
+    return "culture";
+  }
+
+  if (hasAny(interestText, ["shopping", "mall", "market"])) {
+    return "shopping";
+  }
+
+  if (hasAny(interestText, ["nature", "park", "garden", "outdoor"])) {
+    return "nature";
+  }
+
+  if (hasAny(interestText, ["food", "restaurant", "cafe", "dining"])) {
+    return "food";
+  }
+
+  if (hasAny(categoryText, ["museum", "heritage", "cultural", "gallery", "art"])) {
+    return "culture";
+  }
+
+  if (hasAny(categoryText, ["shopping", "mall", "market", "retail", "fashion"])) {
+    return "shopping";
+  }
+
+  if (hasAny(categoryText, ["park", "garden", "lake", "hiking", "trail", "outdoor", "nature"])) {
+    return "nature";
+  }
+
+  if (hasAny(categoryText, ["restaurant", "food", "cafe", "bakery", "dining", "coffee"])) {
+    return "food";
+  }
+
+  return "generic";
+}
+
+
+function getAboutIdentity(detail, group) {
+  const category =
+    attractionCategory(detail);
+
+  if (group === "culture") {
+    const categoryText =
+      category.toLowerCase();
+
+    if (categoryText.includes("museum") || categoryText.includes("gallery")) {
+      return category.toLowerCase();
+    }
+
+    return "cultural attraction";
+  }
+
+  if (group === "shopping") {
+    return "shopping destination";
+  }
+
+  if (group === "nature") {
+    return "outdoor attraction";
+  }
+
+  if (category && category !== "Attraction") {
+    return category.toLowerCase();
+  }
+
+  return "attraction";
+}
+
+
+function foodFeaturePhrase(feature) {
+  const lower =
+    feature.toLowerCase();
+
+  if (lower.includes("chinese")) {
+    return "Chinese dining options";
+  }
+
+  if (lower.includes("malaysian")) {
+    return "Malaysian dining options";
+  }
+
+  if (lower.includes("restaurant") || lower.includes("cuisine") || lower.includes("dining")) {
+    return `${feature} options`;
+  }
+
+  if (lower.includes("dessert")) {
+    return "desserts";
+  }
+
+  if (lower.includes("dine in") || lower.includes("dine-in")) {
+    return "dine-in service";
+  }
+
+  if (lower.includes("takeaway") || lower.includes("takeout")) {
+    return "takeaway service";
+  }
+
+  return feature.toLowerCase();
+}
+
+
+function getAboutFeaturePhrases(detail, group) {
+  const features =
+    getAboutFeatureValues(detail);
+
+  const keywordsByGroup = {
+    food: ["cuisine", "restaurant", "dining", "food", "cafe", "coffee", "dessert", "takeaway", "takeout", "dine in", "chinese", "malaysian"],
+    culture: ["art", "artwork", "craft", "cultural", "exhibit", "gallery", "handicraft", "heritage", "histor"],
+    shopping: ["brand", "cinema", "dining", "entertainment", "fashion", "market", "retail", "shopping", "store"],
+    nature: ["forest", "garden", "hiking", "lake", "outdoor", "park", "recreation", "trail", "viewpoint", "waterfall"]
+  };
+
+  const groupKeywords =
+    keywordsByGroup[group] ||
+    [];
+
+  const matchingFeatures =
+    groupKeywords.length
+      ? features.filter(feature => hasFeatureKeyword(feature, groupKeywords))
+      : features;
+
+  const foodKeywords =
+    keywordsByGroup.food;
+
+  const selectedFeatures =
+    matchingFeatures.length
+      ? matchingFeatures
+      : features.filter(feature => hasFeatureKeyword(feature, foodKeywords));
+
+  return uniqueCleanValues(
+    selectedFeatures
+      .slice(0, 3)
+      .map(feature => {
+        if (group === "food" || hasFeatureKeyword(feature, foodKeywords)) {
+          return foodFeaturePhrase(feature);
+        }
+
+        return feature.toLowerCase();
+      })
+  );
+}
+
+
+function joinNaturalList(values) {
+  if (values.length <= 1) {
+    return values[0] || "";
+  }
+
+  if (values.length === 2) {
+    return `${values[0]} and ${values[1]}`;
+  }
+
+  return `${values.slice(0, -1).join(", ")} and ${values[values.length - 1]}`;
+}
+
+
+function buildAttractionAboutSentence(detail = {}) {
+  const sourceDescription =
+    getShortSourceDescription(detail.source_description) ||
+    (
+      hasRealDescription(detail)
+        ? getShortSourceDescription(detail.description)
+        : ""
+    );
+
+  if (sourceDescription) {
+    return sourceDescription;
+  }
+
+  const sourceSnippet =
+    getShortSourceDescription(detail.source_snippet || detail.snippet);
+
+  if (sourceSnippet) {
+    return sourceSnippet;
+  }
+
+  const name =
+    cleanAboutText(detail.name) ||
+    "This stop";
+
+  const group =
+    getPrimaryAboutGroup(detail);
+
+  const identity =
+    getAboutIdentity(detail, group);
+
+  const area =
+    getAboutArea(detail);
+
+  const areaText =
+    area
+      ? ` in ${area}`
+      : "";
+
+  const featurePhrases =
+    getAboutFeaturePhrases(detail, group);
+
+  if (
+    group === "culture" &&
+    featurePhrases.some(phrase => hasFeatureKeyword(phrase, ["dining", "restaurant", "cuisine", "food", "coffee", "dessert"]))
+  ) {
+    return `${name} is a ${identity}${areaText}, with ${joinNaturalList(featurePhrases)} available at the location.`;
+  }
+
+  if (featurePhrases.length) {
+    const verb =
+      group === "food"
+        ? "offering"
+        : "featuring";
+
+    return `${name} is a ${identity}${areaText} ${verb} ${joinNaturalList(featurePhrases)}.`;
+  }
+
+  if (area) {
+    return `${name} is a ${identity} located in ${area}.`;
+  }
+
+  return getFallbackAttractionDescription(detail) ||
+    `${name} is a ${identity} included as a stop in this itinerary.`;
+}
+
+
+function getAttractionAboutDescription(detail = {}) {
+  const description =
+    buildAttractionAboutSentence(detail);
+
+  return hasUsableDetailText(description)
+    ? description
+    : "";
+}
+
+
 function getDetailList(value) {
   return (
     Array.isArray(value)
@@ -578,15 +1001,18 @@ function attractionCategory(
 function getAttractionImage(
   attraction = {}
 ) {
-  if (
-    attraction.image_url &&
+  const imageUrl =
     String(
-      attraction.image_url
-    ).trim()
-  ) {
-    return String(
-      attraction.image_url
+      attraction.image_url ||
+      ""
     ).trim();
+
+  if (
+    isUsableAttractionImage(
+      imageUrl
+    )
+  ) {
+    return imageUrl;
   }
 
 
@@ -598,10 +1024,8 @@ function getAttractionImage(
     const photo =
       attraction.photo_urls.find(
         value =>
-          Boolean(
-            String(
-              value || ""
-            ).trim()
+          isUsableAttractionImage(
+            value
           )
       );
 
@@ -613,6 +1037,41 @@ function getAttractionImage(
   }
 
   return "";
+}
+
+
+function isUsableAttractionImage(
+  url
+) {
+  const value =
+    String(
+      url ||
+      ""
+    ).trim();
+
+  if (!value) {
+    return false;
+  }
+
+  const lowerValue =
+    value.toLowerCase();
+
+  if (
+    value ===
+      ITINERARY_PLACEHOLDER_IMAGE ||
+    lowerValue.startsWith(
+      "data:image/svg+xml"
+    )
+  ) {
+    return false;
+  }
+
+  return !PROJECT_DEMO_IMAGE_MARKERS.some(
+    marker =>
+      lowerValue.includes(
+        marker
+      )
+  );
 }
 
 
@@ -651,8 +1110,17 @@ async function getPlaceDetailPhoto(
             : null
       )
       .then(
-        data =>
-          data?.image_url || ""
+        data => {
+          const imageUrl =
+            data?.image_url ||
+            "";
+
+          return isUsableAttractionImage(
+            imageUrl
+          )
+            ? imageUrl
+            : "";
+        }
       )
       .catch(
         () => ""
@@ -3167,6 +3635,41 @@ function clearSmartItineraryState() {
 }
 
 
+function replaceGeneratedPostWithGet() {
+  const postRenderData =
+    getJsonData(
+      "planner-post-render-data"
+    ) ||
+    {};
+
+  if (
+    !postRenderData.generated_from_post
+  ) {
+    return false;
+  }
+
+  if (
+    !getJsonData(
+      "plan-data"
+    ) ||
+    !getJsonData(
+      "map-data"
+    )
+  ) {
+    return false;
+  }
+
+  persistSmartItineraryState();
+
+  window.location.replace(
+    postRenderData.planner_url ||
+    window.location.pathname
+  );
+
+  return true;
+}
+
+
 function restoreSmartItineraryState() {
   const state =
     readSessionState(
@@ -3604,9 +4107,14 @@ function resetItineraryPlaceDetailModal() {
       "itinerary-detail-rating"
     );
 
-  const metaRowElement =
+  const categoryCell =
     document.getElementById(
-      "itinerary-detail-meta-row"
+      "itinerary-detail-category-cell"
+    );
+
+  const ratingCell =
+    document.getElementById(
+      "itinerary-detail-rating-cell"
     );
 
   const favouriteBadge =
@@ -3687,12 +4195,6 @@ function resetItineraryPlaceDetailModal() {
   }
 
 
-  if (metaRowElement) {
-    metaRowElement.hidden =
-      true;
-  }
-
-
   if (favouriteBadge) {
     favouriteBadge.hidden =
       true;
@@ -3707,6 +4209,18 @@ function resetItineraryPlaceDetailModal() {
 
   if (durationCell) {
     durationCell.hidden =
+      true;
+  }
+
+
+  if (categoryCell) {
+    categoryCell.hidden =
+      true;
+  }
+
+
+  if (ratingCell) {
+    ratingCell.hidden =
       true;
   }
 
@@ -4009,9 +4523,14 @@ async function openItineraryPlaceDetail(
       "itinerary-detail-rating"
     );
 
-  const metaRowElement =
+  const categoryCell =
     document.getElementById(
-      "itinerary-detail-meta-row"
+      "itinerary-detail-category-cell"
+    );
+
+  const ratingCell =
+    document.getElementById(
+      "itinerary-detail-rating-cell"
     );
 
   const favouriteBadge =
@@ -4063,6 +4582,17 @@ async function openItineraryPlaceDetail(
       await getPlaceDetailPhoto(
         detail.address ||
         detail.name
+      );
+
+  } else if (
+    !detailImageUrl
+  ) {
+    detailImageUrl =
+      await getPlaceDetailPhoto(
+        detail.name ||
+        detail.address ||
+        detail.area ||
+        detail.location
       );
   }
 
@@ -4128,8 +4658,14 @@ async function openItineraryPlaceDetail(
     }
 
 
-    if (metaRowElement) {
-      metaRowElement.hidden =
+    if (categoryCell) {
+      categoryCell.hidden =
+        true;
+    }
+
+
+    if (ratingCell) {
+      ratingCell.hidden =
         true;
     }
 
@@ -4154,12 +4690,24 @@ async function openItineraryPlaceDetail(
       );
 
 
+    const hasCategory =
+      Boolean(
+        category
+      );
+
+
     if (categoryElement) {
       categoryElement.textContent =
         category;
 
       categoryElement.hidden =
-        !category;
+        !hasCategory;
+    }
+
+
+    if (categoryCell) {
+      categoryCell.hidden =
+        !hasCategory;
     }
 
 
@@ -4170,11 +4718,15 @@ async function openItineraryPlaceDetail(
       );
 
 
+    const hasRating =
+      Number.isFinite(rating) &&
+      rating > 0;
+
+
     if (ratingElement) {
 
       if (
-        Number.isFinite(rating) &&
-        rating > 0
+        hasRating
       ) {
 
         ratingElement.innerHTML =
@@ -4194,9 +4746,9 @@ async function openItineraryPlaceDetail(
     }
 
 
-    if (metaRowElement) {
-      metaRowElement.hidden =
-        false;
+    if (ratingCell) {
+      ratingCell.hidden =
+        !hasRating;
     }
 
 
@@ -4226,9 +4778,16 @@ async function openItineraryPlaceDetail(
       );
 
 
-    if (
+    const hasVisitMinutes =
+      Number.isFinite(
+        visitMinutes
+      ) &&
       visitMinutes >
-      0
+        0;
+
+
+    if (
+      hasVisitMinutes
     ) {
 
       if (durationElement) {
@@ -4242,26 +4801,23 @@ async function openItineraryPlaceDetail(
           false;
       }
 
+    }
 
-      if (factsRow) {
-        factsRow.hidden =
-          false;
-      }
+
+    if (factsRow) {
+      factsRow.hidden =
+        !(
+          hasVisitMinutes ||
+          hasCategory ||
+          hasRating
+        );
     }
 
 
     const descriptionText =
-      hasRealDescription(
+      getAttractionAboutDescription(
         detail
-      )
-        ? String(
-            detail.description ||
-            ""
-          ).trim()
-        : getFallbackAttractionDescription(
-            detail
-          );
-
+      );
 
     if (descriptionElement) {
       descriptionElement.textContent =
@@ -5200,6 +5756,38 @@ async function saveItinerary(
         selectedStops[index];
 
 
+      const stopAboutText =
+        getAttractionAboutDescription(
+          stop
+        );
+
+
+      const stopInterestTags =
+        getDetailList(
+          stop.matched_interests ||
+          stop.interest_tags ||
+          stop.interests ||
+          stop.tags ||
+          []
+        )
+          .filter(
+            value =>
+              ![
+                "favourite",
+                "attraction",
+                "tourist attraction"
+              ].includes(
+                value.toLowerCase()
+              )
+          );
+
+
+      const stopReasonTags =
+        getUserFacingRecommendationReasons(
+          stop
+        );
+
+
       const timetableItem =
         findTimetableItem(
           plan.timetable ||
@@ -5281,6 +5869,15 @@ async function saveItinerary(
               stop.estimated_minutes ||
               0
             ),
+
+          about_text:
+            stopAboutText,
+
+          interest_tags:
+            stopInterestTags,
+
+          reason_tags:
+            stopReasonTags,
 
           travel_minutes_from_previous:
             extractNumberFromText(
@@ -5477,6 +6074,12 @@ function rehydrateRestoredPlanner() {
 document.addEventListener(
   "DOMContentLoaded",
   async function () {
+
+    if (
+      replaceGeneratedPostWithGet()
+    ) {
+      return;
+    }
 
     /*
       Authentication/page protection
