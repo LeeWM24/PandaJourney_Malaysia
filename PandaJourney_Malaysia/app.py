@@ -740,7 +740,7 @@ def location_suggestions():
 
 @app.route("/api/edit-stop-suggestions")
 @login_required
-@rate_limit(max_calls=8, window_seconds=60)
+@rate_limit(max_calls=20, window_seconds=60)
 def edit_stop_suggestions():
     query_text = request.args.get("q", "").strip()
     raw_interests = request.args.get("interests", "")
