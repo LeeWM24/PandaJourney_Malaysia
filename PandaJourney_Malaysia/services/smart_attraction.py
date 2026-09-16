@@ -79,7 +79,7 @@ ATTRACTION_CACHE_TTL_SECONDS = int(
 ATTRACTION_STALE_CACHE_TTL_SECONDS = int(
     os.getenv("SMART_ATTRACTION_STALE_CACHE_TTL_SECONDS", str(30 * 24 * 3600))
 )  # fallback attraction cache, default 30 days
-PUBLIC_PHOTO_CACHE_TTL_SECONDS = 7 * 24 * 3600 # 7 days
+PUBLIC_PHOTO_CACHE_TTL_SECONDS = 30 * 24 * 3600 # 30 days
 
 _firestore_db = None
 _firestore_checked = False
@@ -251,6 +251,27 @@ BAD_CANDIDATE_KEYWORDS = [
     "guided tour",
 ]
 
+NON_VISITOR_PLACE_TYPES = (
+    "corporate office",
+    "factory",
+    "industrial",
+    "logistics service",
+    "manufacturer",
+    "manufacturing",
+    "office building",
+    "supplier",
+    "warehouse",
+    "wholesaler",
+)
+
+INTEREST_SEARCH_KEYWORDS = {
+    "food": "restaurants cafe food court",
+    "shopping": "shopping mall",
+    "culture": "cultural attractions",
+    "museum": "museum",
+    "nature": "parks nature attractions",
+}
+
 
 def is_bad_candidate_name(name: str) -> bool:
     """Remove tour/package type result that is not suitable as a real attraction."""
@@ -259,22 +280,44 @@ def is_bad_candidate_name(name: str) -> bool:
     return any(keyword in text for keyword in BAD_CANDIDATE_KEYWORDS)
 
 
+def is_non_visitor_place(item_type: str, title: str = "") -> bool:
+    """Reject workplaces that are not normally open as visitor attractions."""
+    normalized_type = str(item_type or "").lower().replace("_", " ")
+    if any(keyword in normalized_type for keyword in NON_VISITOR_PLACE_TYPES):
+        return True
+
+    normalized_title = str(title or "").lower()
+    factory_name = "factory" in normalized_title or "manufacturing plant" in normalized_title
+    visitor_exception = any(
+        keyword in normalized_title
+        for keyword in ("factory outlet", "museum", "visitor centre", "visitor center")
+    )
+    return factory_name and not visitor_exception
+
+
 def get_serpapi_search_keyword(interests: list[str]) -> str:
     """Return a more suitable Google Maps search keyword based on interest."""
     if not interests:
         return "tourist attractions"
 
     interest = interests[0].lower()
+    return INTEREST_SEARCH_KEYWORDS.get(interest, f"{interest} attractions")
 
-    keyword_map = {
-        "food": "restaurants cafe food court",
-        "shopping": "shopping mall",
-        "culture": "cultural attractions",
-        "museum": "museum",
-        "nature": "parks nature attractions",
-    }
 
-    return keyword_map.get(interest, f"{interest} attractions")
+def get_serpapi_search_queries(interests: list[str]) -> list[tuple[str, str]]:
+    """Return one provider query per selected interest, preserving UI order."""
+    queries: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    for raw_interest in interests:
+        interest = str(raw_interest).strip().lower()
+        if not interest or interest in seen:
+            continue
+        seen.add(interest)
+        queries.append((
+            interest,
+            INTEREST_SEARCH_KEYWORDS.get(interest, f"{interest} attractions"),
+        ))
+    return queries or [("", "tourist attractions")]
 
 
 WEATHER_LABELS = {
@@ -326,9 +369,17 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
     if cached is not None and cached.get("image_url"):
         return cached
 
+    stale_cached = cache_get(
+        cache_key,
+        90 * 24 * 3600
+    )
+
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
+        if stale_cached is not None and stale_cached.get("image_url"):
+            return stale_cached
+
         return {
             "image_url": "",
             "place_name": place_name
@@ -348,6 +399,9 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
         )
 
     except requests.RequestException as error:
+        if stale_cached is not None and stale_cached.get("image_url"):
+            return stale_cached
+        
         return {
             "image_url": "",
             "place_name": place_name
@@ -407,7 +461,10 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
         "place_name": place_name
     }
 
-    cache_set(cache_key, result)
+    if image_url:
+        cache_set(cache_key, result)
+    elif stale_cached is not None and stale_cached.get("image_url"):
+        return stale_cached
 
     return result
 
@@ -1224,7 +1281,8 @@ def search_attractions_serpapi(
     extra credits on the rare 0-result case, not on every search.
     """
 
-    keyword = get_serpapi_search_keyword(interests)
+    search_queries = get_serpapi_search_queries(interests)
+    keyword = " | ".join(query for _, query in search_queries)
 
     def with_data_status(
         results: list[dict[str, Any]],
@@ -1242,7 +1300,7 @@ def search_attractions_serpapi(
 
     normalized_destination = " ".join(destination_name.lower().split())
     cache_key = (
-        f"attractions:v6:{round(latitude, 3)}:{round(longitude, 3)}:"
+        f"attractions:v7:{round(latitude, 3)}:{round(longitude, 3)}:"
         f"{keyword}:{minimum_rating}:{max_pages}:{normalized_destination}"
     )
     cached = cache_get_with_age(cache_key, ATTRACTION_CACHE_TTL_SECONDS)
@@ -1280,14 +1338,21 @@ def search_attractions_serpapi(
     priority_place_ids: set[str] = set()
     priority_signatures: set[tuple[str, float, float]] = set()
 
-    # Look up the selected venue before the wider category search. This lets
-    # a search for a real attraction (for example, Pavilion Kuala Lumpur)
-    # include that attraction as the first recommendation when available.
+    # Look up an exact selected venue before the wider category search. Broad
+    # text such as "Kota" must not make every company containing that word a
+    # destination match.
     area_destinations = {
         suggestion["name"].lower()
         for suggestion in CURATED_DESTINATION_SUGGESTIONS
     }
-    if normalized_destination and normalized_destination not in area_destinations | {"malaysia", "current location"}:
+    is_area_destination = (
+        normalized_destination in area_destinations | {"malaysia", "current location"}
+        or any(
+            area.startswith(f"{normalized_destination} ")
+            for area in area_destinations
+        )
+    )
+    if normalized_destination and not is_area_destination:
         priority_cache_key = (
             f"destination-attraction:v4:{round(latitude, 3)}:{round(longitude, 3)}:"
             f"{normalized_destination}:{minimum_rating}"
@@ -1307,7 +1372,12 @@ def search_attractions_serpapi(
             )
             cache_set(priority_cache_key, priority_results)
 
+        exact_priority_results = []
         for item in priority_results:
+            result_title = " ".join(str(item.get("title") or "").lower().split())
+            if result_title != normalized_destination:
+                continue
+            exact_priority_results.append(item)
             place_id = item.get("place_id") or item.get("data_id") or ""
             if place_id:
                 priority_place_ids.add(place_id)
@@ -1318,30 +1388,45 @@ def search_attractions_serpapi(
                     round(float(coordinates["latitude"]), 5),
                     round(float(coordinates["longitude"]), 5),
                 ))
-        raw_results.extend(priority_results)
+        raw_results.extend(exact_priority_results)
 
     # A destination picked from the autocomplete dropdown can be a precise
     # single building (e.g. a stadium) rather than a whole city/area — the
     # default zoom that works great for a city-centre point can come back
     # empty for those. If we get nothing, automatically zoom out and retry
     # before giving up, so precise POIs don't silently return 0 results.
+    # Every selected interest receives at least one query. Remaining page
+    # allowance is distributed in UI order; final output is still capped to
+    # 20 results per allowed page.
+    pages_per_interest = [1] * len(search_queries)
+    for extra_page in range(max(0, max_pages - len(search_queries))):
+        pages_per_interest[extra_page % len(search_queries)] += 1
+
+    broad_result_count = 0
     for zoom in (13, 11, 9):
-        for page in range(max_pages):
-            page_results = _serpapi_page(
-                keyword, latitude, longitude, minimum_rating, api_key,
-                start=page * 20, zoom=zoom,
-            )
+        before_zoom = broad_result_count
+        for query_index, (matched_interest, query_keyword) in enumerate(search_queries):
+            for page in range(pages_per_interest[query_index]):
+                page_results = _serpapi_page(
+                    query_keyword, latitude, longitude, minimum_rating, api_key,
+                    start=page * 20, zoom=zoom,
+                )
 
-            if not page_results:
-                break  # no more pages / error — stop paginating this zoom level
+                if not page_results:
+                    break
 
-            raw_results.extend(page_results)
+                tagged_results = [
+                    {**item, "_matched_interest": matched_interest}
+                    for item in page_results
+                ]
+                raw_results.extend(tagged_results)
+                broad_result_count += len(tagged_results)
 
-            if len(page_results) < 20:
-                break  # short page = last page
+                if len(page_results) < 20:
+                    break
 
-        if raw_results:
-            break  # found something — no need to zoom out further
+        if broad_result_count > before_zoom:
+            break
 
         logger.info(f"[SERPAPI SEARCH] 0 results at zoom={zoom}, widening search area...")
 
@@ -1354,19 +1439,23 @@ def search_attractions_serpapi(
     # still surface instead of a flat "0 results".
     if not raw_results:
         logger.warning("[SERPAPI SEARCH] Still empty — retrying widest zoom without min_rating filter...")
-        for page in range(max_pages):
-            page_results = _serpapi_page(
-                keyword, latitude, longitude, minimum_rating, api_key,
-                start=page * 20, zoom=9, apply_min_rating=False,
-            )
+        for query_index, (matched_interest, query_keyword) in enumerate(search_queries):
+            for page in range(pages_per_interest[query_index]):
+                page_results = _serpapi_page(
+                    query_keyword, latitude, longitude, minimum_rating, api_key,
+                    start=page * 20, zoom=9, apply_min_rating=False,
+                )
 
-            if not page_results:
-                break
+                if not page_results:
+                    break
 
-            raw_results.extend(page_results)
+                raw_results.extend([
+                    {**item, "_matched_interest": matched_interest}
+                    for item in page_results
+                ])
 
-            if len(page_results) < 20:
-                break
+                if len(page_results) < 20:
+                    break
 
     if not raw_results and stale_cached is not None:
         logger.warning(
@@ -1377,7 +1466,7 @@ def search_attractions_serpapi(
 
     logger.info(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps")
 
-    seen_place_ids: set[str] = set()
+    seen_place_ids: dict[str, int] = {}
     candidates = []
 
     for item in raw_results:
@@ -1402,6 +1491,12 @@ def search_attractions_serpapi(
         if is_bad_candidate_name(title):
             continue
 
+        if is_non_visitor_place(item_type, title):
+            logger.info(
+                f"[ATTRACTION TYPE FILTER] Rejected {title!r} ({item_type})"
+            )
+            continue
+
         google_place_id = item.get("place_id") or ""
         data_id = item.get("data_id") or ""
         place_id = google_place_id or data_id
@@ -1411,12 +1506,6 @@ def search_attractions_serpapi(
             round(float(coordinates["longitude"]), 5),
         )
 
-        if place_id and place_id in seen_place_ids:
-            continue  # de-dupe across pages
-
-        if place_id:
-            seen_place_ids.add(place_id)
-
         text = f"{title} {item_type} {description}".lower()
 
         tags = [
@@ -1425,8 +1514,19 @@ def search_attractions_serpapi(
             if interest.lower() in text
         ]
 
-        if interests and not tags:
-            tags = [interests[0]]
+        matched_interest = str(item.get("_matched_interest") or "").lower()
+        if matched_interest and matched_interest in {
+            str(interest).lower() for interest in interests
+        } and matched_interest not in tags:
+            tags.append(matched_interest)
+
+        if place_id and place_id in seen_place_ids:
+            existing = candidates[seen_place_ids[place_id]]
+            existing_tags = existing.get("tags", [])
+            for tag in tags:
+                if tag not in existing_tags:
+                    existing_tags.append(tag)
+            continue
 
         weather_class = classify_indoor_outdoor(item_type, description, title)
         if weather_class:
@@ -1453,7 +1553,7 @@ def search_attractions_serpapi(
                 "longitude": float(coordinates["longitude"]),
                 # A tag-free search is intentionally broad; do not invent a
                 # "tourist attractions" interest tag for the result card.
-                "tags": tags or ([keyword] if interests else []),
+                "tags": tags,
                 "estimated_minutes": 90,
                 "rating": float(item.get("rating") or 0),
                 "review_count": review_count,
@@ -1479,6 +1579,9 @@ def search_attractions_serpapi(
                 ),
             }
         )
+
+        if place_id:
+            seen_place_ids[place_id] = len(candidates) - 1
 
     logger.info(f"[SERPAPI SEARCH] {len(candidates)} candidate(s) kept after filtering")
 
@@ -1551,6 +1654,7 @@ def recommend_attractions(
     minimum_rating: float,
     max_results: int = 8,
     filter_partly_cloudy: bool = False,
+    sort_mode: str = "score",
 ) -> list[dict[str, Any]]:
     ranked: list[dict[str, Any]] = []
 
@@ -1558,7 +1662,9 @@ def recommend_attractions(
         tags = {tag.lower() for tag in attraction.get("tags", [])}
         rating = float(attraction.get("rating") or 0)
 
-        if rating < minimum_rating:
+        # Search results must have a real Google rating. A zero value means
+        # the provider did not supply a rating, rather than a zero-star score.
+        if rating <= 0 or rating < minimum_rating:
             continue
 
         if (
@@ -1579,8 +1685,79 @@ def recommend_attractions(
 
         ranked.append(item)
 
-    ranked.sort(key=lambda item: item["score"], reverse=True)
-    return ranked[:max_results]
+    prioritize_lower_ratings = minimum_rating <= 3.0
+    if prioritize_lower_ratings or sort_mode == "rating-asc":
+        ranked.sort(
+            key=lambda item: (
+                float(item.get("rating") or 0),
+                -int(item.get("review_count") or 0),
+            )
+        )
+    else:
+        ranked.sort(key=lambda item: item["score"], reverse=True)
+
+    def item_key(item: dict[str, Any]) -> tuple[Any, ...]:
+        place_id = str(item.get("place_id") or "").strip()
+        if place_id:
+            return ("place", place_id)
+        return (
+            "location",
+            str(item.get("name") or "").strip().lower(),
+            round(float(item.get("latitude") or 0), 5),
+            round(float(item.get("longitude") or 0), 5),
+        )
+
+    requested_interests = list(dict.fromkeys(
+        str(interest).strip().lower()
+        for interest in interests
+        if str(interest).strip()
+    ))
+    if len(requested_interests) < 2:
+        return ranked[:max_results]
+
+    queues = {
+        interest: [
+            item for item in ranked
+            if interest in {str(tag).lower() for tag in item.get("tags", [])}
+        ]
+        for interest in requested_interests
+    }
+    queue_positions = {interest: 0 for interest in requested_interests}
+    balanced: list[dict[str, Any]] = []
+    selected_keys: set[tuple[Any, ...]] = set()
+
+    while len(balanced) < max_results:
+        added_this_round = False
+        for interest in requested_interests:
+            queue = queues[interest]
+            position = queue_positions[interest]
+            while position < len(queue) and item_key(queue[position]) in selected_keys:
+                position += 1
+            queue_positions[interest] = position
+            if position >= len(queue):
+                continue
+
+            item = queue[position]
+            queue_positions[interest] += 1
+            balanced.append(item)
+            selected_keys.add(item_key(item))
+            added_this_round = True
+            if len(balanced) >= max_results:
+                break
+
+        if not added_this_round:
+            break
+
+    for item in ranked:
+        key = item_key(item)
+        if key in selected_keys:
+            continue
+        balanced.append(item)
+        selected_keys.add(key)
+        if len(balanced) >= max_results:
+            break
+
+    return balanced[:max_results]
 
 
 def build_waze_url(place: dict[str, Any]) -> str:
@@ -1735,6 +1912,32 @@ def get_default_initial_attractions() -> list[dict[str, Any]]:
             "location": "Gombak, Selangor",
             "area": "Batu Caves, Selangor",
             "description": "A famous limestone cave temple complex with colorful steps and strong cultural significance.",
+        },
+        {
+            "name": "Merdeka Square",
+            "latitude": 3.1477,
+            "longitude": 101.6937,
+            "tags": ["culture", "heritage", "outdoor"],
+            "estimated_minutes": 60,
+            "rating": 4.5,
+            "source": "Local launch cache",
+            "category": "Historical Landmark",
+            "location": "Jalan Raja, Kuala Lumpur",
+            "area": "Kuala Lumpur City Centre",
+            "description": "A central heritage square surrounded by notable colonial-era architecture and Malaysian landmarks.",
+        },
+        {
+            "name": "National Museum of Malaysia",
+            "latitude": 3.1379,
+            "longitude": 101.6871,
+            "tags": ["culture", "museum", "indoor"],
+            "estimated_minutes": 120,
+            "rating": 4.3,
+            "source": "Local launch cache",
+            "category": "Museum",
+            "location": "Jalan Damansara, Kuala Lumpur",
+            "area": "Kuala Lumpur Sentral",
+            "description": "Malaysia's national museum presents the country's history, culture, traditions, and archaeological heritage.",
         },
     ]
 
@@ -2018,6 +2221,7 @@ def build_attraction_results(
                 ""
             ).lower() == "partly cloudy"
         ),
+        sort_mode=sort_mode,
     )
 
     # 6. Prepare final attraction data
@@ -2026,7 +2230,11 @@ def build_attraction_results(
         selected,
         reference_lat=destination_place["latitude"],
         reference_lon=destination_place["longitude"],
-        include_weather=use_weather,
+        # Refresh card weather on every submitted search. This lets users
+        # turn Weather-aware on afterwards and immediately see badges without
+        # issuing another attraction search. The use_weather flag above still
+        # controls weather-based recommendation scoring.
+        include_weather=True,
     )
 
     # 7. Sort
@@ -2038,6 +2246,20 @@ def build_attraction_results(
                 item.get("rating", 0)
             ),
             reverse=True,
+        )
+
+    elif sort_mode == "rating-asc":
+
+        selected.sort(
+            key=lambda item: (
+                float(item.get("rating") or 0) <= 0,
+                (
+                    float(item.get("rating") or 0)
+                    if float(item.get("rating") or 0) > 0
+                    else float("inf")
+                ),
+                -int(item.get("review_count") or 0),
+            )
         )
 
     elif sort_mode == "nearest":

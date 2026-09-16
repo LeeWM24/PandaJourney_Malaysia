@@ -5,6 +5,7 @@ import { collection, doc, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc,
 let currentUser = null;
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
+  window.currentPublicUserId = user?.uid || null;
 
   if (user) {
     await testLoadItineraries();
@@ -171,6 +172,10 @@ async function getSavedPublicItineraryIds(userId) {
 async function savePublicItineraryCopy(item) {
   if (!currentUser) {
     throw new Error("Please login before saving.");
+  }
+
+  if (item.user_id === currentUser.uid) {
+    throw new Error("You cannot save your own itinerary.");
   }
 
   const existingSaveQuery = query(
@@ -423,22 +428,24 @@ async function loadCommunityPhoto(item) {
 
       const data = await response.json();
 
-      photoCache[index] = {
+      const result = {
         imageUrl: data.image_url || "",
         placeName: placeName
       };
 
-      return photoCache[index];
+      if (result.imageUrl) {
+        photoCache[index] = result;
+      }
+
+      return result;
 
     } catch (error) {
       console.error("Community photo failed:", error);
 
-      photoCache[index] = {
+      return {
         imageUrl: "",
         placeName: placeName
       };
-
-      return photoCache[index];
     }
   }
 
@@ -446,7 +453,10 @@ async function loadCommunityPhoto(item) {
   async function renderCarouselPhoto() {
     carousel.innerHTML = `
       <div class="community-photo-placeholder">
-        Loading photo...
+        <div class="photo-loading-content">
+          <div class="photo-loading-spinner"></div>
+          <span>Loading photo...</span>
+        </div>
       </div>
     `;
 
@@ -457,11 +467,22 @@ async function loadCommunityPhoto(item) {
         photo.imageUrl
           ? `
             <img
-              class="community-photo"
+              class="detail-photo"
               src="${photo.imageUrl}"
-              alt="${photo.placeName}"
+              alt=""
               loading="lazy"
+              onerror="
+                this.style.display='none';
+                const placeholder = this.nextElementSibling;
+                if (placeholder) placeholder.style.display='flex';
+              "
             >
+            <div
+              class="community-photo-placeholder"
+              style="display:none;"
+            >
+              No photo available
+            </div>
           `
           : `
             <div class="community-photo-placeholder">
@@ -595,12 +616,16 @@ async function loadDetailPhotoCarousel(item) {
 
       const data = await response.json();
 
-      photoCache[index] = {
+      const result = {
         imageUrl: data.image_url || "",
         placeName: placeName
       };
 
-      return photoCache[index];
+      if (result.imageUrl) {
+        photoCache[index] = result;
+      }
+
+      return result;
 
     } catch (error) {
       console.error(
@@ -608,19 +633,20 @@ async function loadDetailPhotoCarousel(item) {
         error
       );
 
-      photoCache[index] = {
+      return {
         imageUrl: "",
         placeName: placeName
       };
-
-      return photoCache[index];
     }
   }
 
   async function renderDetailPhoto() {
     carousel.innerHTML = `
       <div class="community-photo-placeholder">
-        Loading photo...
+        <div class="photo-loading-content">
+          <div class="photo-loading-spinner"></div>
+          <span>Loading photo...</span>
+        </div>
       </div>
     `;
 
@@ -632,11 +658,22 @@ async function loadDetailPhotoCarousel(item) {
         photo.imageUrl
           ? `
             <img
-              class="detail-photo"
+              class="community-photo"
               src="${photo.imageUrl}"
-              alt="${photo.placeName}"
+              alt=""
               loading="lazy"
+              onerror="
+                this.style.display='none';
+                const placeholder = this.nextElementSibling;
+                if (placeholder) placeholder.style.display='flex';
+              "
             >
+            <div
+              class="community-photo-placeholder"
+              style="display:none;"
+            >
+              No photo available
+            </div>
           `
           : `
             <div class="community-photo-placeholder">

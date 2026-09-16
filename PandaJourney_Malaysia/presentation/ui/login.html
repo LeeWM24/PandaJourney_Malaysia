@@ -155,7 +155,11 @@
             aria-live="polite"
           ></div>
 
-          <div class="login-link-row" style="margin-bottom: 14px;">
+          <div
+            class="login-link-row"
+            id="verification-resend-row"
+            style="margin-bottom: 14px;"
+            hidden>
             Didn't receive your verification email?
             <a href="{{ url_for('resend_verification') }}">
               Resend verification email

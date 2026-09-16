@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Smart Attractions PandaJourney Malaysia{% endblock %}
+{% block title %}Attractions Recommendation — PandaJourney Malaysia{% endblock %}
 {% block favicon %}
-<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/attractions-favicon.svg') }}?v={{ asset_version('images/attractions-favicon.svg') }}" />
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
 {% endblock %}
 {% block page_title %}Smart Attraction Recommendation{% endblock %}
 {% block page_subtitle %}Discover attractions matched to your travel interests and weather preferences{% endblock %}
@@ -235,7 +235,13 @@
   .chip.active { border-color: #0f7a5a; background: #0f7a5a; color: #fff; }
   .chip input { position: absolute; left: 0; top: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; cursor: pointer; }
 
-  .results-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem; }
+  .results-bar { display: flex; align-items: center; justify-content: flex-end; gap: 1rem; margin-top: 0; flex-wrap: wrap; }
+  .result-control { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); white-space: nowrap; }
+  .result-control-label { font-size: .9rem; font-weight: 700; }
+  .result-weather .toggle { display: inline-flex; align-items: center; }
+  .result-weather .toggle-track { width: 40px; height: 24px; }
+  .result-weather .toggle-track::after { width: 16px; height: 16px; }
+  .result-weather .toggle input:checked + .toggle-track::after { transform: translateX(16px); }
   .results-count { color: var(--fg-2); font-size: 14px; }
   .results-count strong { color: var(--fg); }
   .sort-select { height: 36px; border-radius: 12px; border: 1px solid var(--border); padding: 0 12px; background: #fff; color: var(--fg); font-size: .95rem; outline: none; cursor: pointer; }
@@ -421,17 +427,8 @@
           <p class="field-help"><strong>Google Maps ratings</strong></p>
         </div>
 
-        <div class="form-group mb-4 toggle-wrap">
-          <label class="form-label">Weather-aware</label>
-          <label class="toggle">
-<input id="weather_aware" type="checkbox" name="weather_aware" value="1" {% if filters.weather_aware %}checked{% endif %} />
-            <span class="toggle-track"></span>
-          </label>
-          <p class="field-help">Uses today's weather forecast.</p>
-        </div>
-
         <div class="filter-actions">
-          <button type="submit" class="btn btn-primary btn-lg btn-full">🔍 Search Attractions</button>
+          <button type="submit" class="btn btn-primary btn-lg btn-full" id="search-attractions-btn">🔍 Search Attractions</button>
           <button type="button" class="btn btn-ghost clear-filters" id="clear-filters" hidden aria-label="Clear filters">✕ Clear filters</button>
         </div>
       </form>
@@ -447,13 +444,22 @@
           <div id="weather-note" class="result-label" style="margin-top: 6px; display:none;"></div>
         </div>
         <div class="results-bar">
-          <label for="sort-select" class="sr-only">Sort</label>
-          <select class="sort-select" id="sort-select" name="sort" form="filter-form">
-            <option value="score" {% if filters.sort == 'score' %}selected{% endif %}>Most Relevant</option>
-            <option value="rating" {% if filters.sort == 'rating' %}selected{% endif %}>Highest Rated</option>
-            <option value="rating-asc" {% if filters.sort == 'rating-asc' %}selected{% endif %}>Lowest Rated</option>
-            <option value="nearest" {% if filters.sort == 'nearest' %}selected{% endif %}>Nearest</option>
-          </select>
+          <div class="result-control result-weather" title="Uses today's weather forecast">
+            <span class="result-control-label">Weather-aware</span>
+            <label class="toggle">
+              <input id="weather_aware" type="checkbox" name="weather_aware" value="1" form="filter-form" {% if filters.weather_aware %}checked{% endif %} />
+              <span class="toggle-track"></span>
+            </label>
+          </div>
+          <div class="result-control">
+            <label for="sort-select" class="result-control-label">Sort</label>
+            <select class="sort-select" id="sort-select" name="sort" form="filter-form">
+              <option value="score" {% if filters.sort == 'score' %}selected{% endif %}>Most Relevant</option>
+              <option value="rating" {% if filters.sort == 'rating' %}selected{% endif %}>Highest Rated</option>
+              <option value="rating-asc" {% if filters.sort == 'rating-asc' %}selected{% endif %}>Lowest Rated</option>
+              <option value="nearest" {% if filters.sort == 'nearest' %}selected{% endif %}>Nearest</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>

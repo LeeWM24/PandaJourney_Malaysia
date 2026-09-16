@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block title %}Dashboard — PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 
 {% block page_title %}Dashboard{% endblock %}
 
@@ -47,7 +50,7 @@ Welcome back,
 
 
   /* =================================
-     Recent Itineraries
+     Saved Itineraries
   ================================= */
 
   #dashboard-recent-list {
@@ -428,8 +431,7 @@ Welcome back,
       </span>
 
       <span class="tile-label">
-        Smart Attraction<br>
-        Recommendation
+        Attractions
       </span>
     </a>
 
@@ -444,8 +446,7 @@ Welcome back,
       </span>
 
       <span class="tile-label">
-        Smart Itinerary<br>
-        Planning
+        Itinerary Planner
       </span>
     </a>
 
@@ -460,8 +461,7 @@ Welcome back,
       </span>
 
       <span class="tile-label">
-        Public Itinerary<br>
-        Sharing
+        Public Itineraries
       </span>
     </a>
 
@@ -476,7 +476,6 @@ Welcome back,
       </span>
 
       <span class="tile-label">
-        User<br>
         Profile
       </span>
     </a>
@@ -485,13 +484,13 @@ Welcome back,
 
 
   <!-- =================================
-       Recent Itineraries
+       Saved Itineraries
   ================================= -->
 
   <div class="card card-p">
     <div class="card-header">
       <span class="card-title">
-        Recent Itineraries
+        Saved Itineraries
       </span>
 
       <a
@@ -514,7 +513,7 @@ Welcome back,
         </div>
 
         <div class="empty-sub">
-          Loading recent itineraries...
+          Loading saved itineraries...
         </div>
       </div>
     </div>

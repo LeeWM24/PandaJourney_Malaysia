@@ -42,6 +42,7 @@ const googleMapsConfig = readJsonData('google-maps-config', { enabled: false });
 const favourites = new Set();
 
 const favouriteDocIds = new Map();
+const photoLookupAttempted = new Set();
 const ATTRACTION_SESSION_KEY = 'pandajourney:smart-attraction-state:v1';
 let currentUser = null;
 let hasSearched = !!searchState.searched;
@@ -210,15 +211,25 @@ document.addEventListener('DOMContentLoaded', () => {
 function bindSearchLoadingOverlay() {
   const form = document.getElementById('filter-form');
   const tokenInput = document.getElementById('firebase-id-token');
+  const submitButton = document.getElementById('search-attractions-btn');
   if (!form) return;
 
   let submissionPending = false;
+  const idleButtonText = submitButton?.textContent || 'Search Attractions';
+
+  function setSubmissionPending(pending) {
+    submissionPending = pending;
+    if (!submitButton) return;
+    submitButton.disabled = pending;
+    submitButton.setAttribute('aria-busy', String(pending));
+    submitButton.textContent = pending ? 'Searching...' : idleButtonText;
+  }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
 
     if (submissionPending) return;
-    submissionPending = true;
+    setSubmissionPending(true);
 
     showLoadingOverlay(
       'Searching attractions...',
@@ -234,11 +245,15 @@ function bindSearchLoadingOverlay() {
 
       form.submit();
     } catch (error) {
-      submissionPending = false;
+      setSubmissionPending(false);
       hideLoadingOverlay();
       console.error('Unable to prepare attraction search:', error);
       showToast('Unable to verify your session. Please try again.', 'error');
     }
+  });
+
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) setSubmissionPending(false);
   });
 }
 
@@ -676,12 +691,30 @@ function updateMapForAttraction(attraction) {
 }
 
 function bindFilterEvents() {
+  const ratingSelect = document.getElementById('filter-rating');
+  const sortSelect = document.getElementById('sort-select');
+  const weatherToggle = document.getElementById('weather_aware');
 
-  document.getElementById('sort-select').addEventListener('change', () => {
+  sortSelect?.addEventListener('change', () => {
     resetPagination();
     renderCards();
     saveAttractionSessionState();
   });
+
+  ratingSelect?.addEventListener('change', () => {
+    appliedFilters.minRating = ratingSelect.value;
+    resetPagination();
+    renderCards();
+    saveAttractionSessionState();
+  });
+
+  weatherToggle?.addEventListener('change', () => {
+    appliedFilters.weather = weatherToggle.checked;
+    resetPagination();
+    renderCards();
+    saveAttractionSessionState();
+  });
+
   const clearFiltersButton = document.getElementById('clear-filters');
   if (clearFiltersButton) clearFiltersButton.addEventListener('click', clearFilters);
 }
@@ -825,7 +858,7 @@ function getFilteredAttractions() {
       const itemInterests = (Array.isArray(itemInterestsRaw) ? itemInterestsRaw : [itemInterestsRaw]).map(x => String(x).toLowerCase());
       const selected = appliedFilters.interests.map(x => String(x).toLowerCase());
       const matchesInterest = selected.some((interest) => itemInterests.includes(interest));
-      if (!matchesInterest) return false;
+      if (!matchesInterest && !item.is_destination_match) return false;
     }
     const minimum = RATING_MIN[appliedFilters.minRating] || 0;
     if (minimum && Number(item.rating) < minimum) return false;
@@ -919,6 +952,7 @@ function renderCards() {
   grid.innerHTML = visible.map((attraction) => buildCard(attraction)).join('');
   updateCardFavourites();
   renderPagination(totalPages, paginationWrap);
+  void hydrateMissingAttractionPhotos(visible);
 }
 
 // Builds Prev / page-number / Next controls — 6 attractions per page,
@@ -1054,6 +1088,38 @@ function getAttractionImage(attraction = {}) {
     if (photo) return photo;
   }
   return buildPlaceholderImage(attraction);
+}
+
+async function hydrateMissingAttractionPhotos(visibleAttractions) {
+  const candidates = visibleAttractions.filter((attraction) => {
+    const hasPhoto = attraction.has_provider_photo !== false
+      && Boolean(attraction.image_url || attraction.photo_urls?.find(Boolean));
+    return !hasPhoto
+      && attraction.name
+      && !photoLookupAttempted.has(attractionIdentity(attraction));
+  });
+
+  if (!candidates.length) return;
+  candidates.forEach((attraction) => {
+    photoLookupAttempted.add(attractionIdentity(attraction));
+  });
+
+  const results = await Promise.allSettled(candidates.map(async (attraction) => {
+    const response = await fetch(`/api/public-place-photo?name=${encodeURIComponent(attraction.name)}`);
+    if (!response.ok) return false;
+    const payload = await response.json();
+    const imageUrl = String(payload.image_url || '').trim();
+    if (!imageUrl) return false;
+    attraction.image_url = imageUrl;
+    attraction.photo_urls = [imageUrl];
+    attraction.has_provider_photo = true;
+    return true;
+  }));
+
+  if (results.some((result) => result.status === 'fulfilled' && result.value)) {
+    saveAttractionSessionState();
+    renderCards();
+  }
 }
 
 function buildCard(attraction) {

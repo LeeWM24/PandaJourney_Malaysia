@@ -61,9 +61,17 @@ function updateRegistrationPasswordGuidance() {
   document
     .querySelectorAll("[data-register-password-rule]")
     .forEach(element => {
+      const isMet =
+        Boolean(rules[element.dataset.registerPasswordRule]);
+
       element.classList.toggle(
         "met",
-        Boolean(rules[element.dataset.registerPasswordRule])
+        isMet
+      );
+
+      element.classList.toggle(
+        "invalid",
+        !isMet
       );
     });
 
@@ -489,6 +497,7 @@ if (loginForm && document.getElementById("email")) {
               ? "Please verify your email before logging in. A new verification email has been sent. Check your spam or junk folder if it is not in your inbox."
               : "Please verify your email before logging in. We could not resend the email right now; please try again later."
           );
+          showVerificationResendLink();
 
           return;
         }
@@ -814,6 +823,15 @@ function showLoginError(message) {
   showLoginMessage(message, "error");
 }
 
+function showVerificationResendLink() {
+  const resendRow =
+    document.getElementById("verification-resend-row");
+
+  if (resendRow) {
+    resendRow.hidden = false;
+  }
+}
+
 function clearLoginError() {
   const errorBox = document.getElementById("loginError");
 
@@ -844,6 +862,13 @@ if (storedAuthenticationMessage) {
       ? "success"
       : "warning"
   );
+
+  if (
+    storedAuthenticationMessage.includes("verification email") ||
+    storedAuthenticationMessage.includes("Verify it before signing in")
+  ) {
+    showVerificationResendLink();
+  }
 }
 
 function getAuthenticationErrorMessage(error) {

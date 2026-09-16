@@ -595,10 +595,66 @@ def filter_route_relevant_candidates(
 
     return filtered
 
-
 def normalise_name_key(name: str) -> str:
     return str(name or "").strip().lower()
 
+def normalise_place_name(name: str) -> str:
+    value = str(name or "").strip().lower()
+
+    for text in [
+        "kuala lumpur",
+        "malaysia",
+        "federal territory of",
+    ]:
+        value = value.replace(text, "")
+
+    value = "".join(
+        char for char in value
+        if char.isalnum() or char.isspace()
+    )
+
+    return " ".join(value.split())
+
+
+def is_duplicate_place(
+    candidate: dict[str, Any],
+    existing: dict[str, Any]
+) -> bool:
+    candidate_name = normalise_place_name(candidate.get("name", ""))
+    existing_name = normalise_place_name(existing.get("name", ""))
+
+    if not candidate_name or not existing_name:
+        return False
+
+    if candidate_name == existing_name:
+        return True
+
+    if (
+        candidate_name in existing_name
+        or existing_name in candidate_name
+    ):
+        candidate_lat = parse_float(candidate.get("latitude"))
+        candidate_lon = parse_float(candidate.get("longitude"))
+        existing_lat = parse_float(existing.get("latitude"))
+        existing_lon = parse_float(existing.get("longitude"))
+
+        if None not in (
+            candidate_lat,
+            candidate_lon,
+            existing_lat,
+            existing_lon,
+        ):
+            distance_km = calculate_distance_km(
+                candidate_lat,
+                candidate_lon,
+                existing_lat,
+                existing_lon,
+            )
+
+            if distance_km <= 0.2:
+                return True
+
+    return False
 
 def parse_json_list(value: Any) -> list[Any]:
     if not value:
@@ -2062,7 +2118,8 @@ def select_road_reachable_attractions(
     """Keep stops only when OSRM can route Start -> stops -> End by road."""
     chosen: list[dict[str, Any]] = []
     seen_names: set[str] = set()
-    pool = [*selected, *candidates[:12]]
+    candidate_limit = min(len(candidates), max_stops + 2)
+    pool = [*selected, *candidates[:candidate_limit]]
 
     for candidate in pool:
         if len(chosen) >= max_stops:
@@ -2071,6 +2128,17 @@ def select_road_reachable_attractions(
         name_key = normalise_name_key(candidate.get("name", ""))
 
         if not name_key or name_key in seen_names:
+            continue
+
+        if any(
+            is_duplicate_place(candidate, existing)
+            for existing in chosen
+        ):
+            print(
+                f"[DUPLICATE PLACE SKIPPED] "
+                f"{candidate.get('name', 'Unnamed stop')}",
+                flush=True,
+            )
             continue
 
         if candidate.get("latitude") is None or candidate.get("longitude") is None:
