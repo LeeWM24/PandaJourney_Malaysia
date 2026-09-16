@@ -2,6 +2,9 @@
 {% set active_page = "public" %}
 
 {% block title %}Public Itineraries | PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 
 {% block page_title %}Public Itineraries{% endblock %}
 

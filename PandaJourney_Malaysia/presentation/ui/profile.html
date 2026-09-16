@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block title %}My Profile — PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 {% block page_title %}My Profile{% endblock %}
 {% block page_subtitle %}Manage your account and profile{% endblock %}
 
