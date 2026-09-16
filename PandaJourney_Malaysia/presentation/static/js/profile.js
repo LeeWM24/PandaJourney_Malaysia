@@ -63,6 +63,15 @@ editName?.addEventListener(
   updateDisplayNameCount
 );
 
+window.addEventListener("beforeunload", event => {
+  if (!isEditing) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 const editEmail =
   document.getElementById("edit-email");
 
