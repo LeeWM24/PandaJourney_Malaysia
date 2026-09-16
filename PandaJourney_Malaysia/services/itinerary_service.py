@@ -901,7 +901,7 @@ def search_attractions_serpapi(
 
         rating = float(item.get("rating") or 0)
 
-        if rating and rating < minimum_rating:
+        if rating < minimum_rating:
             continue
 
         search_text = build_candidate_search_text(item)
@@ -1203,7 +1203,7 @@ def choose_attractions(
     for attraction in candidates:
         rating = float(attraction.get("rating") or 0)
 
-        if rating and rating < minimum_rating:
+        if rating < minimum_rating:
             continue
 
         score, reasons = score_attraction(attraction, interests, weather)
@@ -1777,15 +1777,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             interests,
             weather,
             minimum_rating,
-            remaining_stop_slots
-        )
-
-    if not recommended_selected and remaining_stop_slots > 0:
-        recommended_selected = choose_attractions(
-            candidates,
-            interests,
-            weather,
-            0,
             remaining_stop_slots
         )
 

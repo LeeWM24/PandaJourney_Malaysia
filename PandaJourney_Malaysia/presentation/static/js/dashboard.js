@@ -634,7 +634,7 @@ function updateRecentItineraries(itineraries) {
             </div>
 
             <a
-              href="/saved-itineraries/${encodeURIComponent(item.id)}"
+              href="/saved-itineraries/${encodeURIComponent(item.id)}/edit"
               class="btn btn-secondary btn-sm dashboard-recent-edit">
               Edit
             </a>

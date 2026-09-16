@@ -89,6 +89,26 @@ service cloud.firestore {
         isAcceptedEditor(itineraryId);
     }
 
+    function ownsItinerary(itineraryDocumentId) {
+      return signedIn() && get(/databases/$(database)/documents/Itinerary/$(itineraryDocumentId)).data.user_id == request.auth.uid;
+    }
+
+    function collaboratorPath(itineraryId) {
+      return /databases/$(database)/documents/collaborators/$(itineraryId + "_" + request.auth.uid);
+    }
+
+    function isAcceptedCollaborator(itineraryId) {
+      return signedIn() && exists(collaboratorPath(itineraryId)) && get(collaboratorPath(itineraryId)).data.status == "accepted";
+    }
+
+    function isEditorCollaborator(itineraryId) {
+      return isAcceptedCollaborator(itineraryId) && get(collaboratorPath(itineraryId)).data.role == "editor";
+    }
+
+    function isCollaboratorOwner(itineraryId) {
+      return signedIn() && get(/databases/$(database)/documents/Itinerary/$(itineraryId)).data.user_id == request.auth.uid;
+    }
+
     match /users/{userId} {
       // Signed-in users need public profile fields for itinerary authors
       // and collaborator lookup. Private user fields should be moved to a
@@ -137,159 +157,38 @@ service cloud.firestore {
     }
 
     match /Itinerary/{itineraryId} {
-      allow create: if ownsNewUserId() &&
-        request.resource.data.user_id == request.auth.uid;
-
-      allow read: if isPublished(resource.data) ||
-        ownsExistingUserId() ||
-        isAcceptedEditor(itineraryId);
-
-      allow update: if (
-          ownsExistingUserId() &&
-          request.resource.data.user_id == resource.data.user_id
-        ) || (
-          isAcceptedEditor(itineraryId) &&
-          request.resource.data.user_id == resource.data.user_id &&
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
-            "user_id",
-            "status",
-            "is_public",
-            "views",
-            "likes",
-            "saves",
-            "source_itinerary_id"
-          ])
-        ) || (
-          isPublished(resource.data) &&
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(["views"]) &&
-          request.resource.data.views == resource.data.views + 1
-        ) || (
-          signedIn() &&
-          isPublished(resource.data) &&
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(["likes"]) &&
-          (
-            request.resource.data.likes == resource.data.likes + 1 ||
-            request.resource.data.likes == resource.data.likes - 1
-          )
-        ) || (
-          signedIn() &&
-          isPublished(resource.data) &&
-          request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(["saves"]) &&
-          (
-            request.resource.data.saves == resource.data.saves + 1 ||
-            request.resource.data.saves == resource.data.saves - 1
-          )
-        );
-
+      allow create: if ownsNewUserId();
+      allow read: if ownsExistingUserId() || resource.data.is_public == true || isAcceptedCollaborator(itineraryId);
+      allow update: if ownsExistingUserId() || (isEditorCollaborator(itineraryId) && request.resource.data.user_id == resource.data.user_id && request.resource.data.status == resource.data.status && request.resource.data.is_public == resource.data.is_public);
       allow delete: if ownsExistingUserId();
     }
 
     match /itinerary_stops/{stopId} {
-      allow read: if canReadItinerary(resource.data.itinerary_id);
-
-      allow create: if canEditItinerary(
-        request.resource.data.itinerary_id
-      );
-
-      allow update: if canEditItinerary(
-          resource.data.itinerary_id
-        ) &&
-        request.resource.data.itinerary_id ==
-          resource.data.itinerary_id;
-
-      allow delete: if canEditItinerary(
-        resource.data.itinerary_id
-      );
+      allow read: if signedIn();
+      allow create: if signedIn() && (ownsItinerary(request.resource.data.itinerary_document_id) || isEditorCollaborator(request.resource.data.itinerary_document_id));
+      allow update, delete: if signedIn() && (ownsItinerary(resource.data.itinerary_document_id) || isEditorCollaborator(resource.data.itinerary_document_id));
     }
 
     match /collaborators/{collaboratorId} {
-      // Existing screens query the collaborator list by itinerary.
-      allow read: if signedIn();
-
-      // Owners create invitations. A newly registered invitee may
-      // create only their canonical accepted record when a matching
-      // pending-registration invitation already exists.
-      allow create: if signedIn() &&
-        (
-          (
-            request.resource.data.owner_id == request.auth.uid &&
-            isItineraryOwner(
-              request.resource.data.itinerary_document_id
-            )
-          ) ||
-          (
-            request.resource.data.user_id == request.auth.uid &&
-            request.resource.data.email == request.auth.token.email &&
-            request.resource.data.status == "accepted" &&
-            request.resource.data.role in ["viewer", "editor"] &&
-            collaboratorId == collaboratorDocumentId(
-              request.resource.data.itinerary_document_id
-            ) &&
-            hasPendingInvitation(
-              request.resource.data.itinerary_document_id
-            )
-          )
-        );
-
-      allow update: if signedIn() &&
-        (
-          (
-            resource.data.owner_id == request.auth.uid &&
-            isItineraryOwner(resource.data.itinerary_document_id)
-          ) ||
-          (
-            resource.data.user_id == request.auth.uid &&
-            request.resource.data.owner_id == resource.data.owner_id &&
-            request.resource.data.itinerary_id == resource.data.itinerary_id &&
-            request.resource.data.itinerary_document_id ==
-              resource.data.itinerary_document_id &&
-            request.resource.data.role == resource.data.role &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              "status",
-              "updated_at",
-              "last_activity_viewed_at",
-              "last_comments_viewed_at"
-            ])
-          )
-        );
-
-      allow delete: if signedIn() &&
-        (
-          (
-            resource.data.owner_id == request.auth.uid &&
-            isItineraryOwner(resource.data.itinerary_document_id)
-          ) ||
-          resource.data.user_id == request.auth.uid
-        );
+      allow read: if signedIn() && ( resource.data.user_id == request.auth.uid || isCollaboratorOwner(resource.data.itinerary_document_id));
+      allow create: if signedIn() && isCollaboratorOwner(request.resource.data.itinerary_document_id);
+      allow update: if signedIn() && ( isCollaboratorOwner(resource.data.itinerary_document_id) || (resource.data.user_id == request.auth.uid
+            && request.resource.data.user_id == resource.data.user_id
+            && request.resource.data.itinerary_document_id == resource.data.itinerary_document_id
+            && request.resource.data.role == resource.data.role));
+      allow delete: if signedIn() && isCollaboratorOwner(resource.data.itinerary_document_id);
     }
 
     match /comments/{commentId} {
-      allow read: if signedIn() &&
-        canReadItinerary(resource.data.itinerary_id);
-
-      allow create: if ownsNewUserId() &&
-        canReadItinerary(request.resource.data.itinerary_id);
-
-      allow update: if ownsExistingUserId() &&
-        request.resource.data.user_id == resource.data.user_id &&
-        request.resource.data.itinerary_id == resource.data.itinerary_id;
-
-      allow delete: if ownsExistingUserId() ||
-        isItineraryOwner(resource.data.itinerary_id);
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.author_id == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.author_id == request.auth.uid;
     }
 
     match /notifications/{notificationId} {
-      allow create: if signedIn() &&
-        request.resource.data.actor_id == request.auth.uid;
-
-      allow read, update, delete: if signedIn() &&
-        (
-          resource.data.user_id == request.auth.uid ||
-          resource.data.actor_id == request.auth.uid
-        );
+      allow create: if signedIn() && request.resource.data.actor_id == request.auth.uid;
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.actor_id == request.auth.uid;
     }
 
     match /itinerary_likes/{likeId} {

@@ -1258,6 +1258,10 @@ async function saveItinerary() {
       stop_count: selectedStops.length,
 
       status: "Draft",
+      is_public: false,
+      views: 0,
+      likes: 0,
+      saves: 0,
 
       created_at: serverTimestamp(),
       updated_at: serverTimestamp(),

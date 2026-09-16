@@ -39,6 +39,18 @@ const errorElement = document.getElementById("edit-error");
 const contentElement = document.getElementById("edit-content");
 const titleInput = document.getElementById("itinerary-title-input");
 const dateInput = document.getElementById("itinerary-date-input");
+
+if (dateInput) {
+  const now = new Date();
+  const localToday = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0")
+  ].join("-");
+
+  dateInput.min = localToday;
+}
+
 const daysInput = document.getElementById("itinerary-days-input");
 const dateRangeText = document.getElementById("itinerary-date-range");
 const dayStartGrid = document.getElementById("day-start-grid");
@@ -1176,12 +1188,16 @@ function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints =
 }
 
 function getDayRouteGoogleMaps(dayNumber, stops = stopDocs) {
-  const numberedStops = stops.map((stop, index) => ({
-    stop,
-    marker: String(index + 1),
-    dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
-    point: getPointFromStop(stop)
-  }));
+  const numberedStops = stops.map((stop) => ({
+      stop,
+      dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
+      point: getPointFromStop(stop)
+    }))
+    .filter(item => item.point)
+    .map((item, index) => ({
+      ...item,
+      marker: String(index + 1)
+    }));
   const dayStops = numberedStops.filter(item => {
     return item.dayNumber === dayNumber && item.point;
   });
@@ -1268,12 +1284,11 @@ function getDayRouteDashArray(dayNumber) {
 function getDayMapSections(stops) {
   const startPoint = getItineraryPoint("start");
   const endPoint = getItineraryPoint("end");
-  const numberedStops = stops.map((stop, index) => ({
-    stop,
-    marker: index + 1,
-    dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1),
-    point: getPointFromStop(stop)
-  })).filter(item => item.point);
+  const numberedStops = stops
+    .map((stop) => ({stop, dayNumber: normaliseDayNumber(stop.day_number || stop.day || 1), point: getPointFromStop(stop)}))
+    .filter(item => item.point)
+    .map((item, index) => ({...item, marker: index + 1}));
+
   const dayNumbers = [...new Set(numberedStops.map(item => item.dayNumber))];
   const sections = dayNumbers.map(dayNumber => {
     const dayStops = numberedStops.filter(item => item.dayNumber === dayNumber);
@@ -1344,17 +1359,21 @@ async function renderEditRouteMap() {
     });
   }
 
-  stopDocs.forEach((stop, index) => {
+  let visibleStopNumber = 0;
+
+  stopDocs.forEach((stop) => {
     const point = getPointFromStop(stop);
 
     if (!point) return;
 
+    visibleStopNumber += 1;
+
     mapPoints.push({
-      label: `${index + 1}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(stop.day_number || stop.day || 1)})`,
+      label: `${visibleStopNumber}. ${stop.stop_name || "Stop"} (Day ${normaliseDayNumber(stop.day_number || stop.day || 1)})`,
       latitude: point.latitude,
       longitude: point.longitude,
       type: "stop",
-      number: index + 1
+      number: visibleStopNumber
     });
   });
 
@@ -1742,11 +1761,15 @@ function setEditingState() {
     routeHoursInput,
     routeHoursUnlimitedInput,
     saveRouteDetailsButton,
-    addStopButton,
-    inviteEmailInput
+    addStopButton
   ].forEach(element => {
     if (element) element.disabled = !canEdit;
   });
+
+  if (inviteEmailInput) {
+    inviteEmailInput.disabled = !isOwner;
+  }
+
   routeInterestInput?.querySelectorAll('input[name="route_interests"]').forEach(input => {
     input.disabled = !canEdit;
   });
@@ -2022,7 +2045,7 @@ function renderStops() {
     const row = document.createElement("div");
     row.className = `edit-stop-row ${isRouteMarker ? "route-marker-row" : ""}`;
     if (editingStopId === stop.document_id) row.classList.add("is-editing");
-    row.draggable = canEdit && !isDraft && !isRouteMarker;
+    row.draggable = canEdit && !isDraft && !isRouteMarker && editingStopId !== stop.document_id;
     row.dataset.stopId = stop.document_id;
     const calculatedStop = editableIndex >= 0
       ? calculatedStops[editableIndex] || stop
@@ -2179,7 +2202,7 @@ function renderStops() {
             </div>
             <div class="stop-field">
               <label>Visit minutes</label>
-              <input class="stop-input js-stop-duration" type="number" min="0" step="5" value="${escapeHtml(stop.visit_duration_minutes || 0)}" ${canEdit ? "" : "disabled"} aria-label="Visit duration minutes">
+              <input class="stop-input js-stop-duration" type="number" min="5" max="720" step="5" value="${escapeHtml(stop.visit_duration_minutes || 0)}" ${canEdit ? "" : "disabled"} aria-label="Visit duration minutes">
             </div>
           </div>
           <div class="stop-row-actions">
@@ -2198,7 +2221,10 @@ function renderStops() {
     }
 
     row.addEventListener("dragstart", function () {
-      if (isDraft || isRouteMarker) return;
+      if (isDraft || isRouteMarker || event.target.closest("input, textarea, select, button, a")) {
+        event.preventDefault();
+        return;
+      }
       draggedStopId = stop.document_id;
       row.classList.add("dragging");
     });
@@ -2240,7 +2266,7 @@ function renderStops() {
       const placeChanges = getSelectedStopPlaceChanges(stop.document_id);
 
       const changes = {
-        stop_name: nameInput?.value.trim() || "Unnamed Stop",
+        stop_name: nameInput?.value.trim() || "",
         day_number: normaliseDayNumber(dayInput?.value || 1),
         visit_duration_minutes: Number(durationInput?.value || 0),
         ...placeChanges
@@ -2254,6 +2280,10 @@ function renderStops() {
           ? createStopFromDraft(editableIndex + 1, changes, saveButton?.dataset.confirmFar === "1", warningElement, saveButton)
           : saveStopChanges(stop.document_id, editableIndex + 1, changes, saveButton?.dataset.confirmFar === "1", warningElement, saveButton)
       ).catch(console.error);
+    });
+
+    row.querySelector(".js-stop-duration")?.addEventListener("input", function () {
+      clearStopValidationError(row.querySelector(".js-stop-warning"));
     });
 
     row.querySelector(".js-delete-stop")?.addEventListener("click", function () {
@@ -2433,8 +2463,45 @@ async function saveRouteDetails() {
   const interest = interests[0] || "";
   const tripDays = getTripDays();
   const travelDate = dateInput?.value || itinerary.travel_date || "";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const selectedDate = travelDate
+    ? new Date(`${travelDate}T00:00:00`)
+    : null;
+
+  if (!travelDate) {
+    setRouteSaveMessage("Travel date is required.", true);
+    return;
+  }
+
+  if (!selectedDate || Number.isNaN(selectedDate.getTime())) {
+    setRouteSaveMessage("Please enter a valid travel date.", true);
+    return;
+  }
+
+  if (selectedDate < today) {
+    setRouteSaveMessage("Travel date cannot be in the past.", true);
+    return;
+  }
+
   const endTravelDate = addDaysToDate(travelDate, tripDays - 1);
   const dayStartTimes = getDayStartTimesFromInputs(tripDays);
+  const isToday = selectedDate.getTime() === today.getTime();
+  if (isToday) {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const day1StartMinutes = parseClockMinutes(dayStartTimes["1"]);
+
+    if (day1StartMinutes < currentMinutes) {
+      setRouteSaveMessage(
+        "Day 1 start time cannot be earlier than the current time.",
+        true
+      );
+      return;
+    }
+  }
+
   const title = titleInput?.value.trim() || "Untitled Trip";
 
   if (!startPlace.name || !endPlace.name) {
@@ -2567,6 +2634,21 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     );
     return;
   }
+
+  const visitMinutes = Number(changes.visit_duration_minutes);
+
+  if (
+    !Number.isFinite(visitMinutes) ||
+    visitMinutes < 5 ||
+    visitMinutes > 720
+  ) {
+    showStopValidationError(
+      warningElement,
+      "Visit duration must be between 5 and 720 minutes."
+    );
+    return;
+  }
+
   if (!hasValidStopCoordinates({ ...existingStop, ...changes })) {
     showStopValidationError(
       warningElement,
@@ -2575,7 +2657,7 @@ async function saveStopChanges(stopDocumentId, stopNumber, changes, confirmedFar
     return;
   }
 
-  const nextMinutes = Number(changes.visit_duration_minutes || 0);
+  const nextMinutes = visitMinutes;
   const nextStops = stopDocs.map(stop => {
     return stop.document_id === stopDocumentId
       ? { ...stop, ...changes, visit_duration_minutes: nextMinutes }
@@ -2761,6 +2843,7 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     renderStops();
     return;
   }
+
   const cleanName = String(changes.stop_name || "").trim();
   if (!cleanName || cleanName.toLowerCase() === "new stop") {
     openConfirmModal(
@@ -2770,6 +2853,20 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     );
     return;
   }
+
+  const visitMinutes = Number(changes.visit_duration_minutes);
+  if (
+    !Number.isFinite(visitMinutes) ||
+    visitMinutes < 5 ||
+    visitMinutes > 720
+  ) {
+    showStopValidationError(
+      warningElement,
+      "Visit duration must be between 5 and 720 minutes."
+    );
+    return;
+  }
+
   if (!hasValidStopCoordinates(changes)) {
     showStopValidationError(
       warningElement,
@@ -2791,7 +2888,7 @@ async function createStopFromDraft(stopNumber, changes, confirmedFar = false, wa
     rating: normaliseRatingForSave(changes.rating),
     latitude: Number(changes.latitude),
     longitude: Number(changes.longitude),
-    visit_duration_minutes: Number(changes.visit_duration_minutes || 0),
+    visit_duration_minutes: visitMinutes,
     travel_minutes_from_previous: 0
   };
   setRouteSaveMessage(describeRouteCalculation(stopDocs.length + 1));
@@ -3454,6 +3551,12 @@ document.addEventListener("click", function (event) {
 
 inviteForm?.addEventListener("submit", function (event) {
   event.preventDefault();
+
+  if (!isOwner) {
+    setInviteMessage("Only the itinerary owner can invite collaborators.", true);
+    return;
+  }
+
   const submitButton = inviteForm.querySelector('button[type="submit"]');
   const email = normaliseEmail(inviteEmailInput?.value);
 
