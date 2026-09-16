@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import ast
 import time
 import hashlib
 from datetime import datetime, timedelta, timezone
@@ -2064,6 +2065,51 @@ def get_cached_initial_attractions() -> tuple[list[dict[str, Any]], str]:
     )
 
 
+def normalize_detail_value(value: Any) -> Any:
+    """Unpack list-like strings that can arrive from cached provider data."""
+    if not isinstance(value, str):
+        return value
+    text = value.strip()
+    if not text.startswith(("[", "{")):
+        return text
+    try:
+        return ast.literal_eval(text)
+    except (ValueError, SyntaxError):
+        return text
+
+
+def format_category(value: Any) -> str:
+    """Show one useful place type instead of Python's list representation."""
+    normalized = normalize_detail_value(value)
+    if isinstance(normalized, (list, tuple, set)):
+        for category in normalized:
+            text = str(category or "").strip()
+            if text:
+                return text.replace("_", " ").title()
+        return ""
+    return str(normalized or "").replace("_", " ").strip().title()
+
+
+def format_opening_hours(value: Any) -> str:
+    """Convert provider hour arrays/dictionaries into readable text."""
+    normalized = normalize_detail_value(value)
+    if isinstance(normalized, dict):
+        normalized = [normalized]
+    if isinstance(normalized, (list, tuple)):
+        entries: list[str] = []
+        for entry in normalized:
+            if isinstance(entry, dict):
+                for day, hours in entry.items():
+                    day_text = str(day or "").strip().title()
+                    hours_text = str(hours or "").strip()
+                    if day_text and hours_text:
+                        entries.append(f"{day_text}: {hours_text}")
+            elif str(entry or "").strip():
+                entries.append(str(entry).strip())
+        return " | ".join(entries)
+    return str(normalized or "").strip()
+
+
 def prepare_selected_attractions(
     selected: list[dict[str, Any]],
     reference_lat: float | None = None,
@@ -2077,7 +2123,9 @@ def prepare_selected_attractions(
         item = dict(attraction)
 
         item["id"] = item.get("id", index)
-        item["category"] = item.get("category") or ", ".join(item.get("tags", [])[:2]).title() or "Attraction"
+        item["category"] = format_category(
+            item.get("category") or ", ".join(item.get("tags", [])[:2])
+        ) or "Attraction"
         item["location"] = item.get("location") or item.get("source") or "Malaysia"
         item["area"] = item.get("area") or item["location"]
         item["waze_url"] = build_waze_url(item)
@@ -2087,20 +2135,17 @@ def prepare_selected_attractions(
         item["description"] = item.get("description") or ""
         item["hours"] = str(item.get("hours") or "").replace("\ufffd", "·")
         item["entry_fee"] = item.get("entry_fee") or ""
+        item["hours"] = format_opening_hours(item["hours"])
         item["phone"] = item.get("phone") or item.get("contact_number") or ""
         item["website"] = item.get("website") or item.get("official_website") or ""
-        item["visitor_tips"] = item.get(
-            "visitor_tips",
-            [
-                "Arrive early to avoid the busiest periods.",
-                "Wear comfortable shoes and bring water.",
-                "Check opening hours before you travel.",
-            ],
-        )
+        item["visitor_tips"] = item.get("visitor_tips") or []
         item["interest_tags"] = [tag.title() for tag in item.get("tags", [])]
         item["reason_tags"] = [tag for tag in item.get("reasons", [])]
         item["rating"] = float(item.get("rating") or 0)
-        item["estimated_minutes"] = int(item.get("estimated_minutes", 90))
+        try:
+            item["estimated_minutes"] = int(item.get("estimated_minutes") or 0)
+        except (TypeError, ValueError):
+            item["estimated_minutes"] = 0
         item["distance_km"] = None
         item["distance_label"] = ""
 

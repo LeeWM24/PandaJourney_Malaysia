@@ -36,6 +36,7 @@ from services.smart_attraction import (
     build_attraction_results,
     suggest_destinations,
     get_public_place_photo,
+    get_current_weather_batch,
     get_cached_initial_attractions,
     _get_firestore_db,
     logger as smart_attraction_logger,
@@ -532,6 +533,27 @@ def public_place_photo():
     result = get_public_place_photo(place_name)
 
     return jsonify(result)
+
+
+@app.route("/api/attraction-weather", methods=["GET"])
+@rate_limit(max_calls=12, window_seconds=60)
+def attraction_weather():
+    """Returns current weather for the visible attraction cards only."""
+    raw_coords = request.args.get("coords", "")
+    coords: list[tuple[float, float]] = []
+
+    for raw_coord in raw_coords.split(";")[:6]:
+        try:
+            latitude_text, longitude_text = raw_coord.split(",", 1)
+            latitude = float(latitude_text)
+            longitude = float(longitude_text)
+        except ValueError:
+            continue
+
+        if -90 <= latitude <= 90 and -180 <= longitude <= 180:
+            coords.append((latitude, longitude))
+
+    return jsonify({"weather": get_current_weather_batch(coords)})
 
 
 @app.route("/", methods=["GET", "POST"])

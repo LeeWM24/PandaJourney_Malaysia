@@ -43,6 +43,7 @@ const favourites = new Set();
 
 const favouriteDocIds = new Map();
 const photoLookupAttempted = new Set();
+const weatherLookupAttempted = new Set();
 const ATTRACTION_SESSION_KEY = 'pandajourney:smart-attraction-state:v1';
 let currentUser = null;
 let hasSearched = !!searchState.searched;
@@ -976,6 +977,7 @@ function renderCards() {
   updateCardFavourites();
   renderPagination(totalPages, paginationWrap);
   void hydrateMissingAttractionPhotos(visible);
+  void hydrateVisibleWeather(visible);
 }
 
 // Builds Prev / page-number / Next controls — 6 attractions per page,
@@ -1145,6 +1147,49 @@ async function hydrateMissingAttractionPhotos(visibleAttractions) {
   }
 }
 
+async function hydrateVisibleWeather(visibleAttractions) {
+  if (!appliedFilters.weather) return;
+
+  const candidates = visibleAttractions.filter((attraction) => {
+    const hasWeather = attraction.current_weather?.condition
+      || attraction.weather_suitability === 'Indoor';
+    return !hasWeather
+      && attraction.latitude !== undefined
+      && attraction.longitude !== undefined
+      && !weatherLookupAttempted.has(attractionIdentity(attraction));
+  });
+  if (!candidates.length) return;
+
+  candidates.forEach((attraction) => {
+    weatherLookupAttempted.add(attractionIdentity(attraction));
+  });
+
+  const coords = candidates.map((attraction) => (
+    `${Number(attraction.latitude)},${Number(attraction.longitude)}`
+  )).join(';');
+
+  try {
+    const response = await fetch(`/api/attraction-weather?coords=${encodeURIComponent(coords)}`);
+    if (!response.ok) return;
+    const payload = await response.json();
+    const weather = Array.isArray(payload.weather) ? payload.weather : [];
+    let updated = false;
+    candidates.forEach((attraction, index) => {
+      if (weather[index]?.condition) {
+        attraction.current_weather = weather[index];
+        attraction.weather_suitability = weather[index].condition;
+        updated = true;
+      }
+    });
+    if (updated) {
+      saveAttractionSessionState();
+      renderCards();
+    }
+  } catch (error) {
+    console.warn('Unable to refresh attraction weather:', error);
+  }
+}
+
 function buildCard(attraction) {
   const isFav = favourites.has(attraction.id);
   const weatherBadge = buildWeatherBadgeHtml(attraction);
@@ -1285,6 +1330,16 @@ function syncDetailFavourite(id, active) {
   favBtn.dataset.favId = id;
 }
 
+function hasMeaningfulDetail(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return false;
+  return ![
+    'n/a', 'na', 'none', 'null', 'undefined', 'unknown',
+    'not available', 'not yet available', 'weather unavailable',
+    'no description available', 'no description available.',
+  ].includes(text.toLowerCase());
+}
+
 function openDetail(id) {
   const attraction = attractionsData.find((item) => item.id === id);
   if (!attraction) return;
@@ -1322,9 +1377,9 @@ function openDetail(id) {
   const weather = attraction.current_weather;
   const weatherText = weather && weather.condition
     ? `${weatherIcon(weather.condition)} ${weather.condition}${weather.temp !== null && weather.temp !== undefined ? ' · ' + Math.round(weather.temp) + '°C' : ''}`
-    : (attraction.weather_suitability || 'Weather unavailable');
+    : (attraction.weather_suitability || '');
   const metaTopParts = [];
-  if (appliedFilters.weather) metaTopParts.push(`<span>${weatherText}</span>`);
+  if (appliedFilters.weather && hasMeaningfulDetail(weatherText)) metaTopParts.push(`<span>${weatherText}</span>`);
   if (attraction.category) metaTopParts.push(`<span>${attraction.category}</span>`);
   metaTop.innerHTML = metaTopParts.join('');
   metaBottom.innerHTML = attraction.rating
@@ -1340,22 +1395,23 @@ function openDetail(id) {
       `<a href="${reviewsUrl}" target="_blank" rel="noopener noreferrer" aria-label="Read this attraction's Google reviews">Read ${reviewLabel} ↗</a>`
     );
   }
-  hoursEl.textContent = attraction.hours || '';
-  feeEl.textContent = attraction.entry_fee || '';
-  hoursEl.closest('.detail-cell').hidden = !attraction.hours;
-  feeEl.closest('.detail-cell').hidden = !attraction.entry_fee;
-  durationEl.textContent = attraction.estimated_minutes ? `${attraction.estimated_minutes} mins` : 'N/A';
+  const hours = hasMeaningfulDetail(attraction.hours) ? attraction.hours : '';
+  const entryFee = hasMeaningfulDetail(attraction.entry_fee) ? attraction.entry_fee : '';
+  const duration = Number(attraction.estimated_minutes || 0);
+  hoursEl.textContent = hours;
+  feeEl.textContent = entryFee;
+  durationEl.textContent = duration > 0 ? `${duration} mins` : '';
+  hoursEl.closest('.detail-cell').hidden = !hours;
+  feeEl.closest('.detail-cell').hidden = !entryFee;
+  durationEl.closest('.detail-cell').hidden = duration <= 0;
   const description = String(attraction.description || '').trim();
-  const unavailableDescriptions = new Set([
-    'no description available.',
-    'no description available',
-    'n/a',
-  ]);
-  const hasDescription = Boolean(description) && !unavailableDescriptions.has(description.toLowerCase());
+  const hasDescription = hasMeaningfulDetail(description);
   descEl.textContent = hasDescription ? description : '';
   document.getElementById('detail-about-section').hidden = !hasDescription;
-  const address = attraction.location || attraction.area || '';
-  const phone = attraction.phone || attraction.contact_number || '';
+  const addressCandidate = attraction.location || attraction.area || '';
+  const phoneCandidate = attraction.phone || attraction.contact_number || '';
+  const address = hasMeaningfulDetail(addressCandidate) ? addressCandidate : '';
+  const phone = hasMeaningfulDetail(phoneCandidate) ? phoneCandidate : '';
   addressEl.textContent = address;
   phoneEl.textContent = phone;
   document.getElementById('detail-address-card').hidden = !address;
@@ -1365,13 +1421,23 @@ function openDetail(id) {
   websiteEl.href = websiteUrl || '#';
   document.getElementById('detail-contact-section').hidden = !address && !phone && !websiteUrl;
 
-  const reasons = attraction.reason_tags || [];
-  const interests = attraction.interest_tags || attraction.interests || [];
+  const reasons = (attraction.reason_tags || []).filter(hasMeaningfulDetail);
+  const interests = (attraction.interest_tags || attraction.interests || []).filter(hasMeaningfulDetail);
   reasonsEl.innerHTML = reasons.map((reason) => `<span class="detail-pill">${reason}</span>`).join('');
   interestsEl.innerHTML = interests.map((interest) => `<span class="detail-pill">${interest}</span>`).join('');
   document.getElementById('detail-reasons-section').hidden = reasons.length === 0;
   document.getElementById('detail-interests-section').hidden = interests.length === 0;
-  tipsEl.innerHTML = (attraction.visitor_tips || []).map((tip) => `<li>${tip}</li>`).join('');
+  const tips = (attraction.visitor_tips || []).filter(hasMeaningfulDetail);
+  tipsEl.replaceChildren(...tips.map((tip) => {
+    const item = document.createElement('li');
+    item.textContent = tip;
+    return item;
+  }));
+  document.getElementById('detail-tips-section').hidden = tips.length === 0;
+
+  const hasCoordinates = Number.isFinite(Number(attraction.latitude))
+    && Number.isFinite(Number(attraction.longitude));
+  document.getElementById('detail-map-section').hidden = !hasCoordinates;
 
   galleryEl.innerHTML = gallery.map((photo, index) => `
     <button id="thumb-${index}" type="button" class="detail-thumb ${index === 0 ? 'active' : ''}" onclick="setGalleryImg(${index})">
