@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+  <title>Resend Verification Email — PandaJourney Malaysia</title>
+
+  <link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_version('css/app.css') }}"
+  />
+</head>
+
+<body>
+  <main class="login-page">
+    <section class="login-hero">
+      <div class="login-hero-content">
+        <img
+          class="login-hero-img"
+          src="https://images.unsplash.com/photo-1596422846543-75c6fc197f07?w=900&h=420&fit=crop&auto=format"
+          alt="Malaysia travel scene"
+        />
+
+        <h1 class="login-hero-title">
+          Verify your account
+        </h1>
+
+        <p class="login-hero-subtitle">
+          Confirm your email to protect your account and access your saved
+          itineraries, favourites and collaboration features.
+        </p>
+      </div>
+    </section>
+
+    <section class="login-panel">
+      <div class="login-card">
+        <div class="login-brand">
+          <div class="login-logo">
+            <img
+              src="{{ url_for('static', filename='images/logo.png') }}"
+              alt="PandaJourney logo"
+            />
+          </div>
+
+          <div class="login-brand-name">
+            PandaJourney
+          </div>
+        </div>
+
+        <p class="login-panel-subtitle">
+          Enter the email and password used to create your account.
+        </p>
+
+        <div
+          class="login-message"
+          id="resend-verification-message"
+          role="status"
+          aria-live="polite"
+        ></div>
+
+        <form
+          class="login-form"
+          id="resend-verification-form"
+          novalidate>
+          <div class="form-group">
+            <label class="form-label" for="resend-email">
+              Email
+            </label>
+
+            <div class="form-input-icon">
+              <span class="icon">✉️</span>
+              <input
+                class="form-input"
+                id="resend-email"
+                type="email"
+                placeholder="you@example.com"
+                autocomplete="email"
+                required
+              />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="resend-password">
+              Password
+            </label>
+
+            <div class="form-input-icon auth-password-wrap">
+              <span class="icon">🔒</span>
+              <input
+                class="form-input"
+                id="resend-password"
+                type="password"
+                placeholder="••••••••"
+                autocomplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                class="auth-password-toggle"
+                id="resend-password-toggle"
+                aria-label="Show password">
+                Show
+              </button>
+            </div>
+          </div>
+
+          <button
+            type="submit"
+            class="login-submit"
+            id="resend-verification-submit">
+            Resend verification email
+          </button>
+        </form>
+
+        <div class="login-security">
+          <span>ℹ️</span>
+          <span>
+            For your security, PandaJourney verifies your password before
+            sending another email. Check your spam or junk folder too.
+          </span>
+        </div>
+
+        <div class="login-link-row">
+          <a href="{{ url_for('login') }}">
+            Back to sign in
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script
+    type="module"
+    src="{{ url_for('static', filename='js/resend-verification.js') }}?v={{ asset_version('js/resend-verification.js') }}">
+  </script>
+</body>
+</html>
