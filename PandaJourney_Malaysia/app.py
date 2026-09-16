@@ -141,7 +141,7 @@ def _daily_usage_keys(uid: str | None, client_ip: str) -> list[tuple[str, int]]:
     return keys
 
 
-def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
+def _consume_daily_search_quota(uid: str | None, client_ip: str) -> dict[str, int]:
     usage_keys = _daily_usage_keys(uid, client_ip)
     db = _get_firestore_db()
 
@@ -189,8 +189,14 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
                         merge=True,
                     )
 
-            update_usage(transaction)
-            return
+                return {
+                    key.split(":", 1)[0]: limit - (
+                        int((snapshot.to_dict() or {}).get("count", 0)) + 1
+                    )
+                    for snapshot, (_, key, limit) in zip(snapshots, refs)
+                }
+
+            return update_usage(transaction)
         except DailySearchLimitExceeded:
             raise
         except Exception as error:
@@ -207,6 +213,11 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> None:
 
         for key, _ in usage_keys:
             _daily_usage_fallback[key] += 1
+
+        return {
+            key.split(":", 1)[0]: limit - _daily_usage_fallback[key]
+            for key, limit in usage_keys
+        }
 
 
 def rate_limit(max_calls: int, window_seconds: int):
@@ -325,6 +336,7 @@ def smart_attraction():
     attractions: list[dict] = []
     weather_status = ""
     source_note = ""
+    quota_remaining: dict[str, int] = {}
     searched = False
     results_label = "Recommended attractions"
 
@@ -367,7 +379,7 @@ def smart_attraction():
         quota_available = True
 
         try:
-            _consume_daily_search_quota(
+            quota_remaining = _consume_daily_search_quota(
                 verified_uid,
                 client_ip,
             )
@@ -375,7 +387,7 @@ def smart_attraction():
             quota_available = False
             flash(
                 "The daily attraction search limit has been reached. "
-                "Please try again tomorrow.",
+                "It resets at 8:00 AM Malaysia time.",
                 "warning"
             )
 
@@ -468,14 +480,12 @@ def smart_attraction():
         active_page="attractions",
         current_user=get_current_user(),
         filters=filters,
-        weather_status=weather_status,
         attractions=attractions,
-        source_note=source_note,
         searched=searched,
+        search_submitted=request.method == "POST",
         results_label=results_label,
-        nominatim_email=os.environ.get("NOMINATIM_EMAIL", ""),
-        nominatim_user_agent=os.environ.get("NOMINATIM_USER_AGENT", ""),
         google_maps_api_key=os.environ.get("GOOGLE_MAPS_API_KEY", ""),
+        google_maps_enabled=bool(os.environ.get("GOOGLE_MAPS_API_KEY", "").strip()),
     )
 
 
@@ -602,6 +612,14 @@ def smart_itinerary():
             print("[SMART ERROR]", error_message, flush=True)
             error = str(error_message)
 
+    itinerary_form = request.form if request.method == "POST" else get_default_itinerary_form()
+
+    if request.method == "GET" and request.args.get("start", "").strip():
+        itinerary_form["start"] = request.args.get("start", "").strip()
+        itinerary_form["start_latitude"] = request.args.get("start_latitude", "").strip()
+        itinerary_form["start_longitude"] = request.args.get("start_longitude", "").strip()
+        itinerary_form["use_current_location"] = "0"
+
     return render_template(
         "smart_itinerary.html",
         active_page="itinerary",
@@ -609,7 +627,7 @@ def smart_itinerary():
         plan=plan,
         error=error,
         map_data=map_data,
-        form=request.form if request.method == "POST" else get_default_itinerary_form()
+        form=itinerary_form
     )
 
 

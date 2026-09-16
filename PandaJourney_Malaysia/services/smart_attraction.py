@@ -6,13 +6,21 @@ import math
 import os
 import time
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import requests
 from dotenv import load_dotenv
+
+try:
+    MALAYSIA_TIMEZONE = ZoneInfo("Asia/Kuala_Lumpur")
+except ZoneInfoNotFoundError:
+    # Windows virtual environments can lack the optional IANA tz database.
+    # Malaysia does not observe daylight saving time, so UTC+8 is equivalent.
+    MALAYSIA_TIMEZONE = timezone(timedelta(hours=8), name="Asia/Kuala_Lumpur")
 
 try:
     import firebase_admin
@@ -420,6 +428,59 @@ def is_malaysia_location(location: dict[str, Any] | None) -> bool:
     return 0.7 <= latitude <= 7.6 and 99.5 <= longitude <= 120.5
 
 
+MALAYSIA_ADDRESS_MARKERS = (
+    "malaysia", "johor", "kedah", "kelantan", "kuala lumpur",
+    "labuan", "melaka", "malacca", "negeri sembilan", "pahang",
+    "penang", "perak", "perlis", "pulau pinang", "putrajaya",
+    "sabah", "sarawak", "selangor", "terengganu",
+)
+
+FOREIGN_ADDRESS_MARKERS = (
+    "brunei", "cambodia", "indonesia", "singapore", "thailand",
+    "viet nam", "vietnam",
+)
+
+
+def is_malaysia_attraction_result(item: dict[str, Any]) -> bool:
+    """Reject cross-border Google Maps results before ranking or caching.
+
+    A coordinate bounding box alone is insufficient because it also covers
+    southern Thailand, Singapore, Brunei, and parts of Indonesia.
+    """
+    coordinates = item.get("gps_coordinates") or {}
+    if not is_malaysia_location(coordinates):
+        return False
+
+    country_code = str(
+        item.get("country_code")
+        or item.get("countryCode")
+        or ""
+    ).strip().lower()
+    if country_code:
+        return country_code in {"my", "mys"}
+
+    country = str(item.get("country") or "").strip().lower()
+    if country:
+        return country in {"malaysia", "my", "mys"}
+
+    address = str(item.get("address") or "").strip().lower()
+    if not address:
+        logger.debug(
+            "[MALAYSIA FILTER] Rejected result without a verifiable address: "
+            f"{item.get('title', 'Unnamed attraction')}"
+        )
+        return False
+
+    if any(marker in address for marker in FOREIGN_ADDRESS_MARKERS):
+        return False
+
+    # Thai-script addresses near Kelantan/Perlis may omit the word Thailand.
+    if any("\u0e00" <= character <= "\u0e7f" for character in address):
+        return False
+
+    return any(marker in address for marker in MALAYSIA_ADDRESS_MARKERS)
+
+
 def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
@@ -459,7 +520,13 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
             "source": "SerpApi fallback",
         }
 
-        if not is_malaysia_location(result):
+        if not is_malaysia_attraction_result({
+            "title": title,
+            "address": address,
+            "gps_coordinates": coordinates,
+            "country": item.get("country"),
+            "country_code": item.get("country_code"),
+        }):
             logger.warning(
                 f"[GEOCODE SERPAPI OUTSIDE MALAYSIA] Ignoring: {result['display_name']}"
             )
@@ -606,7 +673,195 @@ CURATED_DESTINATION_SUGGESTIONS = [
         "latitude": 3.1478,
         "longitude": 101.6953,
     },
+    {
+        "name": "Cameron Highlands",
+        "display_name": "Cameron Highlands, Pahang, Malaysia",
+        "latitude": 4.4721,
+        "longitude": 101.3850,
+    },
+    {
+        "name": "Cheras",
+        "display_name": "Cheras, Selangor, Malaysia",
+        "latitude": 3.0907,
+        "longitude": 101.7431,
+    },
+    {
+        "name": "Cyberjaya",
+        "display_name": "Cyberjaya, Selangor, Malaysia",
+        "latitude": 2.9227,
+        "longitude": 101.6558,
+    },
+    {
+        "name": "George Town",
+        "display_name": "George Town, Penang, Malaysia",
+        "latitude": 5.4141,
+        "longitude": 100.3288,
+    },
+    {
+        "name": "Johor Bahru",
+        "display_name": "Johor Bahru, Johor, Malaysia",
+        "latitude": 1.4927,
+        "longitude": 103.7414,
+    },
+    {
+        "name": "Kota Kinabalu",
+        "display_name": "Kota Kinabalu, Sabah, Malaysia",
+        "latitude": 5.9804,
+        "longitude": 116.0735,
+    },
+    {
+        "name": "Malacca City",
+        "display_name": "Malacca City, Melaka, Malaysia",
+        "latitude": 2.1896,
+        "longitude": 102.2501,
+    },
+    {
+        "name": "Petaling Jaya",
+        "display_name": "Petaling Jaya, Selangor, Malaysia",
+        "latitude": 3.1073,
+        "longitude": 101.6067,
+    },
+    {
+        "name": "Putrajaya",
+        "display_name": "Putrajaya, Malaysia",
+        "latitude": 2.9264,
+        "longitude": 101.6964,
+    },
+    {
+        "name": "Shah Alam",
+        "display_name": "Shah Alam, Selangor, Malaysia",
+        "latitude": 3.0738,
+        "longitude": 101.5183,
+    },
+    {
+        "name": "Alor Setar",
+        "display_name": "Alor Setar, Kedah, Malaysia",
+        "latitude": 6.1248,
+        "longitude": 100.3678,
+    },
+    {
+        "name": "Batu Caves",
+        "display_name": "Batu Caves, Selangor, Malaysia",
+        "latitude": 3.2379,
+        "longitude": 101.6840,
+    },
+    {
+        "name": "Desa ParkCity",
+        "display_name": "Desa ParkCity, Kuala Lumpur, Malaysia",
+        "latitude": 3.1860,
+        "longitude": 101.6350,
+    },
+    {
+        "name": "EkoCheras Mall",
+        "display_name": "EkoCheras Mall, Kuala Lumpur, Malaysia",
+        "latitude": 3.0908,
+        "longitude": 101.7412,
+    },
+    {
+        "name": "Fraser's Hill",
+        "display_name": "Fraser's Hill, Pahang, Malaysia",
+        "latitude": 3.7131,
+        "longitude": 101.7360,
+    },
+    {
+        "name": "Hulu Langat",
+        "display_name": "Hulu Langat, Selangor, Malaysia",
+        "latitude": 3.1140,
+        "longitude": 101.8260,
+    },
+    {
+        "name": "Ipoh",
+        "display_name": "Ipoh, Perak, Malaysia",
+        "latitude": 4.5975,
+        "longitude": 101.0901,
+    },
+    {
+        "name": "Langkawi",
+        "display_name": "Langkawi, Kedah, Malaysia",
+        "latitude": 6.3500,
+        "longitude": 99.8000,
+    },
+    {
+        "name": "Nilai",
+        "display_name": "Nilai, Negeri Sembilan, Malaysia",
+        "latitude": 2.8140,
+        "longitude": 101.7980,
+    },
+    {
+        "name": "Old Klang Road",
+        "display_name": "Old Klang Road, Kuala Lumpur, Malaysia",
+        "latitude": 3.0630,
+        "longitude": 101.6660,
+    },
+    {
+        "name": "Queensbay Mall",
+        "display_name": "Queensbay Mall, Penang, Malaysia",
+        "latitude": 5.3322,
+        "longitude": 100.3073,
+    },
+    {
+        "name": "Rawang",
+        "display_name": "Rawang, Selangor, Malaysia",
+        "latitude": 3.3213,
+        "longitude": 101.5767,
+    },
+    {
+        "name": "Taiping",
+        "display_name": "Taiping, Perak, Malaysia",
+        "latitude": 4.8512,
+        "longitude": 100.7414,
+    },
+    {
+        "name": "Ulu Tiram",
+        "display_name": "Ulu Tiram, Johor, Malaysia",
+        "latitude": 1.6000,
+        "longitude": 103.8170,
+    },
+    {
+        "name": "Vivacity Megamall",
+        "display_name": "Vivacity Megamall, Kuching, Sarawak, Malaysia",
+        "latitude": 1.5190,
+        "longitude": 110.3630,
+    },
+    {
+        "name": "Wangsa Maju",
+        "display_name": "Wangsa Maju, Kuala Lumpur, Malaysia",
+        "latitude": 3.2040,
+        "longitude": 101.7370,
+    },
+    {
+        "name": "Xiamen University Malaysia",
+        "display_name": "Xiamen University Malaysia, Sepang, Malaysia",
+        "latitude": 2.8218,
+        "longitude": 101.7054,
+    },
+    {
+        "name": "Yong Peng",
+        "display_name": "Yong Peng, Johor, Malaysia",
+        "latitude": 2.0120,
+        "longitude": 103.0660,
+    },
+    {
+        "name": "Zoo Negara",
+        "display_name": "Zoo Negara, Selangor, Malaysia",
+        "latitude": 3.2112,
+        "longitude": 101.7587,
+    },
 ]
+
+DESTINATION_ALIASES = {
+    "kl": "Kuala Lumpur",
+    "k.l.": "Kuala Lumpur",
+    "wp kuala lumpur": "Kuala Lumpur",
+    "w.p. kuala lumpur": "Kuala Lumpur",
+    "wilayah persekutuan kuala lumpur": "Kuala Lumpur",
+}
+
+
+def normalize_destination_name(value: str) -> str:
+    """Canonicalise common aliases without changing genuine venue names."""
+    cleaned = " ".join(value.strip().split())
+    return DESTINATION_ALIASES.get(cleaned.lower(), cleaned)
 
 
 def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
@@ -615,19 +870,27 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
     same free Nominatim endpoint as geocode_place, cached briefly since
     the same partial query gets hit repeatedly as the user types."""
 
-    key = query.strip().lower()
+    normalized_query = normalize_destination_name(query)
+    key = normalized_query.lower()
 
-    if len(key) < 3:
+    if len(key) < 1:
         return []
 
     curated = [
         dict(suggestion)
         for suggestion in CURATED_DESTINATION_SUGGESTIONS
-        if key in suggestion["name"].lower()
+        if suggestion["name"].lower().startswith(key)
+        or query.strip().lower() in DESTINATION_ALIASES
     ]
 
+    # Nominatim's single-character searches commonly return incomplete labels
+    # such as "C". Show meaningful local destinations until the user types a
+    # more specific query instead of sending that ambiguous request upstream.
+    if len(key) == 1:
+        return curated[:limit]
+
     # Version the key so earlier venue-only suggestions are not reused.
-    cache_key = f"suggest:venues:v4:{key}:{limit}"
+    cache_key = f"suggest:venues:v5:{key}:{limit}"
     cached = cache_get(cache_key, max_age_seconds=24 * 3600)
     if cached is not None:
         cached_names = {item.get("name", "").lower() for item in curated}
@@ -637,7 +900,7 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         ])[:limit]
 
     params = {
-        "q": key,
+        "q": normalized_query,
         "format": "jsonv2",
         # Fetch extra candidates because Nominatim may rank a residential
         # area or transport stop above the actual venue.
@@ -686,7 +949,7 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         # if "name" is missing so we still get something short.
         short_name = item.get("name") or display_name.split(",")[0].strip()
 
-        if not short_name:
+        if len(short_name.strip()) < 2:
             continue
 
         latitude = float(item["lat"])
@@ -839,14 +1102,16 @@ def _serpapi_page(
     params = {
         "engine": "google_maps",
         "type": "search",
-        "q": keyword,
+        "q": f"{keyword} in Malaysia",
         "ll": f"@{latitude},{longitude},{zoom}z",
         "hl": "en",
         "gl": "my",
         "api_key": api_key,
     }
 
-    if apply_min_rating:
+    # Omitting min_rating is important for "Any": sending zero can still be
+    # interpreted inconsistently by upstream search providers.
+    if apply_min_rating and minimum_rating > 0:
         params["min_rating"] = str(minimum_rating)
 
     if start:
@@ -876,13 +1141,15 @@ def _serpapi_destination_page(
     params = {
         "engine": "google_maps",
         "type": "search",
-        "q": destination_name,
+        "q": f"{destination_name}, Malaysia",
         "ll": f"@{latitude},{longitude},13z",
         "hl": "en",
         "gl": "my",
-        "min_rating": str(minimum_rating),
         "api_key": api_key,
     }
+
+    if minimum_rating > 0:
+        params["min_rating"] = str(minimum_rating)
 
     try:
         data = _request_json(SERPAPI_URL, params=params)
@@ -959,9 +1226,23 @@ def search_attractions_serpapi(
 
     keyword = get_serpapi_search_keyword(interests)
 
+    def with_data_status(
+        results: list[dict[str, Any]],
+        status: str,
+        age_seconds: float = 0,
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                **item,
+                "data_status": status,
+                "cache_age_seconds": int(age_seconds),
+            }
+            for item in results
+        ]
+
     normalized_destination = " ".join(destination_name.lower().split())
     cache_key = (
-        f"attractions:v4:{round(latitude, 3)}:{round(longitude, 3)}:"
+        f"attractions:v6:{round(latitude, 3)}:{round(longitude, 3)}:"
         f"{keyword}:{minimum_rating}:{max_pages}:{normalized_destination}"
     )
     cached = cache_get_with_age(cache_key, ATTRACTION_CACHE_TTL_SECONDS)
@@ -970,7 +1251,7 @@ def search_attractions_serpapi(
             f"[ATTRACTION CACHE FRESH] key={cache_key} "
             f"age={int(cached['age_seconds'])}s"
         )
-        return cached["payload"]
+        return with_data_status(cached["payload"], "fresh_cache", cached["age_seconds"])
 
     stale_cached = cache_get_with_age(
         cache_key,
@@ -985,7 +1266,7 @@ def search_attractions_serpapi(
                 f"[ATTRACTION CACHE STALE] SERPAPI_KEY missing; using "
                 f"{int(stale_cached['age_seconds'])}s old cached results."
             )
-            return stale_cached["payload"]
+            return with_data_status(stale_cached["payload"], "stale_cache", stale_cached["age_seconds"])
 
         logger.warning("[SERPAPI SEARCH] No SERPAPI_KEY configured.")
         return []
@@ -1006,9 +1287,9 @@ def search_attractions_serpapi(
         suggestion["name"].lower()
         for suggestion in CURATED_DESTINATION_SUGGESTIONS
     }
-    if normalized_destination and normalized_destination not in area_destinations | {"malaysia"}:
+    if normalized_destination and normalized_destination not in area_destinations | {"malaysia", "current location"}:
         priority_cache_key = (
-            f"destination-attraction:v2:{round(latitude, 3)}:{round(longitude, 3)}:"
+            f"destination-attraction:v4:{round(latitude, 3)}:{round(longitude, 3)}:"
             f"{normalized_destination}:{minimum_rating}"
         )
         priority_results = cache_get(
@@ -1092,7 +1373,7 @@ def search_attractions_serpapi(
             f"[ATTRACTION CACHE STALE] SerpAPI returned no raw results; "
             f"using {int(stale_cached['age_seconds'])}s old cached results."
         )
-        return stale_cached["payload"]
+        return with_data_status(stale_cached["payload"], "stale_cache", stale_cached["age_seconds"])
 
     logger.info(f"[SERPAPI SEARCH] {len(raw_results)} raw result(s) from Google Maps")
 
@@ -1105,6 +1386,14 @@ def search_attractions_serpapi(
         if "latitude" not in coordinates or "longitude" not in coordinates:
             continue
 
+        if not is_malaysia_attraction_result(item):
+            logger.info(
+                "[MALAYSIA FILTER] Rejected cross-border or unverifiable "
+                f"result: {item.get('title', 'Unnamed attraction')} | "
+                f"{item.get('address', 'No address')}"
+            )
+            continue
+
         title = item.get("title", "Unnamed attraction")
         item_type = str(item.get("type", "")).lower()
         raw_description = str(item.get("description", ""))
@@ -1113,7 +1402,9 @@ def search_attractions_serpapi(
         if is_bad_candidate_name(title):
             continue
 
-        place_id = item.get("place_id") or item.get("data_id") or ""
+        google_place_id = item.get("place_id") or ""
+        data_id = item.get("data_id") or ""
+        place_id = google_place_id or data_id
         candidate_signature = (
             str(title).strip().lower(),
             round(float(coordinates["latitude"]), 5),
@@ -1146,6 +1437,14 @@ def search_attractions_serpapi(
         address = item.get("address") or ""
         hours = item.get("hours") or ""
         price = item.get("price") or ""
+        phone = item.get("phone") or item.get("phone_number") or ""
+        # SerpAPI's `website` is the venue site; `link` may be a provider
+        # listing, so it must not be labelled as the official website.
+        website = item.get("website") or ""
+        try:
+            review_count = int(str(item.get("reviews") or 0).replace(",", ""))
+        except (TypeError, ValueError):
+            review_count = 0
 
         candidates.append(
             {
@@ -1157,14 +1456,20 @@ def search_attractions_serpapi(
                 "tags": tags or ([keyword] if interests else []),
                 "estimated_minutes": 90,
                 "rating": float(item.get("rating") or 0),
+                "review_count": review_count,
                 "source": "SerpApi (Google Maps)",
                 "place_id": place_id,
-                "category": item.get("type", "") or "",
+                "google_place_id": google_place_id,
+                "data_id": data_id,
+                "reviews_link": item.get("reviews_link") or "",
+                "category": str(item.get("type", "") or "").replace("_", " ").strip().title(),
                 "location": address,
                 "area": address,
                 "description": raw_description,
                 "hours": hours,
                 "entry_fee": price,
+                "phone": phone,
+                "website": website,
                 "photo_urls": [thumbnail] if thumbnail else [],
                 "image_url": thumbnail,
                 "maps_url": f"https://www.google.com/maps/place/?q=place_id:{place_id}" if place_id else "",
@@ -1182,11 +1487,11 @@ def search_attractions_serpapi(
             f"[ATTRACTION CACHE STALE] SerpAPI produced no usable candidates; "
             f"using {int(stale_cached['age_seconds'])}s old cached results."
         )
-        return stale_cached["payload"]
+        return with_data_status(stale_cached["payload"], "stale_cache", stale_cached["age_seconds"])
 
     cache_set(cache_key, candidates)
 
-    return candidates
+    return with_data_status(candidates, "live")
 
 
 def is_rainy(weather: dict[str, Any] | None) -> bool:
@@ -1449,12 +1754,12 @@ def get_cached_initial_attractions() -> tuple[list[dict[str, Any]], str]:
     default_lat = 3.1478
     default_lon = 101.6953
     cache_keys = [
-        (
-            f"attractions:{round(default_lat, 3)}:{round(default_lon, 3)}:"
-            "cultural attractions:4.0:3"
-        ),
-        "attractions:3.152:101.694:cultural attractions:4.0:3",
-        "attractions:3.148:101.695:cultural attractions:4.0:3",
+        "attractions:v6:3.148:101.695:cultural attractions:4.0:3:kuala lumpur",
+        "attractions:v6:3.152:101.694:cultural attractions:4.0:3:kuala lumpur",
+        "attractions:v6:3.148:101.695:cultural attractions:4.0:1:kuala lumpur",
+        "attractions:v5:3.148:101.695:cultural attractions:4.0:3:kuala lumpur",
+        "attractions:v5:3.152:101.694:cultural attractions:4.0:3:kuala lumpur",
+        "attractions:v5:3.148:101.695:cultural attractions:4.0:1:kuala lumpur",
     ]
     cached_options = [
         cached
@@ -1466,9 +1771,9 @@ def get_cached_initial_attractions() -> tuple[list[dict[str, Any]], str]:
             )
         ) and cached["payload"]
     ]
-    cached = max(
+    cached = min(
         cached_options,
-        key=lambda option: len(option["payload"]),
+        key=lambda option: option["age_seconds"],
         default=None,
     )
 
@@ -1485,8 +1790,8 @@ def get_cached_initial_attractions() -> tuple[list[dict[str, Any]], str]:
                 reference_lon=default_lon,
             ),
             (
-                "Initial recommendations are loaded from your cached "
-                "Kuala Lumpur culture search."
+                "Initial recommendations are loaded from the freshest "
+                "compatible Kuala Lumpur culture cache."
             ),
         )
 
@@ -1512,14 +1817,14 @@ def prepare_selected_attractions(
         item["location"] = item.get("location") or item.get("source") or "Malaysia"
         item["area"] = item.get("area") or item["location"]
         item["waze_url"] = build_waze_url(item)
-        item["photo_urls"] = item.get("photo_urls") or get_attraction_images([tag.lower() for tag in item.get("tags", [])])
-        item["image_url"] = item.get("image_url") or item["photo_urls"][0]
-        item["description"] = item.get(
-            "description",
-            f"{item['name']} is a popular {item['category'].lower()} destination in Malaysia with excellent visitor facilities.",
-        )
-        item["hours"] = item.get("hours") or "09:00 - 18:00"
-        item["entry_fee"] = item.get("entry_fee") or "Free"
+        item["photo_urls"] = [url for url in item.get("photo_urls", []) if url]
+        item["image_url"] = item.get("image_url") or (item["photo_urls"][0] if item["photo_urls"] else "")
+        item["has_provider_photo"] = bool(item["image_url"] or item["photo_urls"])
+        item["description"] = item.get("description") or ""
+        item["hours"] = str(item.get("hours") or "").replace("\ufffd", "·")
+        item["entry_fee"] = item.get("entry_fee") or ""
+        item["phone"] = item.get("phone") or item.get("contact_number") or ""
+        item["website"] = item.get("website") or item.get("official_website") or ""
         item["visitor_tips"] = item.get(
             "visitor_tips",
             [
@@ -1609,7 +1914,7 @@ def build_attraction_results(
     max_pages: int = 3,
 ) -> tuple[list[dict[str, Any]], str, str]:
 
-    destination_text = destination_text.strip()
+    destination_text = normalize_destination_name(destination_text)
 
     if not destination_text:
         raise ValueError(
@@ -1628,6 +1933,8 @@ def build_attraction_results(
             "longitude": float(destination_lon),
             "source": "Google Places Autocomplete",
         }
+        if not is_malaysia_location(destination_place):
+            raise ValueError("Please choose a destination within Malaysia.")
     else:
         destination_place = geocode_place(
             destination_text
@@ -1646,7 +1953,7 @@ def build_attraction_results(
         weather = get_weather(
             destination_place["latitude"],
             destination_place["longitude"],
-            datetime.now().strftime("%Y-%m-%d"),
+            datetime.now(MALAYSIA_TIMEZONE).strftime("%Y-%m-%d"),
         )
 
     if use_weather and weather:
@@ -1677,6 +1984,8 @@ def build_attraction_results(
     )
 
     live_data = bool(candidates)
+    data_status = candidates[0].get("data_status", "unknown") if candidates else "none"
+    cache_age_seconds = int(candidates[0].get("cache_age_seconds", 0)) if candidates else 0
 
     # 4. Keyword search (searches attraction name and tags)
 
@@ -1752,10 +2061,26 @@ def build_attraction_results(
 
     # 8. Data source note
 
-    if live_data:
+    if live_data and data_status == "fresh_cache":
+        cache_age = (
+            "less than 1 hour old"
+            if cache_age_seconds < 3600
+            else f"about {round(cache_age_seconds / 3600)} hour(s) old"
+        )
         source_note = (
-            "Live attraction data retrieved through "
-            "SerpAPI Google Maps search."
+            f"Google Maps place data via SerpAPI, loaded from the "
+            f"Firestore cache ({cache_age})."
+        )
+    elif live_data and data_status == "stale_cache":
+        cache_days = max(1, round(cache_age_seconds / 86400))
+        source_note = (
+            f"The live provider was unavailable, so a Firestore fallback "
+            f"cache (about {cache_days} day(s) old) is shown. Verify hours "
+            f"and prices before visiting."
+        )
+    elif live_data:
+        source_note = (
+            "Live Google Maps place data retrieved via SerpAPI."
         )
     else:
         source_note = (

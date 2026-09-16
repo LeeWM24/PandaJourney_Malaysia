@@ -55,6 +55,11 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .destination-suggestion-empty {
+    padding: 12px 14px;
+    color: var(--muted-fg, #5a7a6a);
+    font-size: 13px;
+  }
 
   /* Loading overlay — shown while the search form submits (SerpAPI can
      take a few seconds), same visual language as the itinerary planner. */
@@ -118,6 +123,11 @@
   .result-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
   .result-label { color: var(--fg-2); font-size: 14px; }
   .result-count { font-weight: 700; }
+  .field-help { margin-top: 7px; color: var(--fg-2); font-size: 11.5px; line-height: 1.45; }
+  .field-help strong { color: var(--fg); }
+  .location-tools { display: flex; justify-content: flex-start; margin-top: 7px; }
+  .location-link { border: 0; padding: 0; background: transparent; color: var(--primary); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+  .location-link:hover { text-decoration: underline; }
   .attraction-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
   .attraction-card {
     overflow: hidden;
@@ -247,6 +257,10 @@
   .attr-card-rating { font-size: .85rem; font-weight: 700; color: #d97706; white-space: nowrap; }
   .attr-card-meta { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; color: var(--fg-2); }
   .attr-card-loc { font-size: .8rem; color: var(--fg-2); }
+  .attr-card-loc { display: -webkit-box; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .attr-card-facts { display: flex; flex-wrap: wrap; gap: .35rem; color: var(--fg-2); font-size: .72rem; }
+  .photo-unavailable { position: absolute; left: 12px; bottom: 12px; display: none; padding: 5px 8px; border-radius: 999px; background: rgba(15,45,31,.82); color: #fff; font-size: 11px; font-weight: 700; }
+  .attr-card-img-wrap.using-fallback .photo-unavailable { display: inline-flex; }
   .attr-card-reasons { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .2rem; }
   .reason-tag { font-size: .72rem; padding: .2rem .55rem; border-radius: 9999px; background: #e8f5f0; color: #0f7a5a; border: 1px solid #d1e8dd; }
   .attr-card-actions { display: flex; gap: .65rem; margin-top: auto; }
@@ -270,26 +284,34 @@
     background: rgba(4, 29, 16, 0.55);
     backdrop-filter: blur(8px);
     display: none;
-    align-items: stretch;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
     z-index: 50;
   }
   .detail-panel-backdrop.active { display: flex; }
   .detail-panel {
-    width: min(460px, 100%);
+    width: min(760px, 100%);
+    max-height: calc(100vh - 48px);
     background: white;
     display: flex;
     flex-direction: column;
+    border-radius: 24px;
+    overflow: hidden;
     box-shadow: 0 30px 60px rgba(0,0,0,.18);
   }
-  .detail-header { position: relative; min-height: 160px; overflow: hidden; }
-  .detail-hero { width: 100%; height: 160px; object-fit: cover; display: block; }
-  .detail-hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.64) 100%); }
-  .detail-hero-copy { position: absolute; left: 20px; bottom: 20px; right: 20px; color: white; z-index: 2; }
+  .detail-header { position: relative; min-height: 240px; overflow: hidden; flex: 0 0 240px; }
+  .detail-hero { width: 100%; height: 240px; object-fit: cover; display: block; }
+  .detail-hero-overlay { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(255,255,255,0) 20%, rgba(255,255,255,.82) 100%); }
+  .detail-hero-copy { position: absolute; left: 20px; bottom: 20px; right: 20px; color: var(--fg); z-index: 2; }
   .detail-hero-copy h2 { margin: 0 0 8px; font-size: 24px; }
   .detail-hero-copy .hero-meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 13px; }
-  .detail-hero-copy .hero-meta span { background: rgba(255,255,255,.16); padding: 8px 11px; border-radius: 999px; }
-  .detail-gallery { display: flex; gap: 8px; padding: 10px 16px 0; overflow-x: auto; }
+  .detail-hero-copy .hero-meta span,
+  .detail-hero-copy .hero-meta a { background: rgba(255,255,255,.82); padding: 8px 11px; border-radius: 999px; color: inherit; text-decoration: none; }
+  .detail-hero-copy .hero-meta a:hover,
+  .detail-hero-copy .hero-meta a:focus-visible { background: #fff; text-decoration: underline; outline: 2px solid var(--primary); outline-offset: 2px; }
+  .detail-photo-note { position: absolute; right: 18px; bottom: 18px; z-index: 3; display: none; padding: 6px 9px; border-radius: 999px; background: rgba(15,45,31,.82); color: #fff; font-size: 11px; font-weight: 700; }
+  .detail-gallery { display: flex; gap: 8px; padding: 0; margin-bottom: 14px; overflow-x: auto; }
   .detail-thumb { min-width: 60px; height: 44px; border-radius: 10px; overflow: hidden; cursor: pointer; opacity: .65; border: 2px solid transparent; flex: 0 0 auto; background: transparent; padding: 0; }
   .detail-thumb.active { opacity: 1; border-color: var(--primary); }
   .detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -305,9 +327,12 @@
   .detail-info-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
   .detail-info-card { background: var(--muted-bg); border-radius: 18px; padding: 16px; }
   .detail-info-title { font-weight: 700; margin-bottom: 8px; }
-  .detail-footer { padding: 14px 16px 16px; border-top: 1px solid var(--border); background: #fbfffd; display: flex; gap: 10px; align-items: center; }
+  .detail-website-link { display: inline-flex; align-items: center; color: var(--primary); font-weight: 700; text-decoration: none; overflow-wrap: anywhere; }
+  .detail-website-link:hover { text-decoration: underline; }
+  .detail-footer { padding: 14px 16px 16px; border-top: 1px solid var(--border); background: #fbfffd; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
   .detail-footer .btn { flex: 1; min-height: 46px; padding: 0 18px; font-size: .98rem; font-weight: 700; white-space: nowrap; }
-  #detail-fav-btn { flex: 1.5; min-width: 180px; }
+  #detail-fav-btn, #detail-start-btn { flex: 1.5; min-width: 210px; }
+  #detail-close-btn { min-width: 90px; }
   .panel-close { position: absolute; right: 16px; top: 16px; width: 44px; height: 44px; border-radius: 999px; border: 1px solid rgba(255,255,255,.35); background: rgba(0,0,0,.42); color: white; font-size: 18px; cursor: pointer; z-index: 5; }
   #detail-map {
     border-radius: 12px;
@@ -327,6 +352,10 @@
     .attraction-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   @media (max-width: 760px) {
+    .detail-panel-backdrop { padding: 0; }
+    .detail-panel { width: 100%; max-height: 100vh; min-height: 100vh; border-radius: 0; }
+    .detail-header { min-height: 200px; height: 200px; flex-basis: 200px; }
+    .detail-hero { min-height: 200px; height: 200px; }
     .attraction-grid { grid-template-columns: 1fr; }
     .detail-row { grid-template-columns: 1fr; }
     .detail-info-grid { grid-template-columns: 1fr; }
@@ -339,7 +368,7 @@
   <div class="planner-loading-card">
     <div class="planner-spinner"></div>
     <div class="planner-loading-title">Searching attractions...</div>
-    <div class="planner-loading-sub">Fetching live places &amp; weather — this can take a few seconds.</div>
+    <div class="planner-loading-sub">Checking cached results and nearby places. This can take a few seconds.</div>
   </div>
 </div>
 <div class="page-inner">
@@ -363,6 +392,10 @@
             <input type="hidden" id="firebase-id-token" name="_firebase_id_token" value="" />
             <div id="destination-suggestions" class="destination-suggestions" role="listbox"></div>
           </div>
+          <div class="location-tools">
+            <button type="button" class="location-link" id="use-current-location">Use my current location</button>
+          </div>
+          <p class="field-help">Malaysia only. Search a state, city, area, mall, or attraction. Leave blank to explore nationwide.</p>
         </div>
 
         <div class="form-group mb-3">
@@ -385,6 +418,7 @@
             <option value="4.0" {% if filters.min_rating == '4.0' %}selected{% endif %}>⭐ 4.0+</option>
             <option value="4.5" {% if filters.min_rating == '4.5' %}selected{% endif %}>⭐ 4.5+</option>
           </select>
+          <p class="field-help"><strong>Google Maps ratings</strong></p>
         </div>
 
         <div class="form-group mb-4 toggle-wrap">
@@ -393,6 +427,7 @@
 <input id="weather_aware" type="checkbox" name="weather_aware" value="1" {% if filters.weather_aware %}checked{% endif %} />
             <span class="toggle-track"></span>
           </label>
+          <p class="field-help">Uses today's weather forecast.</p>
         </div>
 
         <div class="filter-actions">
@@ -410,7 +445,6 @@
           <div id="results-count" class="result-count">Showing 0 attractions · Set filters and click Search.</div>
           <div id="results-note" class="result-label">Adjust filters to refine your recommendations.</div>
           <div id="weather-note" class="result-label" style="margin-top: 6px; display:none;"></div>
-          <div id="source-note" class="result-label" style="margin-top: 4px; display:none;"></div>
         </div>
         <div class="results-bar">
           <label for="sort-select" class="sr-only">Sort</label>
@@ -434,6 +468,7 @@
   <div class="detail-panel" role="dialog" aria-modal="true">
     <div class="detail-header">
       <img id="detail-main-image" class="detail-hero" src="" alt="Attraction photo" />
+      <span id="detail-photo-note" class="detail-photo-note">Photo unavailable</span>
       <div class="detail-hero-overlay"></div>
       <button type="button" class="panel-close" id="detail-close" onclick="closeDetail()">✕</button>
       <div class="detail-hero-copy">
@@ -442,19 +477,19 @@
         <div class="hero-meta" id="detail-meta-bottom"></div>
       </div>
     </div>
-    <div class="detail-gallery" id="detail-gallery"></div>
     <div class="detail-body">
+      <div class="detail-gallery" id="detail-gallery"></div>
       <div class="detail-row">
         <div class="detail-cell">
           <strong>Hours</strong>
           <span id="detail-hours"></span>
         </div>
         <div class="detail-cell">
-          <strong>Entry fee</strong>
+          <strong>Price / entry fee</strong>
           <span id="detail-fee"></span>
         </div>
         <div class="detail-cell">
-          <strong>Visit</strong>
+          <strong>Suggested visit</strong>
           <span id="detail-duration"></span>
         </div>
       </div>
@@ -479,16 +514,20 @@
         <ul class="detail-tips" id="detail-tips"></ul>
       </div>
 
-      <div class="detail-section">
+      <div class="detail-section" id="detail-contact-section">
         <h3>Location & contact</h3>
         <div class="detail-info-grid">
-          <div class="detail-info-card">
-            <div class="detail-info-title">Area</div>
-            <div id="detail-area"></div>
+          <div class="detail-info-card" id="detail-address-card">
+            <div class="detail-info-title">Address</div>
+            <div id="detail-address"></div>
           </div>
-          <div class="detail-info-card">
-            <div class="detail-info-title">Source</div>
-            <div id="detail-source"></div>
+          <div class="detail-info-card" id="detail-phone-card">
+            <div class="detail-info-title">Contact number</div>
+            <div id="detail-phone"></div>
+          </div>
+          <div class="detail-info-card" id="detail-website-card" style="grid-column: 1 / -1;">
+            <div class="detail-info-title">Official website</div>
+            <a id="detail-website" class="detail-website-link" href="#" target="_blank" rel="noopener noreferrer">Visit official website ↗</a>
           </div>
         </div>
       </div>
@@ -504,7 +543,8 @@
       </div>
     </div>
     <div class="detail-footer">
-      <button type="button" class="btn btn-primary" id="detail-fav-btn">Save as favourite</button>
+      <button type="button" class="btn btn-primary" id="detail-fav-btn">Save to favourite</button>
+      <button type="button" class="btn btn-primary" id="detail-start-btn">Add as starting location</button>
       <button type="button" class="btn btn-ghost" id="detail-close-btn">Close</button>
     </div>
   </div>
@@ -520,15 +560,12 @@
 {{ attractions | tojson }}
 </script>
 <script id="search-state" type="application/json">
-{{ {"searched": searched, "filters": filters} | tojson }}
+{{ {"searched": searched, "submitted": search_submitted, "filters": filters} | tojson }}
 </script>
-<script id="nominatim-config" type="application/json">
-{{ {"email": nominatim_email, "user_agent": nominatim_user_agent} | tojson }}
+<script id="google-maps-config" type="application/json">
+{{ {"enabled": google_maps_enabled} | tojson }}
 </script>
 
-<script>
-  window.PANDA_HAS_GOOGLE_MAPS = {{ 'true' if google_maps_api_key else 'false' }};
-</script>
 <script src="{{ url_for('static', filename='js/smart_attraction.js') }}?v={{ asset_version('js/smart_attraction.js') }}" type="module"></script>
 
 {% if google_maps_api_key %}
@@ -540,9 +577,9 @@
     const input = document.getElementById('destination');
     const latInput = document.getElementById('destination_lat');
     const lngInput = document.getElementById('destination_lng');
-    if (!input || !window.google || !google.maps || !google.maps.places) return;
+    if (!input || !window.google?.maps?.places) return;
 
-    const autocomplete = new google.maps.places.Autocomplete(input, {
+    const autocomplete = new window.google.maps.places.Autocomplete(input, {
       fields: ['geometry', 'name'],
       componentRestrictions: { country: 'my' },
     });
