@@ -292,6 +292,8 @@ function bindDestinationSuggestions() {
   let debounceTimer = null;
   let activeIndex = -1;
   let currentItems = [];
+  let suggestionRequest = null;
+  const suggestionCache = new Map();
 
   function closeDropdown() {
     dropdown.classList.remove('show');
@@ -340,12 +342,32 @@ function bindDestinationSuggestions() {
   }
 
   async function fetchSuggestions(query) {
+    const normalizedQuery = query.toLowerCase();
+    if (suggestionCache.has(normalizedQuery)) {
+      renderItems(suggestionCache.get(normalizedQuery));
+      return;
+    }
+
+    suggestionRequest?.abort();
+    suggestionRequest = new AbortController();
+    const request = suggestionRequest;
+    dropdown.innerHTML = '<div class="destination-suggestion-empty" role="status">Looking for places...</div>';
+    dropdown.classList.add('show');
+
     try {
-      const response = await fetch(`/smart-attraction/suggest?q=${encodeURIComponent(query)}`);
+      const response = await fetch(
+        `/smart-attraction/suggest?q=${encodeURIComponent(query)}`,
+        { signal: request.signal }
+      );
       if (!response.ok) throw new Error('Suggestion request failed');
       const items = await response.json();
-      renderItems(Array.isArray(items) ? items : []);
+      if (request !== suggestionRequest || input.value.trim() !== query) return;
+      const normalizedItems = Array.isArray(items) ? items : [];
+      suggestionCache.set(normalizedQuery, normalizedItems);
+      renderItems(normalizedItems);
     } catch (error) {
+      if (error.name === 'AbortError') return;
+      if (request !== suggestionRequest) return;
       closeDropdown();
     }
   }
@@ -358,6 +380,7 @@ function bindDestinationSuggestions() {
 
     const query = input.value.trim();
     clearTimeout(debounceTimer);
+    suggestionRequest?.abort();
 
     if (query.length < 1) {
       closeDropdown();

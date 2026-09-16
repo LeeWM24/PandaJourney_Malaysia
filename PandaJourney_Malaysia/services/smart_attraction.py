@@ -1101,41 +1101,46 @@ def get_current_weather_batch(
     if not coords:
         return []
 
-    try:
-        data = _request_json(
-            OPEN_METEO_URL,
-            params={
-                "latitude": ",".join(str(lat) for lat, _ in coords),
-                "longitude": ",".join(str(lon) for _, lon in coords),
-                "current": "temperature_2m,weather_code",
-                "timezone": "Asia/Kuala_Lumpur",
-            },
-        )
-    except requests.RequestException as error:
-        logger.error(f"[WEATHER BATCH ERROR] {error}")
-        return [None] * len(coords)
-
-    # Open-Meteo returns a list of results when multiple locations are
-    # requested, or a single object when only one location is requested.
-    entries = data if isinstance(data, list) else [data]
-
     results: list[dict[str, Any] | None] = []
 
-    for entry in entries:
-        current = (entry or {}).get("current") or {}
-        code = current.get("weather_code")
-
-        if code is None:
-            results.append(None)
+    # Small batches are more reliable on shared hosting and avoid losing every
+    # card's badge when a large provider request has a transient failure.
+    for start in range(0, len(coords), 20):
+        batch = coords[start:start + 20]
+        try:
+            data = _request_json(
+                OPEN_METEO_URL,
+                params={
+                    "latitude": ",".join(str(lat) for lat, _ in batch),
+                    "longitude": ",".join(str(lon) for _, lon in batch),
+                    "current": "temperature_2m,weather_code",
+                    "timezone": "Asia/Kuala_Lumpur",
+                },
+            )
+        except requests.RequestException as error:
+            logger.warning(f"[WEATHER BATCH ERROR] {error}")
+            results.extend([None] * len(batch))
             continue
 
-        results.append(
-            {
-                "temp": current.get("temperature_2m"),
-                "weather_code": code,
-                "condition": WEATHER_LABELS.get(code, f"WMO code {code}"),
-            }
-        )
+        # Open-Meteo returns a list for multiple locations and one object for
+        # a single location.
+        entries = data if isinstance(data, list) else [data]
+        for entry in entries:
+            current = (entry or {}).get("current") or {}
+            code = current.get("weather_code")
+            if code is None:
+                results.append(None)
+                continue
+            results.append(
+                {
+                    "temp": current.get("temperature_2m"),
+                    "weather_code": code,
+                    "condition": WEATHER_LABELS.get(code, f"WMO code {code}"),
+                }
+            )
+
+        if len(entries) < len(batch):
+            results.extend([None] * (len(batch) - len(entries)))
 
     # Defensive: pad/truncate in case the API returned an unexpected shape.
     if len(results) < len(coords):
@@ -2009,6 +2014,7 @@ def prepare_selected_attractions(
     reference_lat: float | None = None,
     reference_lon: float | None = None,
     include_weather: bool = True,
+    fallback_weather: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     prepared = []
 
@@ -2085,12 +2091,12 @@ def prepare_selected_attractions(
 
     for idx, weather in zip(coord_indexes, weather_results):
         item = prepared[idx]
-        item["current_weather"] = weather
+        item["current_weather"] = weather or fallback_weather
 
         is_indoor = "indoor" in [tag.lower() for tag in item.get("tags", [])]
 
-        if weather:
-            item["weather_suitability"] = weather["condition"]
+        if item["current_weather"]:
+            item["weather_suitability"] = item["current_weather"]["condition"]
         elif is_indoor:
             item["weather_suitability"] = "Indoor"
         else:
@@ -2150,14 +2156,15 @@ def build_attraction_results(
 
     # 2. Weather
 
-    weather = None
-
-    if use_weather:
-        weather = get_weather(
-            destination_place["latitude"],
-            destination_place["longitude"],
-            datetime.now(MALAYSIA_TIMEZONE).strftime("%Y-%m-%d"),
-        )
+    # Refresh the destination forecast on every submitted search. Card-level
+    # batches below use this as a fallback, while scoring only uses it when
+    # Weather-aware is enabled.
+    weather = get_weather(
+        destination_place["latitude"],
+        destination_place["longitude"],
+        datetime.now(MALAYSIA_TIMEZONE).strftime("%Y-%m-%d"),
+    )
+    scoring_weather = weather if use_weather else None
 
     if use_weather and weather:
 
@@ -2210,7 +2217,7 @@ def build_attraction_results(
     selected = recommend_attractions(
         candidates,
         interest_list,
-        weather,
+        scoring_weather,
         minimum_rating,
         max_results=max_results,
         filter_partly_cloudy=(
@@ -2235,6 +2242,7 @@ def build_attraction_results(
         # issuing another attraction search. The use_weather flag above still
         # controls weather-based recommendation scoring.
         include_weather=True,
+        fallback_weather=weather,
     )
 
     # 7. Sort
