@@ -183,9 +183,27 @@ if (googleLogin) {
     googleLoginPending = true;
     googleLogin.disabled = true;
     googleLogin.setAttribute("aria-busy", "true");
+    const originalGoogleLoginText =
+      googleLogin.textContent;
+    googleLogin.textContent =
+      "Opening Google...";
     clearLoginError();
+    showLoginMessage(
+      "Waiting for Google confirmation...",
+      "info"
+    );
+
     try {
+      const popupTimer = setTimeout(
+        () => {
+          googleLogin.textContent =
+            "Waiting for Google...";
+        },
+        350
+      );
+
       const result = await signInWithPopup(auth, provider);
+      clearTimeout(popupTimer);
       const user = result.user;
 
       console.log("Google Login successful!");
@@ -239,12 +257,23 @@ if (googleLogin) {
         console.error("Failed to clear login session:", signOutError);
       }
 
-      showLoginError(
-        getAuthenticationErrorMessage(error)
-      );
+      if (
+        error.code === "auth/popup-closed-by-user" ||
+        error.code === "auth/cancelled-popup-request"
+      ) {
+        showLoginError(
+          "Google sign-in was cancelled."
+        );
+      } else {
+        showLoginError(
+          getAuthenticationErrorMessage(error)
+        );
+      }
     } finally {
       googleLoginPending = false;
       googleLogin.disabled = false;
+      googleLogin.textContent =
+        originalGoogleLoginText;
       googleLogin.removeAttribute("aria-busy");
     }
   });
@@ -277,14 +306,28 @@ if (googleSignup) {
     googleSignupPending = true;
     googleSignup.disabled = true;
     googleSignup.setAttribute("aria-busy", "true");
+    const originalGoogleSignupText =
+      googleSignup.textContent;
+    googleSignup.textContent =
+      "Opening Google...";
 
     if (registerError) {
-      registerError.textContent = "";
-      registerError.style.display = "none";
+      registerError.textContent =
+        "Waiting for Google confirmation...";
+      registerError.style.display = "block";
     }
 
     try {
+      const popupTimer = setTimeout(
+        () => {
+          googleSignup.textContent =
+            "Waiting for Google...";
+        },
+        350
+      );
+
       const result = await signInWithPopup(auth, provider);
+      clearTimeout(popupTimer);
       const user = result.user;
 
       console.log("Google Sign Up successful!");
@@ -333,12 +376,19 @@ if (googleSignup) {
 
       if (registerError) {
         registerError.textContent =
-          getAuthenticationErrorMessage(error);
+          (
+            error.code === "auth/popup-closed-by-user" ||
+            error.code === "auth/cancelled-popup-request"
+          )
+            ? "Google sign-in was cancelled."
+            : getAuthenticationErrorMessage(error);
         registerError.style.display = "block";
       }
     } finally {
       googleSignupPending = false;
       googleSignup.disabled = false;
+      googleSignup.textContent =
+        originalGoogleSignupText;
       googleSignup.removeAttribute("aria-busy");
     }
   });
