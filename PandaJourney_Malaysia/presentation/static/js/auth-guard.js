@@ -35,6 +35,15 @@ const sessionExpiryWarning =
 const keepSessionActiveButton =
   document.getElementById("keep-session-active");
 
+const sessionExpiredModal =
+  document.getElementById("session-expired-modal");
+
+const sessionExpiredLoginButton =
+  document.getElementById("session-expired-login");
+
+let pendingLoginRedirect =
+  "/login";
+
 
 // Inactivity Logout Configuration
 // 30 minutes
@@ -295,7 +304,7 @@ async function performAutomaticLogout() {
       "likely-authenticated"
     );
 
-    window.location.replace("/login");
+    showSessionExpiredModal("/login");
   }
 }
 
@@ -386,10 +395,27 @@ function redirectProtectedPageToLogin() {
     window.location.search +
     window.location.hash;
 
-  window.location.replace(
+  showSessionExpiredModal(
     `/login?next=${encodeURIComponent(target)}`
   );
 }
+
+function showSessionExpiredModal(loginUrl) {
+  pendingLoginRedirect =
+    loginUrl || "/login";
+
+  if (!sessionExpiredModal) {
+    window.location.replace(pendingLoginRedirect);
+    return;
+  }
+
+  sessionExpiredModal.classList.add("active");
+  sessionExpiredLoginButton?.focus();
+}
+
+sessionExpiredLoginButton?.addEventListener("click", () => {
+  window.location.replace(pendingLoginRedirect);
+});
 
 
 // =================================
