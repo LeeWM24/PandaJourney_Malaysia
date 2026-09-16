@@ -790,6 +790,11 @@ def smart_itinerary():
         itinerary_form["start_longitude"] = request.args.get("start_longitude", "").strip()
         itinerary_form["use_current_location"] = "0"
 
+    if request.method == "GET" and request.args.get("end", "").strip():
+        itinerary_form["end"] = request.args.get("end", "").strip()
+        itinerary_form["end_latitude"] = request.args.get("end_latitude", "").strip()
+        itinerary_form["end_longitude"] = request.args.get("end_longitude", "").strip()
+
     return render_template(
         "smart_itinerary.html",
         active_page="itinerary",

@@ -696,7 +696,7 @@ function bindPanelEvents() {
     const id = Number(document.getElementById('detail-fav-btn').dataset.favId);
     if (!Number.isNaN(id)) toggleFavourite(id);
   });
-  document.getElementById('detail-start-btn').addEventListener('click', addCurrentAttractionAsStart);
+  document.getElementById('detail-end-btn').addEventListener('click', addCurrentAttractionAsEnd);
   const detailMap = document.getElementById('detail-map');
   if (detailMap) {
     detailMap.addEventListener('keydown', (event) => {
@@ -782,18 +782,18 @@ function bindCurrentLocation() {
   });
 }
 
-function addCurrentAttractionAsStart() {
+function addCurrentAttractionAsEnd() {
   if (!currentAttr) return;
 
   saveAttractionSessionState();
   const params = new URLSearchParams({
-    start: currentAttr.name || 'Attraction',
+    end: currentAttr.name || 'Attraction',
   });
   if (currentAttr.latitude !== null && currentAttr.latitude !== undefined) {
-    params.set('start_latitude', currentAttr.latitude);
+    params.set('end_latitude', currentAttr.latitude);
   }
   if (currentAttr.longitude !== null && currentAttr.longitude !== undefined) {
-    params.set('start_longitude', currentAttr.longitude);
+    params.set('end_longitude', currentAttr.longitude);
   }
   window.location.href = `/smart-itinerary?${params.toString()}`;
 }

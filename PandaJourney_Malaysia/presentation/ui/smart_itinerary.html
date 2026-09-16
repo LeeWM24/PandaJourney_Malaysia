@@ -1055,6 +1055,20 @@
             value="{{ form.start_longitude | default('') }}"
           />
 
+          <input
+            type="hidden"
+            name="end_latitude"
+            id="end_latitude"
+            value="{{ form.end_latitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="end_longitude"
+            id="end_longitude"
+            value="{{ form.end_longitude | default('') }}"
+          />
+
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
 

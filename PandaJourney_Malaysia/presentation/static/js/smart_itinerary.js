@@ -3695,6 +3695,16 @@ function collectSmartItineraryState() {
           "end"
         ),
 
+      end_latitude:
+        getFormValue(
+          "end_latitude"
+        ),
+
+      end_longitude:
+        getFormValue(
+          "end_longitude"
+        ),
+
       trip_date:
         getFormValue(
           "trip_date"
@@ -3838,6 +3848,18 @@ function restoreSmartItineraryState() {
     );
 
 
+  const hasExternalEnd =
+    Boolean(
+      String(
+        urlParams.get(
+          "end"
+        ) ||
+        ""
+      )
+        .trim()
+    );
+
+
   const protectedStartFields =
     new Set(
       [
@@ -3845,6 +3867,16 @@ function restoreSmartItineraryState() {
         "start_latitude",
         "start_longitude",
         "use_current_location"
+      ]
+    );
+
+
+  const protectedEndFields =
+    new Set(
+      [
+        "end",
+        "end_latitude",
+        "end_longitude"
       ]
     );
 
@@ -3860,6 +3892,16 @@ function restoreSmartItineraryState() {
         if (
           hasExternalStart &&
           protectedStartFields.has(
+            id
+          )
+        ) {
+          return;
+        }
+
+
+        if (
+          hasExternalEnd &&
+          protectedEndFields.has(
             id
           )
         ) {
@@ -3921,6 +3963,7 @@ function restoreSmartItineraryState() {
 
   if (
     !hasExternalStart &&
+    !hasExternalEnd &&
     !hasServerPlan &&
     resultColumn &&
     state.resultHtml &&
