@@ -164,6 +164,8 @@ button, input, select, textarea { font: inherit; }
 .topbar-title { font-family: var(--font-display); font-size: 26px; font-weight: 700; line-height: 1; }
 .topbar-subtitle { margin-top: 8px; color: var(--muted-fg); font-size: 13.5px; }
 .topbar-actions { display: flex; align-items: center; gap: 10px; }
+.topbar-profile-action { display: inline-flex; align-items: center; gap: 10px; }
+.topbar-user-name { color: var(--fg); font-size: 14px; font-weight: 700; white-space: nowrap; }
 .page-body { min-height: calc(100vh - 82px); }
 .page-inner { padding: 24px 32px 32px; }
 

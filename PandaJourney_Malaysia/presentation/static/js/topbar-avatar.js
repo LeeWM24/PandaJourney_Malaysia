@@ -6,6 +6,7 @@ import { doc, getDoc } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-
 const avatarImage = document.getElementById("avatarImage");
 const avatarInitials = document.getElementById("avatarInitials");
 const topbarAvatar = document.getElementById("dashboardAvatar");
+const topbarUserName = document.getElementById("topbarUserName");
 
 function renderAvatar({ type = "", emoji = "", uploadUrl = "", googleUrl = "", name = "" }) {
   if (!avatarImage || !avatarInitials) return;
@@ -73,4 +74,8 @@ onAuthStateChanged(auth, async user => {
     googleUrl: authProvider === "google" ? user.photoURL || "" : "",
     name: user.email || name
   });
+
+  if (topbarUserName) {
+    topbarUserName.textContent = name;
+  }
 });
