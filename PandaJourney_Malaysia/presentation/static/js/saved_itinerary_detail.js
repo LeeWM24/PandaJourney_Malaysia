@@ -133,6 +133,276 @@ function setText(id, value, fullValue = "") {
   }
 }
 
+function setSectionVisibility(id, visible) {
+  const element = document.getElementById(id);
+
+  if (element) {
+    element.hidden = !visible;
+  }
+}
+
+function cleanDisplayText(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getDetailList(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap(getDetailList);
+  }
+
+  if (value && typeof value === "object") {
+    return Object
+      .entries(value)
+      .flatMap(function ([key, nestedValue]) {
+        if (typeof nestedValue === "boolean") {
+          return nestedValue ? [key] : [];
+        }
+
+        return getDetailList(nestedValue);
+      });
+  }
+
+  const text = cleanDisplayText(value)
+    .replace(/_/g, " ");
+
+  return text ? [text] : [];
+}
+
+function formatDetailLabel(value) {
+  return cleanDisplayText(value)
+    .split(/\s+/)
+    .map(part => part ? part.charAt(0).toUpperCase() + part.slice(1) : "")
+    .join(" ");
+}
+
+function uniqueCleanValues(values, formatter = cleanDisplayText) {
+  const seen = new Set();
+
+  return values
+    .map(formatter)
+    .filter(function (value) {
+      const key = value.toLowerCase();
+
+      if (!value || seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    });
+}
+
+function getSavedStopLocationText(stop) {
+  const locationText = cleanDisplayText(
+    stop.address ||
+    stop.location ||
+    stop.area ||
+    ""
+  );
+
+  if (locationText) {
+    return locationText;
+  }
+
+  return buildCoordinateText(getStopPoint(stop));
+}
+
+function getSavedStopAboutText(stop) {
+  return cleanDisplayText(
+    stop.about_text ||
+    stop.description ||
+    ""
+  );
+}
+
+function getSavedStopInterestTags(stop) {
+  return uniqueCleanValues(
+    getDetailList(
+      stop.interest_tags ||
+      stop.matched_interests ||
+      stop.interests ||
+      stop.tags ||
+      []
+    )
+      .filter(function (value) {
+        return ![
+          "favourite",
+          "attraction",
+          "tourist attraction"
+        ].includes(value.toLowerCase());
+      }),
+    formatDetailLabel
+  );
+}
+
+function getSavedStopReasonTags(stop) {
+  return uniqueCleanValues(
+    getDetailList(
+      stop.reason_tags ||
+      stop.reasons ||
+      stop.reason ||
+      stop.recommendation_reason ||
+      []
+    )
+  );
+}
+
+function renderSavedPlacePills(elementId, values) {
+  const element = document.getElementById(elementId);
+
+  if (!element) {
+    return;
+  }
+
+  element.innerHTML = values
+    .map(function (value) {
+      return `<span class="saved-place-pill">${escapeHtml(value)}</span>`;
+    })
+    .join("");
+}
+
+function resetSavedPlaceDetailModal() {
+  [
+    "saved-place-detail-role",
+    "saved-place-detail-location",
+    "saved-place-detail-facts",
+    "saved-place-duration-cell",
+    "saved-place-category-cell",
+    "saved-place-rating-cell",
+    "saved-place-about-section",
+    "saved-place-interests-section",
+    "saved-place-reasons-section"
+  ].forEach(function (id) {
+    const element = document.getElementById(id);
+
+    if (element) {
+      element.hidden = true;
+    }
+  });
+
+  [
+    "saved-place-detail-role",
+    "saved-place-detail-title",
+    "saved-place-detail-location",
+    "saved-place-duration",
+    "saved-place-category",
+    "saved-place-rating",
+    "saved-place-about"
+  ].forEach(function (id) {
+    const element = document.getElementById(id);
+
+    if (element) {
+      element.textContent = "";
+    }
+  });
+
+  ["saved-place-interests", "saved-place-reasons"].forEach(function (id) {
+    const element = document.getElementById(id);
+
+    if (element) {
+      element.innerHTML = "";
+    }
+  });
+}
+
+function openSavedPlaceDetailModal(place, options = {}) {
+  const modal = document.getElementById("saved-place-detail-modal");
+
+  if (!modal) {
+    return;
+  }
+
+  resetSavedPlaceDetailModal();
+
+  const isRouteLocation = Boolean(options.isRouteLocation);
+  const roleText = cleanDisplayText(options.role || place.role || "");
+  const titleText = cleanDisplayText(place.name || place.stop_name || "Place");
+  const locationText = cleanDisplayText(place.location || getSavedStopLocationText(place));
+
+  const roleElement = document.getElementById("saved-place-detail-role");
+  const titleElement = document.getElementById("saved-place-detail-title");
+  const locationElement = document.getElementById("saved-place-detail-location");
+
+  if (roleElement) {
+    roleElement.textContent = roleText;
+    roleElement.hidden = !roleText;
+  }
+
+  if (titleElement) {
+    titleElement.textContent = titleText;
+  }
+
+  if (locationElement) {
+    locationElement.textContent = locationText;
+    locationElement.hidden = !locationText;
+  }
+
+  if (!isRouteLocation) {
+    const visitMinutes = Number(place.visit_duration_minutes || place.estimated_minutes || 0);
+    const hasVisitMinutes = Number.isFinite(visitMinutes) && visitMinutes > 0;
+    const category = cleanDisplayText(place.category || "");
+    const hasCategory = Boolean(category);
+    const rating = Number(place.rating || 0);
+    const hasRating = Number.isFinite(rating) && rating > 0;
+    const aboutText = getSavedStopAboutText(place);
+    const interests = getSavedStopInterestTags(place);
+    const reasons = getSavedStopReasonTags(place);
+
+    const durationElement = document.getElementById("saved-place-duration");
+    const categoryElement = document.getElementById("saved-place-category");
+    const ratingElement = document.getElementById("saved-place-rating");
+    const aboutElement = document.getElementById("saved-place-about");
+
+    if (durationElement && hasVisitMinutes) {
+      durationElement.textContent = `${Math.round(visitMinutes)} mins`;
+    }
+
+    if (categoryElement && hasCategory) {
+      categoryElement.textContent = category;
+    }
+
+    if (ratingElement && hasRating) {
+      ratingElement.innerHTML = `&#9733; ${rating.toFixed(1)}`;
+    }
+
+    if (aboutElement && aboutText) {
+      aboutElement.textContent = aboutText;
+    }
+
+    renderSavedPlacePills("saved-place-interests", interests);
+    renderSavedPlacePills("saved-place-reasons", reasons);
+
+    setSectionVisibility("saved-place-duration-cell", hasVisitMinutes);
+    setSectionVisibility("saved-place-category-cell", hasCategory);
+    setSectionVisibility("saved-place-rating-cell", hasRating);
+    setSectionVisibility(
+      "saved-place-detail-facts",
+      hasVisitMinutes || hasCategory || hasRating
+    );
+    setSectionVisibility("saved-place-about-section", Boolean(aboutText));
+    setSectionVisibility("saved-place-interests-section", interests.length > 0);
+    setSectionVisibility("saved-place-reasons-section", reasons.length > 0);
+  }
+
+  modal.classList.add("show");
+  modal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeSavedPlaceDetailModal() {
+  const modal = document.getElementById("saved-place-detail-modal");
+
+  if (!modal) {
+    return;
+  }
+
+  modal.classList.remove("show");
+  modal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
 function formatDate(dateText) {
   if (!dateText) return "No date";
 
@@ -1131,7 +1401,13 @@ function renderDetailStops(itinerary, stops) {
       marker: "S",
       label: "Start",
       title: startName,
-      meta: `Starting location - Start time: ${startTime}`
+      meta: `Starting location - Start time: ${startTime}`,
+      detail: {
+        name: startName,
+        location: getStartLocationName(itinerary),
+        latitude: getStartPoint(itinerary)?.latitude,
+        longitude: getStartPoint(itinerary)?.longitude
+      }
     });
   }
 
@@ -1168,7 +1444,13 @@ function renderDetailStops(itinerary, stops) {
       title: endName,
       meta: endTime
         ? `Ending location - End time: ${endTime}`
-        : "Ending location"
+        : "Ending location",
+      detail: {
+        name: endName,
+        location: getEndLocationName(itinerary),
+        latitude: getEndPoint(itinerary)?.latitude,
+        longitude: getEndPoint(itinerary)?.longitude
+      }
     });
   }
 
@@ -1205,10 +1487,21 @@ function renderDetailStops(itinerary, stops) {
         <div class="detail-stop-number">${escapeHtml(routeRow.marker)}</div>
         <div class="detail-stop-content">
           <div class="detail-route-marker-label">${escapeHtml(routeRow.label)}</div>
-          <div class="detail-stop-title">${escapeHtml(routeRow.title)}</div>
+          <div class="detail-stop-title">
+            <button type="button" class="detail-stop-title-button js-place-detail">
+              ${escapeHtml(routeRow.title)}
+            </button>
+          </div>
           <div class="detail-stop-meta">${escapeHtml(routeRow.meta)}</div>
         </div>
       `;
+
+      row.querySelector(".js-place-detail")?.addEventListener("click", function () {
+        openSavedPlaceDetailModal(routeRow.detail || {}, {
+          isRouteLocation: true,
+          role: routeRow.label === "Start" ? "Start Location" : "End Location"
+        });
+      });
 
       stopList.appendChild(row);
       return;
@@ -1280,7 +1573,11 @@ function renderDetailStops(itinerary, stops) {
     row.innerHTML = `
       <div class="detail-stop-number">${escapeHtml(routeRow.marker)}</div>
       <div class="detail-stop-content">
-        <div class="detail-stop-title">${escapeHtml(stop.stop_name || "Unnamed Stop")}</div>
+        <div class="detail-stop-title">
+          <button type="button" class="detail-stop-title-button js-place-detail">
+            ${escapeHtml(stop.stop_name || "Unnamed Stop")}
+          </button>
+        </div>
         <div class="detail-stop-meta">
           ${escapeHtml(timeText)}
           <br>
@@ -1295,6 +1592,10 @@ function renderDetailStops(itinerary, stops) {
         </div>
       </div>
     `;
+
+    row.querySelector(".js-place-detail")?.addEventListener("click", function () {
+      openSavedPlaceDetailModal(stop);
+    });
 
     stopList.appendChild(row);
   });
@@ -1523,6 +1824,26 @@ async function renderMap(itinerary, stops) {
 // ================================
 // Init
 // ================================
+
+document.getElementById("saved-place-detail-close")?.addEventListener(
+  "click",
+  closeSavedPlaceDetailModal
+);
+
+document.getElementById("saved-place-detail-modal")?.addEventListener(
+  "click",
+  function (event) {
+    if (event.target === event.currentTarget) {
+      closeSavedPlaceDetailModal();
+    }
+  }
+);
+
+document.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") {
+    closeSavedPlaceDetailModal();
+  }
+});
 
 onAuthStateChanged(auth, function (user) {
   if (!user) {

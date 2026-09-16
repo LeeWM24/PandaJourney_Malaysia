@@ -90,6 +90,53 @@
     line-height: 1.5;
   }
 
+  #start-location-field {
+    position: relative;
+  }
+
+  #start-location-field.current-location-active .form-input {
+    padding-right: 48px;
+    border-radius: 999px;
+    border-color: #9ddfc0;
+    background: #effbf5;
+    color: #047857;
+    font-weight: 800;
+    cursor: default;
+  }
+
+  .current-location-clear {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    z-index: 3;
+    width: 28px;
+    height: 28px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: #d9f3e5;
+    color: #047857;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, transform .15s ease;
+  }
+
+  .current-location-clear:hover,
+  .current-location-clear:focus-visible {
+    background: #bfe7cf;
+    outline: none;
+  }
+
+  .current-location-clear[hidden] {
+    display: none !important;
+  }
+
   .planner-loading-overlay {
     position: fixed;
     inset: 0;
@@ -121,6 +168,10 @@
     animation: planner-spin 0.9s linear infinite;
   }
 
+  @keyframes planner-spin {
+    to { transform: rotate(360deg); }
+  }
+
   .planner-loading-title {
     font-size: 14px;
     font-weight: 800;
@@ -132,36 +183,19 @@
     font-size: 12px;
   }
 
-  @keyframes planner-spin {
-    to {
-      transform: rotate(360deg);
-    }
-  }
-
-  .route-action-bar {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    margin-bottom: 14px;
-  }
-
+  .route-action-bar,
   .timetable-actions {
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+
+  .route-action-bar {
+    margin-bottom: 14px;
+  }
+
+  .timetable-actions {
     margin-top: 10px;
-  }
-
-  /* Prevent long location / Google Maps labels from breaking small screens. */
-  .timetable-content {
-    min-width: 0;
-  }
-
-  .timetable-name {
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .timetable-actions .btn {
@@ -172,28 +206,25 @@
   }
 
   .save-modal-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  padding: 18px;
-}
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 18px;
+  }
 
-.save-modal-card {
-  width: min(460px, 100%);
-  border-radius: 22px;
-  padding: 24px;
-  background: #ffffff;
-  color: var(--fg);
-  border: 1px solid var(--border);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
-  opacity: 1;
-}
+  .save-modal-card {
+    width: min(460px, 100%);
+    border-radius: 22px;
+    padding: 24px;
+    background: #ffffff;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  }
 
   .save-modal-title {
     font-size: 20px;
@@ -223,219 +254,611 @@
     font-weight: 700;
   }
 
+  .custom-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    padding: 18px;
+  }
 
-.custom-modal-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: none;
-  align-items: center;
-  justify-content: center;
-  z-index: 10001;
-  padding: 18px;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
+  .custom-modal-backdrop.show {
+    display: flex;
+  }
 
-.custom-modal-backdrop.show {
-  display: flex;
-}
+  .custom-modal-box {
+    width: min(420px, 92%);
+    background: #ffffff;
+    color: #16352b;
+    border-radius: 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    padding: 28px 24px 22px;
+    border: 2px solid #d7e9df;
+    text-align: center;
+  }
 
-.custom-modal-box {
-  width: min(420px, 92%);
-  background: #ffffff;
-  color: #16352b;
-  border-radius: 22px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
-  padding: 28px 24px 22px;
-  border: 2px solid #d7e9df;
-  text-align: center;
-  opacity: 1;
-}
+  .custom-modal-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+  }
 
-.custom-modal-icon {
-  font-size: 42px;
-  margin-bottom: 12px;
-}
+  .custom-modal-title {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: #16352b;
+  }
 
-.custom-modal-title {
-  font-size: 22px;
-  font-weight: 900;
-  margin-bottom: 10px;
-  color: #16352b;
-}
+  .custom-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #4b6358;
+    margin-bottom: 22px;
+  }
 
-.custom-modal-message {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #4b6358;
-  margin-bottom: 22px;
-}
+  .custom-modal-actions {
+    display: flex;
+    justify-content: center;
+  }
 
-.custom-modal-actions {
-  display: flex;
-  justify-content: center;
-}
+  .interest-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 
-.interest-chip-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
+  .interest-chip {
+    cursor: pointer;
+  }
 
-.interest-chip {
-  cursor: pointer;
-}
+  .interest-chip input {
+    display: none;
+  }
 
-.interest-chip input {
-  display: none;
-}
-
-.interest-chip.active {
-  background: var(--primary);
-  color: #ffffff;
-  border-color: var(--primary);
-}
-
-.stop-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.stop-one-line {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.stop-name {
-  font-weight: 900;
-  color: var(--fg);
-}
-
-.stop-inline-tag {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: #e8f7ef;
-  color: #047857;
-  font-size: 12px;
-  font-weight: 800;
-  border: 1px solid #bfe7cf;
-}
-
-.stop-rating {
-  font-size: 12px;
-  font-weight: 800;
-  color: #047857;
-}
-
+  .interest-chip.active {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+  }
 
 .location-autocomplete {
   position: relative;
+  z-index: 1;
+}
+
+.location-autocomplete:focus-within {
+  z-index: 1000;
 }
 
 .location-suggestions {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   left: 0;
   right: 0;
-  z-index: 10020;
+
+  z-index: 1001;
+
   background: #ffffff;
   border: 1px solid var(--border);
   border-radius: 16px;
-  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
-  overflow: hidden;
-  max-height: 240px;
+
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.18);
+
+  max-height: 260px;
   overflow-y: auto;
 }
 
-.location-suggestion-item {
-  width: 100%;
+.location-suggestions[hidden] {
+  display: none !important;
+}
+
+  .itinerary-form-col,
+  .itinerary-form-col .card,
+  .itinerary-form-col form,
+  .itinerary-form-col .form-group {
+    overflow: visible;
+  }
+
+  .location-suggestions {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 10020;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .location-suggestions[hidden] {
+    display: none !important;
+  }
+
+  .location-suggestion-item {
+    width: 100%;
+    border: 0;
+    background: #ffffff;
+    padding: 11px 13px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border-bottom: 1px solid #edf5ef;
+  }
+
+  .location-suggestion-item:last-child {
+    border-bottom: 0;
+  }
+
+  .location-suggestion-item:hover {
+    background: #e8f7ef;
+  }
+
+  .location-suggestion-icon {
+    flex: 0 0 auto;
+    font-size: 15px;
+    margin-top: 1px;
+  }
+
+  .location-suggestion-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .location-suggestion-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--fg);
+    line-height: 1.4;
+  }
+
+  .location-suggestion-sub {
+    font-size: 11px;
+    color: var(--fg-2);
+    line-height: 1.4;
+  }
+
+  .location-suggestion-status {
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-2);
+    background: #ffffff;
+  }
+
+  .timetable-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-width: 0;
+  }
+
+.timetable-name-button {
+  flex: 0 1 auto;
+
+  width: fit-content;
+  max-width: 100%;
+
+  display: inline-block;
+
   border: 0;
-  background: #ffffff;
-  padding: 11px 13px;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  border-bottom: 1px solid #edf5ef;
-}
+  background: transparent;
 
-.location-suggestion-item:last-child {
-  border-bottom: 0;
-}
-
-.location-suggestion-item:hover {
-  background: #e8f7ef;
-}
-
-.location-suggestion-icon {
-  font-size: 15px;
-  margin-top: 1px;
-}
-
-.location-suggestion-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.location-suggestion-name {
-  font-size: 13px;
+  color: inherit;
+  font: inherit;
   font-weight: 800;
-  color: var(--fg);
+
+  padding: 0;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timetable-name-button:hover,
+.timetable-name-button:focus {
+  color: var(--primary);
+  text-decoration: underline;
+  outline: none;
+}
+
+.timetable-location-note {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 12px;
   line-height: 1.4;
 }
 
-.location-suggestion-sub {
-  margin-top: 3px;
-  font-size: 11px;
-  color: var(--fg-2);
-}
+  .timetable-stop-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin-left: auto;
+    white-space: nowrap;
+  }
 
-.location-suggestion-status {
-  padding: 12px 14px;
-  font-size: 13px;
-  color: var(--fg-2);
-}
+  .stop-inline-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #e8f7ef;
+    color: #047857;
+    font-size: 12px;
+    font-weight: 800;
+    border: 1px solid #bfe7cf;
+  }
 
+  .stop-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #b77900;
+  }
+
+  .timetable-remove {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0;
+    border-radius: 999px;
+    border: 2px solid #fca5a5;
+    background: #fff1f2;
+    color: #dc2626;
+    font-size: 25px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+  }
+
+  .timetable-remove:hover,
+  .timetable-remove:focus-visible {
+    background: #fee2e2;
+    border-color: #ef4444;
+    transform: scale(1.08);
+    outline: none;
+  }
+
+  .detail-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10002;
+    padding: 18px;
+  }
+
+  .detail-panel-backdrop.show {
+    display: flex;
+  }
+
+  .detail-panel {
+    width: min(620px, 94%);
+    max-height: 88vh;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.22);
+  }
+
+  .detail-header {
+    position: relative;
+    flex: 0 0 280px;
+    width: 100%;
+    height: 280px !important;
+    min-height: 280px;
+    max-height: 280px;
+    overflow: hidden;
+    background: #e8f7ef;
+    line-height: 0;
+  }
+
+  .detail-header[hidden] {
+    display: none !important;
+  }
+
+  .detail-hero {
+    width: 100% !important;
+    height: 280px !important;
+    min-height: 280px;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center center;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #e8f7ef;
+  }
+
+  .itinerary-place-summary {
+    flex: 0 0 auto;
+    padding: 20px 22px 16px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .itinerary-route-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    margin-bottom: 10px;
+    border-radius: 999px;
+    background: #e8f7ef;
+    color: #047857;
+    border: 1px solid #bfe7cf;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .itinerary-route-role[hidden] {
+    display: none !important;
+  }
+
+  .itinerary-detail-place-name {
+    margin: 0;
+    color: var(--fg);
+    font-size: 24px;
+    line-height: 1.3;
+    font-weight: 900;
+  }
+
+  .itinerary-detail-main-location {
+    margin-top: 8px;
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+
+  .itinerary-detail-main-location[hidden] {
+    display: none !important;
+  }
+
+  .detail-body {
+    padding: 14px 20px 20px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+  }
+
+  .detail-favourite-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    background: #fff7d6;
+    color: #7c5800;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .detail-favourite-badge[hidden] {
+    display: none !important;
+  }
+
+  .detail-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0 18px;
+  }
+
+  .detail-row[hidden] {
+    display: none !important;
+  }
+
+  .detail-cell {
+    flex: 1 1 140px;
+    min-width: 130px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--muted-bg);
+    text-align: center;
+  }
+
+  .detail-cell strong {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .detail-cell span {
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .detail-section {
+    margin-bottom: 18px;
+  }
+
+  .detail-section[hidden] {
+    display: none !important;
+  }
+
+  .detail-section h3 {
+    margin-bottom: 9px;
+    font-size: 14px;
+  }
+
+  .detail-section p {
+    margin: 0;
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .detail-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .detail-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--teal-soft);
+    color: #065f52;
+    font-size: 12px;
+  }
+
+  .detail-footer {
+    flex: 0 0 auto;
+    padding: 12px 16px 14px;
+    border-top: 1px solid var(--border);
+    background: #fbfffd;
+    display: flex;
+  }
+
+  .detail-footer .btn {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  @media (max-width: 760px) {
+    .detail-panel {
+      width: 96%;
+    }
+
+    .detail-header {
+      flex-basis: 220px;
+      height: 220px !important;
+      min-height: 220px;
+      max-height: 220px;
+    }
+
+    .detail-hero {
+      height: 220px !important;
+      min-height: 220px;
+    }
+
+    .timetable-name-row {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .timetable-name-button {
+      white-space: normal;
+    }
+
+    .timetable-stop-actions {
+      margin-left: 0;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
+  }
+
+  @media (max-height: 700px) {
+    .detail-panel-backdrop {
+      padding: 8px;
+    }
+
+    .detail-panel {
+      max-height: calc(100dvh - 16px);
+    }
+
+    .detail-header {
+      flex: 0 0 160px;
+      height: 160px !important;
+      min-height: 160px;
+      max-height: 160px;
+    }
+
+    .detail-hero {
+      height: 160px !important;
+      min-height: 160px;
+    }
+
+    .itinerary-place-summary {
+      padding: 14px 16px 10px;
+    }
+
+    .itinerary-detail-place-name {
+      font-size: 20px;
+    }
+
+    .detail-body {
+      padding: 10px 16px 14px;
+      min-height: 0;
+    }
+
+    .detail-footer {
+      padding: 9px 12px 10px;
+    }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-inner">
 
-  <div id="planner-loading-overlay" class="planner-loading-overlay" aria-live="polite" aria-hidden="true">
+  <!-- Loading -->
+  <div
+    id="planner-loading-overlay"
+    class="planner-loading-overlay"
+    aria-live="polite"
+    aria-hidden="true"
+  >
     <div class="planner-loading-card">
       <div class="planner-spinner"></div>
-      <div id="planner-loading-text" class="planner-loading-title">Generating itinerary...</div>
-      <div class="planner-loading-sub">Please wait while we calculate your route.</div>
+      <div id="planner-loading-text" class="planner-loading-title">
+        Generating itinerary...
+      </div>
+      <div class="planner-loading-sub">
+        Please wait while we calculate your route.
+      </div>
     </div>
   </div>
 
+  <!-- Save Success -->
   <div id="save-success-modal" class="custom-modal-backdrop" aria-hidden="true">
     <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="save-success-title">
-      <div class="custom-modal-icon">✅</div>
-
-      <div class="custom-modal-title" id="save-success-title">
-        Itinerary Saved
-      </div>
-
-      <div class="custom-modal-message">
-        Your itinerary has been saved successfully.
-      </div>
-
+      <div class="custom-modal-icon">✓</div>
+      <div class="custom-modal-title" id="save-success-title">Itinerary Saved</div>
+      <div class="custom-modal-message">Your itinerary has been saved successfully.</div>
       <div class="custom-modal-actions">
-        <button type="button" id="save-success-ok" class="btn btn-primary btn-md">
-          OK
-        </button>
+        <button type="button" id="save-success-ok" class="btn btn-primary btn-md">OK</button>
       </div>
     </div>
   </div>
 
+  <!-- Save Title -->
   <div id="save-title-modal" class="save-modal-overlay" aria-hidden="true">
     <div class="save-modal-card" role="dialog" aria-modal="true" aria-labelledby="save-title-modal-title">
       <div id="save-title-modal-title" class="save-modal-title">Save Itinerary</div>
@@ -449,31 +872,99 @@
         placeholder="e.g. Kuala Lumpur Culture Trip"
         maxlength="50"
       />
-      <div id="save-title-error" class="save-modal-error">Please enter an itinerary title (maximum 50 characters).</div>
+
+      <div id="save-title-error" class="save-modal-error">
+        Please enter an itinerary title.
+      </div>
 
       <div class="save-modal-actions">
-        <button type="button" class="btn btn-secondary btn-md" id="cancel-save-title-btn">Cancel</button>
-        <button type="button" class="btn btn-primary btn-md" id="confirm-save-title-btn">Save Itinerary</button>
+        <button type="button" class="btn btn-secondary btn-md" id="cancel-save-title-btn">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary btn-md" id="confirm-save-title-btn">
+          Save Itinerary
+        </button>
       </div>
     </div>
   </div>
 
-
+  <!-- Alert -->
   <div id="planner-alert-modal" class="custom-modal-backdrop" aria-hidden="true">
     <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="planner-alert-title">
-      <div class="custom-modal-icon" id="planner-alert-icon">⚠️</div>
-
-      <div class="custom-modal-title" id="planner-alert-title">
-        Notice
-      </div>
-
-      <div class="custom-modal-message" id="planner-alert-message">
-        Please check your input.
-      </div>
-
+      <div class="custom-modal-icon" id="planner-alert-icon">!</div>
+      <div class="custom-modal-title" id="planner-alert-title">Notice</div>
+      <div class="custom-modal-message" id="planner-alert-message">Please check your input.</div>
       <div class="custom-modal-actions">
-        <button type="button" id="planner-alert-ok" class="btn btn-primary btn-md">
-          OK
+        <button type="button" id="planner-alert-ok" class="btn btn-primary btn-md">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Place Detail -->
+  <div id="itinerary-attraction-modal" class="detail-panel-backdrop" aria-hidden="true">
+    <div class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="itinerary-detail-title">
+
+      <!-- Attraction only. Start/End hide this whole header. -->
+      <div class="detail-header">
+        <img
+          id="itinerary-detail-image"
+          class="detail-hero"
+          src=""
+          alt="Place photo"
+        />
+      </div>
+
+      <!-- All text below image -->
+      <div class="itinerary-place-summary">
+        <span id="itinerary-route-role" class="itinerary-route-role" hidden></span>
+
+        <h2 id="itinerary-detail-title" class="itinerary-detail-place-name">
+          Place
+        </h2>
+
+        <div id="itinerary-detail-location-main" class="itinerary-detail-main-location"></div>
+
+      </div>
+
+      <div class="detail-body">
+        <div id="itinerary-detail-favourite-badge" class="detail-favourite-badge" hidden>
+          From your favourites
+        </div>
+
+        <div id="itinerary-detail-facts" class="detail-row" hidden>
+          <div id="itinerary-detail-duration-cell" class="detail-cell" hidden>
+            <strong>Planned Visit</strong>
+            <span id="itinerary-detail-duration"></span>
+          </div>
+          <div id="itinerary-detail-category-cell" class="detail-cell" hidden>
+            <strong>Category</strong>
+            <span id="itinerary-detail-category"></span>
+          </div>
+          <div id="itinerary-detail-rating-cell" class="detail-cell" hidden>
+            <strong>Rating</strong>
+            <span id="itinerary-detail-rating"></span>
+          </div>
+        </div>
+
+        <div id="itinerary-detail-about-section" class="detail-section" hidden>
+          <h3>About</h3>
+          <p id="itinerary-detail-description"></p>
+        </div>
+
+        <div id="itinerary-detail-interests-section" class="detail-section" hidden>
+          <h3>Travel interests</h3>
+          <div id="itinerary-detail-interests" class="detail-pills"></div>
+        </div>
+
+        <div id="itinerary-detail-reasons-section" class="detail-section" hidden>
+          <h3>Why recommended</h3>
+          <div id="itinerary-detail-reasons" class="detail-pills"></div>
+        </div>
+      </div>
+
+      <div class="detail-footer">
+        <button type="button" id="itinerary-detail-close" class="btn btn-primary">
+          Close
         </button>
       </div>
     </div>
@@ -481,12 +972,13 @@
 
   {% if error %}
     <div class="alert alert-error mb-4" role="alert">
-      ⛔ {{ error }}
+      {{ error }}
     </div>
   {% endif %}
 
   <div class="itinerary-layout">
 
+    <!-- Trip Setup -->
     <aside class="itinerary-form-col">
       <div class="card card-p">
         <div class="card-title mb-4">Trip Setup</div>
@@ -508,12 +1000,7 @@
             value="{{ form.excluded_stop_names | default('[]') | e }}"
           />
 
-          <input
-            type="hidden"
-            name="regenerate_token"
-            id="regenerate_token"
-            value=""
-          />
+          <input type="hidden" name="regenerate_token" id="regenerate_token" value="" />
 
           <input
             type="hidden"
@@ -540,7 +1027,7 @@
             <label class="form-label" for="start">Start Location</label>
 
             <div class="location-autocomplete">
-              <div class="form-input-icon">
+              <div class="form-input-icon" id="start-location-field">
                 <span class="icon">🟢</span>
                 <input
                   class="form-input"
@@ -552,6 +1039,17 @@
                   autocomplete="off"
                   required
                 />
+
+                <button
+                  type="button"
+                  id="clear-current-location-btn"
+                  class="current-location-clear"
+                  aria-label="Clear Current Location"
+                  title="Clear Current Location"
+                  hidden
+                >
+                  &times;
+                </button>
               </div>
 
               <div id="start-suggestions" class="location-suggestions" hidden></div>
@@ -559,7 +1057,7 @@
 
             <div class="gps-location-row">
               <button type="button" class="btn btn-secondary btn-sm" id="use-current-location-btn">
-                📍 Use Current Location
+                Use Current Location
               </button>
               <div id="gps-location-status" class="gps-location-status"></div>
             </div>
@@ -614,8 +1112,7 @@
           </div>
 
           <div class="form-group mb-3">
-            <label class="form-label" for="available_hours">Available Hours</label>
-
+            <label class="form-label" for="available_hours">Time Available</label>
             <select class="form-select" id="available_hours" name="available_hours">
               {% for h in [4, 5, 6, 7, 8, 9, 10] %}
                 <option value="{{ h }}" {% if form.available_hours | default(6) | int == h %}selected{% endif %}>
@@ -627,7 +1124,6 @@
 
           <div class="form-group mb-3">
             <label class="form-label" for="max_stops">Maximum Stops</label>
-
             {% set max_stops = form.get("max_stops", 3) | int %}
 
             <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops }}">
@@ -641,14 +1137,13 @@
 
           <div class="form-group mb-3">
             <label class="form-label" for="minimum_rating">Minimum Rating</label>
-
             {% set minimum_rating = form.get("minimum_rating", "4.0") %}
 
             <select class="form-select" id="minimum_rating" name="minimum_rating">
-              <option value="3.0" {% if minimum_rating == "3.0" %}selected{% endif %}>⭐ 3.0+</option>
-              <option value="3.5" {% if minimum_rating == "3.5" %}selected{% endif %}>⭐ 3.5+</option>
-              <option value="4.0" {% if minimum_rating == "4.0" %}selected{% endif %}>⭐ 4.0+</option>
-              <option value="4.5" {% if minimum_rating == "4.5" %}selected{% endif %}>⭐ 4.5+</option>
+              <option value="3.0" {% if minimum_rating == "3.0" %}selected{% endif %}>★ 3.0+</option>
+              <option value="3.5" {% if minimum_rating == "3.5" %}selected{% endif %}>★ 3.5+</option>
+              <option value="4.0" {% if minimum_rating == "4.0" %}selected{% endif %}>★ 4.0+</option>
+              <option value="4.5" {% if minimum_rating == "4.5" %}selected{% endif %}>★ 4.5+</option>
             </select>
           </div>
 
@@ -676,7 +1171,6 @@
                     type="checkbox"
                     name="interests"
                     value="{{ value }}"
-                    style="display:none;"
                     {% if value in selected_interests %}checked{% endif %}
                   />
                 </label>
@@ -711,23 +1205,19 @@
           </div>
 
           <button type="submit" class="btn btn-primary btn-lg btn-full" id="generate-itinerary-btn">
-            ⚡ Generate Itinerary
+            Generate Itinerary
           </button>
         </form>
       </div>
     </aside>
 
+    <!-- Result -->
     <section class="itinerary-result-col">
-
       {% if not plan %}
         <div class="card">
           <div class="empty-state">
             <div class="empty-icon">🗺️</div>
-
-            <div class="empty-title">
-              Ready to plan your trip
-            </div>
-
+            <div class="empty-title">Ready to plan your trip</div>
             <div class="empty-sub">
               Fill in the form and click Generate Itinerary to see your personalised route and timetable.
             </div>
@@ -738,7 +1228,6 @@
         <div class="trip-summary-grid">
           <div class="card trip-summary-card">
             <div class="trip-summary-label">Travel Duration</div>
-
             <div class="trip-summary-value">
               {{ plan.travel_duration | default(plan.total_duration | default('Estimated')) }}
             </div>
@@ -746,16 +1235,15 @@
 
           <div class="card trip-summary-card">
             <div class="trip-summary-label">Weather</div>
-
             <div class="trip-summary-value">
-              {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
+              {{ plan.weather_icon | default('') }} {{ plan.weather_temp | default('-') }}
             </div>
           </div>
         </div>
 
         {% if plan.exceeds_hours %}
           <div class="alert alert-warning">
-            ⚠️ This itinerary exceeds your available hours. Consider removing a stop.
+            This itinerary exceeds your available time. Consider removing a stop.
           </div>
         {% endif %}
 
@@ -765,7 +1253,10 @@
 
             <div style="display:flex; gap:8px;">
               <button type="button" class="btn btn-primary btn-sm" id="save-itinerary-btn">
-                💾 Save
+                Save
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="edit-itinerary-btn">
+                Edit
               </button>
             </div>
           </div>
@@ -778,59 +1269,28 @@
                 rel="noopener noreferrer"
                 class="btn btn-secondary btn-sm"
               >
-                🗺️ View Full Route in Google Maps
+                View Full Route in Google Maps
               </a>
             </div>
           {% endif %}
 
-          <div class="stop-list mb-4">
-          {% for attraction in plan["selected"] %}
-            <div class="stop-item">
-              <span class="stop-handle">⠿</span>
-
-              <div class="stop-main">
-                <div class="stop-one-line">
-                  <span class="stop-name">
-                    {{ loop.index }}. {{ attraction.name }}
-                  </span>
-
-                  {% set matched_interests = attraction.get("matched_interests", []) %}
-
-                  {% if matched_interests %}
-                    {% for interest in matched_interests %}
-                      <span class="stop-inline-tag">
-                        {{ interest | title }}
-                      </span>
-                    {% endfor %}
-                  {% endif %}
-
-                  {% if attraction.get("rating") %}
-                    <span class="stop-rating">
-                      ⭐ {{ "%.1f"|format(attraction.get("rating") | float) }}
-                    </span>
-                  {% endif %}
-                </div>
-              </div>
-
-              <button
-                type="button"
-                class="stop-remove js-remove-stop"
-                data-stop-name="{{ attraction.name | e }}"
-                aria-label="Remove {{ attraction.name | e }}"
-              >
-                ✕
-              </button>
-            </div>
-          {% endfor %}
-        </div>
-
           <div class="timetable">
             {% for item in plan["timetable"] %}
+              {% set is_start_row = loop.first %}
+              {% set is_end_row = loop.last %}
+              {% set stop_match = namespace(attraction=None, index=-1) %}
+
+              {% for attraction in plan["selected"] %}
+                {% if item.name == attraction.name or item.activity == attraction.name %}
+                  {% set stop_match.attraction = attraction %}
+                  {% set stop_match.index = loop.index0 %}
+                {% endif %}
+              {% endfor %}
+
               <div class="timetable-row">
                 <div class="timeline-col">
-                  <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}"></div>
-
-                  {% if not loop.last %}
+                  <div class="timeline-dot {% if is_start_row %}start{% elif is_end_row %}end{% endif %}"></div>
+                  {% if not is_end_row %}
                     <div class="timeline-line"></div>
                   {% endif %}
                 </div>
@@ -838,16 +1298,71 @@
                 <div class="timetable-content">
                   <div class="timetable-time">
                     {{ item.arrival_time | default(item.time | default('')) }}
-                    {% if item.departure_time %} – {{ item.departure_time }}{% endif %}
+                    {% if item.departure_time %}
+                      &ndash; {{ item.departure_time }}
+                    {% endif %}
                   </div>
 
-                  <div class="timetable-name">
-                    {{ item.name | default(item.activity) }}
+                  <div class="timetable-name-row">
+                    <button
+                      type="button"
+                      class="timetable-name timetable-name-button js-open-place-detail"
+                      data-place-kind="{% if is_start_row %}start{% elif is_end_row %}end{% else %}attraction{% endif %}"
+                      data-attraction-index="{{ stop_match.index }}"
+                    >
+                      {{ item.name | default(item.activity) }}
+                    </button>
+
+                    {% if stop_match.attraction %}
+                      {% set raw_category = stop_match.attraction.get("category") or stop_match.attraction.get("type") or "" %}
+                      {% set matched_interests = stop_match.attraction.get("matched_interests", []) %}
+
+                      <div class="timetable-stop-actions">
+                        <span class="stop-inline-tag">
+                          {% if raw_category | lower in ["", "attraction", "tourist attraction", "tourist attractions", "point of interest"] and matched_interests %}
+                            {{ matched_interests[0] | title }}
+                          {% elif raw_category %}
+                            {{ raw_category }}
+                          {% else %}
+                            Attraction
+                          {% endif %}
+                        </span>
+
+                        {% if stop_match.attraction.get("rating") %}
+                          <span class="stop-rating">
+                            <span aria-hidden="true">&#9733;</span>
+                            {{ "%.1f"|format(stop_match.attraction.get("rating") | float) }}
+                          </span>
+                        {% endif %}
+
+                        <button
+                          type="button"
+                          class="timetable-remove js-remove-stop"
+                          data-stop-name="{{ stop_match.attraction.name | e }}"
+                          aria-label="Remove {{ stop_match.attraction.name | e }}"
+                          title="Remove stop"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    {% endif %}
                   </div>
+
+                  {% if item.location_note %}
+                    <div class="timetable-location-note">
+                      {{ item.location_note }}
+                    </div>
+                  {% endif %}
 
                   <div class="timetable-meta">
                     <span class="badge badge-muted">
-                      {{ item.duration | default('Estimated') }}
+                      {% if is_start_row %}
+                        Start point
+                      {% elif is_end_row %}
+                        End point
+                      {% else %}
+                        {{ item.duration | default('Estimated') }}
+                      {% endif %}
                     </span>
                   </div>
 
@@ -875,35 +1390,36 @@
           {% else %}
             <div class="map-placeholder" style="min-height:280px;">
               <div class="map-inner">
-                <div class="map-icon">🗺️</div>
+                <div class="map-icon">Map</div>
                 <div class="map-label">Route Map</div>
                 <div class="map-sub">Map will appear after route is generated</div>
               </div>
             </div>
           {% endif %}
         </div>
-
       {% endif %}
     </section>
-
   </div>
 </div>
 {% endblock %}
 
 {% block extra_scripts %}
-{% if map_data %}
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  {% if map_data %}
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<script id="map-data" type="application/json">
-{{ map_data | tojson }}
-</script>
-{% endif %}
+    <script id="map-data" type="application/json">
+      {{ map_data | tojson }}
+    </script>
+  {% endif %}
 
-{% if plan %}
-<script id="plan-data" type="application/json">
-{{ plan | tojson }}
-</script>
-{% endif %}
+  {% if plan %}
+    <script id="plan-data" type="application/json">
+      {{ plan | tojson }}
+    </script>
+  {% endif %}
 
-<script type="module" src="{{ url_for('static', filename='js/smart_itinerary.js') }}"></script>
+  <script
+    type="module"
+    src="{{ url_for('static', filename='js/smart_itinerary.js') }}?v={{ asset_version('js/smart_itinerary.js') }}"
+  ></script>
 {% endblock %}

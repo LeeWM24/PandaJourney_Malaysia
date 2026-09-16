@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 import time
 from itertools import permutations
 from datetime import datetime, timedelta
@@ -15,6 +16,7 @@ from dotenv import load_dotenv
 
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 OSRM_URL = "https://router.project-osrm.org/route/v1/driving/"
 OSRM_TABLE_URL = "https://router.project-osrm.org/table/v1/driving/"
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
@@ -41,6 +43,16 @@ print(
 
 GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
 LOCATION_SUGGESTION_CACHE: dict[str, list[dict[str, Any]]] = {}
+REVERSE_GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
+CURRENT_LOCATION_NEARBY_CACHE: dict[str, dict[str, Any] | None] = {}
+MALAYSIA_ONLY_MESSAGE = (
+    "PandaJourney currently supports itinerary planning within Malaysia only. "
+    "Please select locations in Malaysia."
+)
+ROAD_ROUTE_UNAVAILABLE_MESSAGE = (
+    "The selected destination cannot be reached using the current road-based itinerary mode. "
+    "Please choose a destination connected by road."
+)
 
 
 def get_default_itinerary_form():
@@ -204,6 +216,243 @@ def detect_interest_tags_from_text(text: str, selected_interests: list[str]) -> 
             matched_tags.append(interest_key)
 
     return matched_tags
+
+
+GENERIC_PLACE_FEATURES = {
+    "attraction",
+    "establishment",
+    "point of interest",
+    "tourist attraction",
+    "tourist attractions",
+}
+
+BROAD_PLACE_CATEGORIES = {
+    "cafe",
+    "food",
+    "food court",
+    "garden",
+    "mall",
+    "museum",
+    "park",
+    "restaurant",
+    "shopping mall",
+}
+
+ABOUT_GROUP_KEYWORDS = {
+    "food": [
+        "cafe",
+        "coffee",
+        "cuisine",
+        "delivery",
+        "dessert",
+        "dine",
+        "dining",
+        "food",
+        "halal",
+        "meal",
+        "restaurant",
+        "takeaway",
+        "vegetarian",
+    ],
+    "culture": [
+        "art",
+        "artwork",
+        "batik",
+        "craft",
+        "cultural",
+        "exhibit",
+        "gallery",
+        "handicraft",
+        "heritage",
+        "historical",
+        "history",
+        "museum",
+    ],
+    "shopping": [
+        "boutique",
+        "brand",
+        "cinema",
+        "dining",
+        "electronics",
+        "entertainment",
+        "fashion",
+        "market",
+        "mall",
+        "retail",
+        "shopping",
+        "store",
+    ],
+    "nature": [
+        "beach",
+        "forest",
+        "garden",
+        "hiking",
+        "lake",
+        "nature",
+        "outdoor",
+        "park",
+        "recreation",
+        "trail",
+        "viewpoint",
+        "waterfall",
+    ],
+}
+
+
+def clean_source_text(value: Any) -> str:
+    return " ".join(str(value or "").split()).strip()
+
+
+def format_source_feature(value: Any) -> str:
+    text = clean_source_text(value).replace("_", " ")
+
+    if not text:
+        return ""
+
+    if text.islower():
+        text = text.title()
+
+    return text
+
+
+def append_source_feature(features: list[str], value: Any) -> None:
+    text = format_source_feature(value)
+
+    if not text:
+        return
+
+    if text.lower() in GENERIC_PLACE_FEATURES:
+        return
+
+    if text.lower() not in {feature.lower() for feature in features}:
+        features.append(text)
+
+
+def flatten_serpapi_fact_values(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        flattened: list[str] = []
+
+        for key, nested_value in value.items():
+            if isinstance(nested_value, bool):
+                if nested_value:
+                    flattened.append(str(key))
+                continue
+
+            flattened.extend(flatten_serpapi_fact_values(nested_value))
+
+        return flattened
+
+    if isinstance(value, list):
+        flattened = []
+
+        for item in value:
+            flattened.extend(flatten_serpapi_fact_values(item))
+
+        return flattened
+
+    text = clean_source_text(value)
+    return [text] if text else []
+
+
+def collect_serpapi_place_features(item: dict[str, Any]) -> list[str]:
+    features: list[str] = []
+
+    for value in flatten_serpapi_fact_values(item.get("types")):
+        append_source_feature(features, value)
+
+    for value in flatten_serpapi_fact_values(item.get("extensions")):
+        append_source_feature(features, value)
+
+    for value in flatten_serpapi_fact_values(item.get("service_options")):
+        append_source_feature(features, value)
+
+    for key in ("type", "category"):
+        append_source_feature(features, item.get(key))
+
+    return features[:8]
+
+
+def get_about_group(place: dict[str, Any]) -> str:
+    text = " ".join(
+        [
+            str(place.get("category", "")),
+            " ".join(str(tag) for tag in place.get("tags", [])),
+            " ".join(str(feature) for feature in place.get("place_features", [])),
+        ]
+    ).lower()
+
+    for group, keywords in ABOUT_GROUP_KEYWORDS.items():
+        if any(keyword in text for keyword in keywords):
+            return group
+
+    return "generic"
+
+
+def get_group_highlights(place: dict[str, Any], group: str) -> list[str]:
+    keywords = ABOUT_GROUP_KEYWORDS.get(group, [])
+    category_text = clean_source_text(place.get("category")).lower()
+    highlights: list[str] = []
+
+    for feature in place.get("place_features", []):
+        feature_text = clean_source_text(feature)
+        feature_key = feature_text.lower()
+
+        if not feature_text:
+            continue
+
+        if (
+            feature_key == category_text
+            and category_text in BROAD_PLACE_CATEGORIES
+        ):
+            continue
+
+        if keywords and not any(keyword in feature_key for keyword in keywords):
+            continue
+
+        append_source_feature(highlights, feature_text)
+
+    return highlights[:6]
+
+
+def build_place_about_fields(place: dict[str, Any]) -> dict[str, Any]:
+    source_description = clean_source_text(
+        place.get("source_description")
+        or place.get("description")
+    )
+    source_snippet = clean_source_text(
+        place.get("source_snippet")
+        or place.get("snippet")
+    )
+
+    if source_description:
+        return {
+            "about_text": source_description,
+            "about_heading": "",
+            "place_highlights": get_group_highlights(place, get_about_group(place)),
+        }
+
+    if source_snippet:
+        return {
+            "about_text": source_snippet,
+            "about_heading": "",
+            "place_highlights": get_group_highlights(place, get_about_group(place)),
+        }
+
+    group = get_about_group(place)
+    highlights = get_group_highlights(place, group)
+
+    if not highlights:
+        return {
+            "about_text": "",
+            "about_heading": "",
+            "place_highlights": [],
+        }
+
+    return {
+        "about_text": "",
+        "about_heading": "",
+        "place_highlights": highlights,
+    }
 
 
 def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
@@ -379,6 +628,551 @@ def parse_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def reverse_geocode_coordinates(
+    latitude: Any,
+    longitude: Any,
+    *,
+    zoom: int = 18,
+) -> dict[str, Any] | None:
+    lat = parse_float(latitude)
+    lon = parse_float(longitude)
+
+    if lat is None or lon is None:
+        return None
+
+    safe_zoom = max(3, min(int(zoom or 18), 18))
+    cache_key = f"{lat:.6f},{lon:.6f}:{safe_zoom}"
+
+    if cache_key in REVERSE_GEOCODE_CACHE:
+        return REVERSE_GEOCODE_CACHE[cache_key]
+
+    params: dict[str, Any] = {
+        "lat": lat,
+        "lon": lon,
+        "format": "jsonv2",
+        "addressdetails": 1,
+        "namedetails": 1,
+        "zoom": safe_zoom,
+    }
+
+    if NOMINATIM_EMAIL:
+        params["email"] = NOMINATIM_EMAIL
+
+    try:
+        data = _request_json(
+            NOMINATIM_REVERSE_URL,
+            params=params,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept-Language": "en",
+            },
+        )
+    except requests.RequestException as error:
+        print(f"[REVERSE GEOCODE ERROR] {error}", flush=True)
+        data = None
+
+    REVERSE_GEOCODE_CACHE[cache_key] = data if isinstance(data, dict) else None
+    return REVERSE_GEOCODE_CACHE[cache_key]
+
+
+def get_reverse_country_code(data: dict[str, Any] | None) -> str:
+    address = (data or {}).get("address") or {}
+    return str(address.get("country_code", "")).strip().lower()
+
+
+def clean_reverse_location_label(value: Any) -> str:
+    text = " ".join(str(value or "").split()).strip(" ,")
+
+    if not text:
+        return ""
+
+    if text.lower() in {"malaysia"}:
+        return ""
+
+    if text.replace(" ", "").isdigit():
+        return ""
+
+    return truncate_display_text(text, DISPLAY_LOCATION_MAX_LENGTH)
+
+
+def get_readable_reverse_location_name(data: dict[str, Any] | None) -> str:
+    if not data:
+        return ""
+
+    address = data.get("address") or {}
+    namedetails = data.get("namedetails") or {}
+    candidates: list[Any] = [
+        data.get("name"),
+        namedetails.get("name:en"),
+        namedetails.get("name"),
+    ]
+
+    for key in (
+        "amenity",
+        "railway",
+        "station",
+        "tourism",
+        "building",
+        "historic",
+        "leisure",
+        "shop",
+        "office",
+        "road",
+        "neighbourhood",
+        "suburb",
+        "quarter",
+        "village",
+        "town",
+        "city",
+        "municipality",
+    ):
+        candidates.append(address.get(key))
+
+    display_name = data.get("display_name")
+
+    if display_name:
+        candidates.extend(str(display_name).split(",")[:3])
+
+    for candidate in candidates:
+        label = clean_reverse_location_label(candidate)
+
+        if label:
+            return label
+
+    return ""
+
+
+def add_current_location_display_metadata(place: dict[str, Any]) -> dict[str, Any]:
+    original_latitude = parse_float(place.get("latitude"))
+    original_longitude = parse_float(place.get("longitude"))
+
+    if original_latitude is not None:
+        place["original_gps_latitude"] = original_latitude
+
+    if original_longitude is not None:
+        place["original_gps_longitude"] = original_longitude
+
+    place["is_approximate"] = False
+    place["location_source"] = "browser_gps"
+    place["route_start_snapped"] = False
+
+    data = reverse_geocode_coordinates(
+        place.get("latitude"),
+        place.get("longitude"),
+        zoom=18,
+    )
+
+    country_code = get_reverse_country_code(data)
+
+    if country_code:
+        place["country_code"] = country_code
+
+    # Reverse-geocode fallback name
+    reverse_name = get_readable_reverse_location_name(data)
+    reverse_area = get_readable_reverse_area_name(data)
+
+    nearby_poi = get_current_location_nearby_poi(
+        place.get("latitude"),
+        place.get("longitude"),
+    )
+
+    if nearby_poi:
+        place["resolved_name"] = nearby_poi["name"]
+        place["nearby_name"] = nearby_poi["name"]
+        place["nearby_category"] = nearby_poi["category"]
+        place["nearby_distance_m"] = nearby_poi["distance_m"]
+        place["nearby_source"] = "serpapi"
+
+        place["latitude"] = nearby_poi["latitude"]
+        place["longitude"] = nearby_poi["longitude"]
+
+        place["route_start_snapped"] = True
+
+        return place
+
+    # No suitable SerpAPI POI:
+    # keep original GPS coordinate but preserve a readable nearby name.
+    fallback_name = reverse_name or reverse_area
+
+    if fallback_name:
+        place["resolved_name"] = fallback_name
+        place["nearby_name"] = fallback_name
+        place["nearby_source"] = "nominatim_reverse"
+
+    return place
+
+
+SERPAPI_GEOCODE_STOPWORDS = {
+    "malaysia",
+    "near",
+    "the",
+    "and",
+    "for",
+    "jalan",
+}
+
+SERPAPI_GENERIC_LOCATION_TOKENS = {
+    "airport",
+    "beach",
+    "bus",
+    "cafe",
+    "hotel",
+    "mall",
+    "museum",
+    "park",
+    "restaurant",
+    "station",
+    "terminal",
+    "train",
+}
+
+CURRENT_LOCATION_NEARBY_RADIUS_M = 500
+CURRENT_LOCATION_NEARBY_SEARCH_KEYWORD = (
+    "MRT LRT KTM railway train station landmark shopping mall university "
+    "hospital park museum tourist attraction government office cafe restaurant shop"
+)
+
+CURRENT_LOCATION_POI_PRIORITY_RULES = (
+    (
+        1,
+        "Transit station",
+        (
+            "mrt",
+            "lrt",
+            "ktm",
+            "railway",
+            "train station",
+            "transit station",
+            "metro station",
+            "subway station",
+            "monorail",
+        ),
+    ),
+    (
+        2,
+        "Major landmark",
+        (
+            "landmark",
+            "monument",
+            "tower",
+            "square",
+            "palace",
+            "caves",
+            "historical landmark",
+        ),
+    ),
+    (
+        3,
+        "Shopping mall",
+        (
+            "shopping mall",
+            "shopping centre",
+            "shopping center",
+            "mall",
+            "plaza",
+        ),
+    ),
+    (
+        4,
+        "Education",
+        (
+            "university",
+            "college",
+            "school",
+            "campus",
+            "institute",
+        ),
+    ),
+    (5, "Hospital", ("hospital", "medical centre", "medical center")),
+    (6, "Park", ("park", "garden", "recreation")),
+    (
+        7,
+        "Tourist or cultural place",
+        (
+            "tourist attraction",
+            "museum",
+            "gallery",
+            "cultural",
+            "heritage",
+            "temple",
+            "mosque",
+            "church",
+        ),
+    ),
+    (
+        8,
+        "Government or civic building",
+        (
+            "government",
+            "municipal",
+            "majlis",
+            "city hall",
+            "library",
+            "court",
+            "police",
+        ),
+    ),
+    (
+        10,
+        "Cafe or small retail",
+        (
+            "cafe",
+            "coffee",
+            "restaurant",
+            "convenience",
+            "shop",
+            "store",
+            "retail",
+            "mart",
+            "pharmacy",
+        ),
+    ),
+)
+
+
+def get_location_query_tokens(value: Any) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", str(value or "").lower())
+        if len(token) >= 2 and token not in SERPAPI_GEOCODE_STOPWORDS
+    }
+
+
+def is_relevant_serpapi_geocode_result(query: str, item: dict[str, Any]) -> bool:
+    query_tokens = get_location_query_tokens(query)
+
+    if not query_tokens:
+        return False
+
+    title = str(item.get("title") or "").strip()
+    address = str(item.get("address") or "").strip()
+    result_text = f"{title} {address}"
+    title_tokens = get_location_query_tokens(title)
+    result_tokens = get_location_query_tokens(result_text)
+    matched_title_tokens = query_tokens.intersection(title_tokens)
+    matched_result_tokens = query_tokens.intersection(result_tokens)
+
+    if not matched_result_tokens:
+        return False
+
+    if query_tokens.issubset(SERPAPI_GENERIC_LOCATION_TOKENS):
+        return False
+
+    return bool(matched_title_tokens) or len(matched_result_tokens) >= 2
+
+
+def get_readable_reverse_area_name(data: dict[str, Any] | None) -> str:
+    if not data:
+        return ""
+
+    address = data.get("address") or {}
+
+    for key in (
+        "road",
+        "neighbourhood",
+        "suburb",
+        "quarter",
+        "village",
+        "town",
+        "city",
+        "municipality",
+        "county",
+        "state",
+    ):
+        label = clean_reverse_location_label(address.get(key))
+
+        if label:
+            return label
+
+    return ""
+
+
+def get_serpapi_text_field(item: dict[str, Any], key: str) -> str:
+    value = item.get(key)
+
+    if isinstance(value, list):
+        return " ".join(str(part) for part in value)
+
+    return str(value or "")
+
+
+def location_text_has_keyword(text: str, keyword: str) -> bool:
+    keyword_text = str(keyword or "").strip().lower()
+
+    if not keyword_text:
+        return False
+
+    if " " in keyword_text:
+        return keyword_text in text
+
+    return bool(re.search(rf"\b{re.escape(keyword_text)}\b", text))
+
+
+def classify_current_location_poi(item: dict[str, Any]) -> tuple[int, str]:
+    text = " ".join(
+        [
+            get_serpapi_text_field(item, "title"),
+            get_serpapi_text_field(item, "type"),
+            get_serpapi_text_field(item, "category"),
+            get_serpapi_text_field(item, "address"),
+        ]
+    ).lower()
+
+    if (
+        "petrol station" in text
+        or "gas station" in text
+        or "car park" in text
+        or "parking" in text
+    ):
+        return 9, "Useful POI"
+
+    for priority, category, keywords in CURRENT_LOCATION_POI_PRIORITY_RULES:
+        if any(location_text_has_keyword(text, keyword) for keyword in keywords):
+            return priority, category
+
+    return 9, "Useful POI"
+
+
+def get_current_location_nearby_poi(latitude: Any, longitude: Any) -> dict[str, Any] | None:
+    lat = parse_float(latitude)
+    lon = parse_float(longitude)
+
+    if lat is None or lon is None:
+        return None
+
+    cache_key = f"{lat:.5f},{lon:.5f}"
+
+    if cache_key in CURRENT_LOCATION_NEARBY_CACHE:
+        return CURRENT_LOCATION_NEARBY_CACHE[cache_key]
+
+    api_key = os.getenv("SERPAPI_KEY", "").strip()
+
+    if not api_key:
+        CURRENT_LOCATION_NEARBY_CACHE[cache_key] = None
+        return None
+
+    try:
+        data = _request_json(
+            SERPAPI_URL,
+            params={
+                "engine": "google_maps",
+                "type": "search",
+                "q": CURRENT_LOCATION_NEARBY_SEARCH_KEYWORD,
+                "ll": f"@{lat},{lon},16z",
+                "hl": "en",
+                "gl": "my",
+                "api_key": api_key,
+            },
+        )
+    except requests.RequestException as error:
+        print(f"[CURRENT LOCATION NEARBY ERROR] {error}", flush=True)
+        CURRENT_LOCATION_NEARBY_CACHE[cache_key] = None
+        return None
+
+    candidates: list[dict[str, Any]] = []
+
+    for item in data.get("local_results", [])[:20]:
+        coordinates = item.get("gps_coordinates") or {}
+        candidate_lat = parse_float(coordinates.get("latitude"))
+        candidate_lon = parse_float(coordinates.get("longitude"))
+        title = str(item.get("title") or "").strip()
+
+        if not title or candidate_lat is None or candidate_lon is None:
+            continue
+
+        if is_bad_candidate_name(title):
+            continue
+
+        distance_m = round(
+            calculate_distance_km(lat, lon, candidate_lat, candidate_lon) * 1000
+        )
+
+        if distance_m > CURRENT_LOCATION_NEARBY_RADIUS_M:
+            continue
+
+        priority, category = classify_current_location_poi(item)
+
+        candidates.append(
+            {
+                "name": title,
+                "category": category,
+                "priority": priority,
+                "distance_m": int(distance_m),
+                "latitude": candidate_lat,
+                "longitude": candidate_lon,
+                "google_place_id": item.get("place_id") or "",
+            }
+        )
+
+    candidates.sort(
+        key=lambda candidate: (
+            candidate["priority"],
+            candidate["distance_m"],
+        )
+    )
+
+    if candidates:
+        print(
+            "[CURRENT LOCATION NEARBY CANDIDATES] "
+            + " | ".join(
+                f"{candidate['name']} ({candidate['category']}, {candidate['distance_m']}m)"
+                for candidate in candidates[:5]
+            ),
+            flush=True,
+        )
+
+    selected = candidates[0] if candidates else None
+    CURRENT_LOCATION_NEARBY_CACHE[cache_key] = selected
+    return selected
+
+
+def is_point_in_malaysia_bounds(latitude: Any, longitude: Any) -> bool:
+    """Fallback Malaysia check for GPS/SerpAPI results without country_code."""
+    lat = parse_float(latitude)
+    lon = parse_float(longitude)
+
+    if lat is None or lon is None:
+        return False
+
+    return 0.8 <= lat <= 7.6 and 99.0 <= lon <= 120.5
+
+
+def get_place_country_code(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    country_code = str(place.get("country_code", "")).strip().lower()
+
+    if country_code:
+        return country_code
+
+    latitude = parse_float(place.get("latitude"))
+    longitude = parse_float(place.get("longitude"))
+
+    if latitude is None or longitude is None:
+        return ""
+
+    data = reverse_geocode_coordinates(latitude, longitude, zoom=10)
+    country_code = get_reverse_country_code(data)
+
+    if country_code:
+        place["country_code"] = country_code
+
+    return country_code
+
+
+def ensure_malaysian_place(place: dict[str, Any] | None) -> None:
+    country_code = get_place_country_code(place)
+
+    if country_code:
+        if country_code != "my":
+            raise ValueError(MALAYSIA_ONLY_MESSAGE)
+        return
+
+    if not place or not is_point_in_malaysia_bounds(place.get("latitude"), place.get("longitude")):
+        raise ValueError(MALAYSIA_ONLY_MESSAGE)
+
+
 def parse_excluded_stop_names(form: dict[str, Any]) -> set[str]:
     raw_names = form.get("excluded_stop_names", "[]")
     names = parse_json_list(raw_names)
@@ -531,6 +1325,7 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
         display_name = item.get("display_name", "")
         latitude = item.get("lat")
         longitude = item.get("lon")
+        address = item.get("address") or {}
 
         if not display_name or latitude is None or longitude is None:
             continue
@@ -541,6 +1336,7 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
                 "latitude": float(latitude),
                 "longitude": float(longitude),
                 "source": "OpenStreetMap Nominatim",
+                "country_code": str(address.get("country_code", "")).lower(),
             }
         )
 
@@ -556,6 +1352,7 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
                         "latitude": value["latitude"],
                         "longitude": value["longitude"],
                         "source": "Local demo fallback",
+                        "country_code": "my",
                     }
                 )
 
@@ -594,15 +1391,46 @@ def geocode_with_serpapi(query: str) -> dict[str, Any] | None:
         if "latitude" not in coordinates or "longitude" not in coordinates:
             continue
 
-        title = item.get("title", query)
-        address = item.get("address", "")
+        latitude = parse_float(coordinates.get("latitude"))
+        longitude = parse_float(coordinates.get("longitude"))
+
+        if latitude is None or longitude is None:
+            continue
+
+        if not is_point_in_malaysia_bounds(latitude, longitude):
+            continue
+
+        if not is_relevant_serpapi_geocode_result(query, item):
+            print(
+                f"[GEOCODE SERPAPI SKIP] Irrelevant result for '{query}': "
+                f"{item.get('title', '')}",
+                flush=True,
+            )
+            continue
+
+        title = str(item.get("title") or query).strip()
+        address = str(item.get("address") or "").strip()
+        display_name = f"{title}, {address}".strip(", ")
 
         result = {
-            "display_name": f"{title}, {address}".strip(", "),
-            "latitude": float(coordinates["latitude"]),
-            "longitude": float(coordinates["longitude"]),
+            "display_name": display_name,
+            "resolved_name": get_short_location_name(title) or get_short_location_name(display_name),
+            "latitude": latitude,
+            "longitude": longitude,
+            "google_place_id": item.get("place_id") or "",
             "source": "SerpApi fallback",
+            "country_code": "my" if "malaysia" in address.lower() else "",
+            "is_approximate": True,
+            "location_source": "serpapi",
         }
+
+        if not result["country_code"] and get_place_country_code(result) != "my":
+            print(
+                f"[GEOCODE SERPAPI SKIP] Non-Malaysia result for '{query}': "
+                f"{display_name}",
+                flush=True,
+            )
+            continue
 
         print(
             f"[GEOCODE SERPAPI SUCCESS] {result['display_name']} "
@@ -668,12 +1496,17 @@ def geocode_place(query: str) -> dict[str, Any] | None:
 
         if results:
             raw = results[0]
+            address = raw.get("address") or {}
 
             result = {
                 "display_name": raw.get("display_name", query),
+                "resolved_name": get_short_location_name(raw.get("display_name", query)),
                 "latitude": float(raw["lat"]),
                 "longitude": float(raw["lon"]),
                 "source": "OpenStreetMap Nominatim API",
+                "country_code": str(address.get("country_code", "")).lower(),
+                "is_approximate": False,
+                "location_source": "nominatim",
             }
 
             GEOCODE_CACHE[key] = result
@@ -700,7 +1533,11 @@ def geocode_place(query: str) -> dict[str, Any] | None:
     if key in DEMO_LOCATIONS:
         result = {
             **DEMO_LOCATIONS[key],
+            "resolved_name": get_short_location_name(DEMO_LOCATIONS[key].get("display_name", query)),
             "source": "Local demo fallback",
+            "country_code": "my",
+            "is_approximate": False,
+            "location_source": "local_demo",
         }
 
         GEOCODE_CACHE[key] = result
@@ -914,10 +1751,15 @@ def search_attractions_serpapi(
             tags = ["attraction"]
             match_reason = "general attraction candidate"
 
+        source_description = clean_source_text(item.get("description"))
+        source_snippet = clean_source_text(item.get("snippet"))
+        place_features = collect_serpapi_place_features(item)
+
         candidate = {
             "name": title,
             "latitude": float(coordinates["latitude"]),
             "longitude": float(coordinates["longitude"]),
+            "google_place_id": item.get("place_id") or "",
             "tags": tags,
             "matched_interests": matched_tags,
             "interest_match_count": len(matched_tags),
@@ -927,7 +1769,18 @@ def search_attractions_serpapi(
             "source": f"SerpApi - one search: {search_keyword}",
             "category": item.get("type") or item.get("category") or "Attraction",
             "address": address,
+            "source_description": source_description,
+            "source_snippet": source_snippet,
+            "source_types": flatten_serpapi_fact_values(item.get("types")),
+            "source_extensions": item.get("extensions") or [],
+            "service_options": item.get("service_options") or {},
+            "place_features": place_features,
         }
+
+        if source_description:
+            candidate["description"] = source_description
+
+        candidate.update(build_place_about_fields(candidate))
 
         candidates.append(candidate)
 
@@ -1125,6 +1978,116 @@ def get_route_with_stops(
 
     except requests.RequestException:
         return None
+
+
+def route_has_non_road_step(route: dict[str, Any]) -> bool:
+    for leg in route.get("legs", []):
+        for step in leg.get("steps", []):
+            mode = str(step.get("mode", "driving")).lower()
+            maneuver = step.get("maneuver") or {}
+            step_text = " ".join(
+                [
+                    mode,
+                    str(step.get("name", "")),
+                    str(step.get("ref", "")),
+                    str(maneuver.get("type", "")),
+                    str(maneuver.get("modifier", "")),
+                ]
+            ).lower()
+
+            if mode and mode != "driving":
+                return True
+
+            if "ferry" in step_text:
+                return True
+
+    return False
+
+
+def get_valid_driving_route(
+    points: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Return an OSRM driving route only when every leg is road-driveable."""
+    if len(points) < 2:
+        return None
+
+    coordinates = ";".join(
+        f"{point['longitude']},{point['latitude']}"
+        for point in points
+    )
+
+    try:
+        data = _request_json(
+            f"{OSRM_URL}{coordinates}",
+            params={
+                "overview": "full",
+                "geometries": "geojson",
+                "steps": "true",
+            },
+        )
+    except requests.RequestException as error:
+        print(f"[OSRM ROUTE ERROR] {type(error).__name__}: {error}", flush=True)
+        return None
+
+    if data.get("code") and data.get("code") != "Ok":
+        print(f"[OSRM ROUTE REJECTED] code={data.get('code')}", flush=True)
+        return None
+
+    routes = data.get("routes", [])
+
+    if not routes:
+        return None
+
+    route = routes[0]
+
+    if route_has_non_road_step(route):
+        print("[OSRM ROUTE REJECTED] non-road or ferry segment detected", flush=True)
+        return None
+
+    return {
+        "distance_m": float(route.get("distance", 0)),
+        "duration_s": float(route.get("duration", 0)),
+        "geometry": route.get("geometry", {}),
+        "legs": route.get("legs", []),
+    }
+
+
+def select_road_reachable_attractions(
+    start: dict[str, Any],
+    selected: list[dict[str, Any]],
+    candidates: list[dict[str, Any]],
+    end: dict[str, Any],
+    max_stops: int,
+) -> list[dict[str, Any]]:
+    """Keep stops only when OSRM can route Start -> stops -> End by road."""
+    chosen: list[dict[str, Any]] = []
+    seen_names: set[str] = set()
+    pool = [*selected, *candidates[:12]]
+
+    for candidate in pool:
+        if len(chosen) >= max_stops:
+            break
+
+        name_key = normalise_name_key(candidate.get("name", ""))
+
+        if not name_key or name_key in seen_names:
+            continue
+
+        if candidate.get("latitude") is None or candidate.get("longitude") is None:
+            continue
+
+        trial_route = get_valid_driving_route([start, *chosen, candidate, end])
+
+        if trial_route:
+            chosen.append(candidate)
+            seen_names.add(name_key)
+        else:
+            print(
+                f"[ROUTE CANDIDATE SKIPPED] {candidate.get('name', 'Unnamed stop')} is not road reachable in this itinerary.",
+                flush=True,
+            )
+
+    return chosen
 
 
 def is_rainy(weather: dict[str, Any] | None) -> bool:
@@ -1340,6 +2303,24 @@ def is_browser_current_location(place: dict[str, Any] | None) -> bool:
     display_name = str(place.get("display_name", "")).lower()
     name = str(place.get("name", "")).lower()
 
+    if place.get("route_start_snapped"):
+        return False
+
+    return (
+        source == "browser gps"
+        or display_name == "current location"
+        or name == "current location"
+    )
+
+
+def is_current_location_point(place: dict[str, Any] | None) -> bool:
+    if not place:
+        return False
+
+    source = str(place.get("source", "")).lower()
+    display_name = str(place.get("display_name", "")).lower()
+    name = str(place.get("name", "")).lower()
+
     return (
         source == "browser gps"
         or display_name == "current location"
@@ -1363,43 +2344,113 @@ def build_coordinate_text(place: dict[str, Any] | None) -> str:
         return ""
 
 
+def get_google_maps_place_id(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    return str(place.get("google_place_id") or "").strip()
+
+
+def build_google_maps_place_text(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    for key in ("name", "resolved_name", "display_name"):
+        text = " ".join(str(place.get(key) or "").split()).strip()
+
+        if text:
+            return text
+
+    return ""
+
+
+def build_google_maps_point_text(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    if is_current_location_point(place):
+        return build_coordinate_text(place)
+
+    place_id = get_google_maps_place_id(place)
+    place_text = build_google_maps_place_text(place)
+
+    if place_id and place_text:
+        return place_text
+
+    return build_coordinate_text(place)
+
+
 def build_google_maps_route_url(
     origin: dict[str, Any] | None,
     destination: dict[str, Any] | None,
     waypoints: list[dict[str, Any]] | None = None,
+    *,
+    force_origin_coordinates: bool = False,
 ) -> str:
-    destination_text = build_coordinate_text(destination)
+    destination_text = build_google_maps_point_text(destination)
 
     if not destination_text:
         return ""
-
-    use_live_current_location = is_browser_current_location(origin)
 
     params = [
         ("api", "1"),
     ]
 
-    if not use_live_current_location:
-        origin_text = build_coordinate_text(origin)
+    force_origin_to_coordinates = (
+        force_origin_coordinates
+        and is_current_location_point(origin)
+    )
 
-        if origin_text:
-            params.append(("origin", origin_text))
+    origin_text = (
+        build_coordinate_text(origin)
+        if force_origin_to_coordinates
+        else build_google_maps_point_text(origin)
+    )
+
+    if origin_text:
+        params.append(("origin", origin_text))
+
+        origin_place_id = (
+            ""
+            if force_origin_to_coordinates or is_current_location_point(origin)
+            else get_google_maps_place_id(origin)
+        )
+
+        if origin_place_id:
+            params.append(("origin_place_id", origin_place_id))
 
     params.append(("destination", destination_text))
 
-    waypoint_texts = [
-        build_coordinate_text(point)
+    destination_place_id = get_google_maps_place_id(destination)
+
+    if destination_place_id and not is_current_location_point(destination):
+        params.append(("destination_place_id", destination_place_id))
+
+    waypoint_points = [
+        point
         for point in (waypoints or [])
+        if build_google_maps_point_text(point)
+    ]
+
+    waypoint_texts = [
+        build_google_maps_point_text(point)
+        for point in waypoint_points
     ]
     waypoint_texts = [text for text in waypoint_texts if text]
 
     if waypoint_texts:
         params.append(("waypoints", "|".join(waypoint_texts)))
 
-    params.append(("travelmode", "driving"))
+        waypoint_place_ids = [
+            get_google_maps_place_id(point)
+            for point in waypoint_points
+            if get_google_maps_place_id(point) and not is_current_location_point(point)
+        ]
 
-    if use_live_current_location:
-        params.append(("dir_action", "navigate"))
+        if len(waypoint_place_ids) == len(waypoint_texts):
+            params.append(("waypoint_place_ids", "|".join(waypoint_place_ids)))
+
+    params.append(("travelmode", "driving"))
 
     return "https://www.google.com/maps/dir/?" + "&".join(
         f"{key}={quote_plus(value)}"
@@ -1412,10 +2463,12 @@ def build_google_maps_full_route_url(
     selected: list[dict[str, Any]],
     end: dict[str, Any],
 ) -> str:
+    # The full-route link must mirror the final OSRM/Leaflet route points.
     return build_google_maps_route_url(
         start,
         end,
         waypoints=selected,
+        force_origin_coordinates=True,
     )
 
 
@@ -1485,11 +2538,7 @@ def prepare_selected_attractions(
         item = dict(attraction)
 
         item["id"] = item.get("id", index)
-        item["category"] = (
-            item.get("category")
-            or ", ".join(item.get("tags", [])[:2]).title()
-            or "Attraction"
-        )
+        item["category"] = infer_attraction_category(item)
         item["location"] = item.get("location") or "Malaysia"
         item["weather_suitability"] = (
             "Indoor"
@@ -1499,6 +2548,12 @@ def prepare_selected_attractions(
         
         item["photo_urls"] = item.get("photo_urls") or get_attraction_images([tag.lower() for tag in item.get("tags", [])])
         item["image_url"] = item.get("image_url") or item["photo_urls"][0]
+
+        about_fields = build_place_about_fields(item)
+        item["about_text"] = item.get("about_text") or about_fields["about_text"]
+        item["about_heading"] = item.get("about_heading") or about_fields["about_heading"]
+        item["place_highlights"] = item.get("place_highlights") or about_fields["place_highlights"]
+
         item["description"] = item.get(
             "description",
             f"{item['name']} is a popular {item['category'].lower()} destination in Malaysia with excellent visitor facilities.",
@@ -1539,6 +2594,50 @@ def prepare_selected_attractions(
     return prepared
 
 
+def infer_attraction_category(attraction: dict[str, Any]) -> str:
+    direct_category = str(
+        attraction.get("category")
+        or attraction.get("type")
+        or attraction.get("place_type")
+        or ""
+    ).strip()
+
+    if direct_category:
+        return direct_category
+
+    tags = [
+        str(tag).strip()
+        for tag in attraction.get("tags", [])
+        if str(tag).strip()
+    ]
+
+    if tags:
+        return ", ".join(tags[:2]).title()
+
+    text = " ".join(
+        [
+            str(attraction.get("name", "")),
+            str(attraction.get("description", "")),
+            str(attraction.get("address", "")),
+        ]
+    ).lower()
+
+    category_keywords = {
+        "Museum": ["museum", "gallery", "exhibition"],
+        "Nature": ["park", "garden", "forest", "waterfall", "lake", "trail"],
+        "Shopping": ["mall", "market", "shopping", "bazaar", "plaza"],
+        "Food": ["restaurant", "cafe", "food", "hawker"],
+        "Religious Site": ["temple", "mosque", "church", "shrine"],
+        "Landmark": ["tower", "square", "monument", "palace", "caves"],
+    }
+
+    for category, keywords in category_keywords.items():
+        if any(keyword in text for keyword in keywords):
+            return category
+
+    return "Attraction"
+
+
 def build_timetable(
     start_datetime: datetime,
     start_name: str,
@@ -1557,14 +2656,26 @@ def build_timetable(
     transport_icon = transport_option["icon"]
     previous_stop_name = start_name
     previous_stop_place = start_place
+    start_location_note = ""
+    start_action_label = "Start at"
+
+    if start_place and start_place.get("route_start_snapped"):
+        start_action_label = "Start near"
+        start_location_note = "Selected from Current Location"
+
+    elif start_place and is_browser_current_location(start_place):
+        start_resolved_name = str(start_place.get("resolved_name") or "").strip()
+
+        if start_resolved_name:
+            start_location_note = f"Near {start_resolved_name}"
 
     timetable.append(
         {
             "time": current_time.strftime("%H:%M"),
             "arrival_time": current_time.strftime("%I:%M %p"),
             "departure_time": "",
-            "name": f"Start at {start_name}",
-            "activity": f"Start at {start_name}",
+            "name": f"{start_action_label} {start_name}",
+            "activity": f"{start_action_label} {start_name}",
             "duration": "Start point",
             "transport": transport_label,
             "transport_icon": transport_icon,
@@ -1572,6 +2683,7 @@ def build_timetable(
             "google_maps_label": "",
             "route_leg_from": "",
             "route_leg_to": "",
+            "location_note": start_location_note,
         }
     )
 
@@ -1627,13 +2739,22 @@ def build_timetable(
             end_place,
         )
 
+    end_arrival_label = "Arrive at"
+
+    if (
+        end_place
+        and end_place.get("is_approximate")
+        and end_place.get("location_source") == "serpapi"
+    ):
+        end_arrival_label = "Arrive near"
+
     timetable.append(
         {
             "time": current_time.strftime("%H:%M"),
             "arrival_time": current_time.strftime("%I:%M %p"),
             "departure_time": "",
-            "name": f"Arrive at {end_name}",
-            "activity": f"Arrive at {end_name}",
+            "name": f"{end_arrival_label} {end_name}",
+            "activity": f"{end_arrival_label} {end_name}",
             "duration": "End point",
             "transport": f"{transport_label} · {human_duration(final_leg_seconds)}",
             "transport_icon": transport_icon,
@@ -1699,12 +2820,14 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     if use_current_location:
         start_text = "Current Location"
-        start = {
-            "display_name": "Current Location",
-            "latitude": float(start_latitude),
-            "longitude": float(start_longitude),
-            "source": "Browser GPS",
-        }
+        start = add_current_location_display_metadata(
+            {
+                "display_name": "Current Location",
+                "latitude": float(start_latitude),
+                "longitude": float(start_longitude),
+                "source": "Browser GPS",
+            }
+        )
     else:
         start = geocode_place(start_text)
         time.sleep(1.05)
@@ -1716,6 +2839,12 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             "Could not find the start or end location. "
             "Try a more specific Malaysian place name."
         )
+
+    ensure_malaysian_place(start)
+    ensure_malaysian_place(end)
+
+    if not get_valid_driving_route([start, end]):
+        raise ValueError(ROAD_ROUTE_UNAVAILABLE_MESSAGE)
 
     start_datetime = datetime.fromisoformat(f"{trip_date}T{start_time}")
 
@@ -1782,6 +2911,14 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     selected = selected_favourites + recommended_selected
     selected = prepare_selected_attractions(selected)
+    backfill_candidates = prepare_selected_attractions(candidates)
+    selected = select_road_reachable_attractions(
+        start,
+        selected,
+        backfill_candidates,
+        end,
+        max_stops,
+    )
 
     print(
         "[ROUTE ORDER BEFORE] "
@@ -1802,7 +2939,10 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     )
 
     route_points = [start] + selected + [end]
-    route = get_route_with_stops(route_points)
+    route = get_valid_driving_route(route_points)
+
+    if not route:
+        raise ValueError(ROAD_ROUTE_UNAVAILABLE_MESSAGE)
 
     selected = assign_visit_duration_by_available_hours(
         selected,
@@ -1813,8 +2953,26 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     # Keep full start_text/end_text for routing + saving, but use concise
     # labels in the generated timetable and UI.
-    start_display_text = get_short_location_name(start_text) or "Start Location"
-    end_display_text = get_short_location_name(end_text) or "End Location"
+    start_display_source = start_text
+
+    if start.get("route_start_snapped"):
+        start_display_source = (
+            start.get("resolved_name")
+            or start.get("nearby_name")
+            or start_text
+        )
+
+    start_display_text = get_short_location_name(start_display_source) or "Start Location"
+    end_display_source = end_text
+
+    if end.get("is_approximate") and end.get("location_source") == "serpapi":
+        end_display_source = (
+            end.get("resolved_name")
+            or end.get("display_name")
+            or end_text
+        )
+
+    end_display_text = get_short_location_name(end_display_source) or "End Location"
 
     timetable = build_timetable(
         start_datetime,

@@ -90,6 +90,28 @@
     white-space: nowrap;
   }
 
+  .detail-stop-title-button {
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 800;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-stop-title-button:hover,
+  .detail-stop-title-button:focus-visible {
+    color: var(--primary);
+    outline: none;
+    text-decoration: underline;
+  }
+
   .detail-stop-meta {
     color: var(--text-muted);
     font-size: 14px;
@@ -245,6 +267,158 @@
     right: 12px;
   }
 
+  .saved-place-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0, 0, 0, .55);
+  }
+
+  .saved-place-modal-backdrop.show {
+    display: flex;
+  }
+
+  .saved-place-modal {
+    width: min(620px, 94%);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, .22);
+  }
+
+  .saved-place-summary {
+    flex: 0 0 auto;
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .saved-place-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    margin-bottom: 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .saved-place-role[hidden],
+  .saved-place-location[hidden],
+  .saved-place-facts[hidden],
+  .saved-place-cell[hidden],
+  .saved-place-section[hidden] {
+    display: none !important;
+  }
+
+  .saved-place-title {
+    margin: 0;
+    color: var(--text);
+    font-size: 24px;
+    line-height: 1.3;
+    font-weight: 900;
+  }
+
+  .saved-place-location {
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+
+  .saved-place-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 20px 20px;
+    overscroll-behavior: contain;
+  }
+
+  .saved-place-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0 18px;
+  }
+
+  .saved-place-cell {
+    flex: 1 1 140px;
+    min-width: 130px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--muted-bg);
+    text-align: center;
+  }
+
+  .saved-place-cell strong {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .saved-place-cell span {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .saved-place-section {
+    margin-bottom: 18px;
+  }
+
+  .saved-place-section h3 {
+    margin: 0 0 9px;
+    font-size: 14px;
+  }
+
+  .saved-place-section p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .saved-place-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .saved-place-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 12px;
+  }
+
+  .saved-place-footer {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 12px 16px 14px;
+    border-top: 1px solid var(--border);
+    background: #fbfffd;
+  }
+
+  .saved-place-footer .btn {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
   @media (max-width: 768px) {
     .detail-grid {
       grid-template-columns: 1fr;
@@ -256,6 +430,10 @@
 
     .saved-detail-hero {
       grid-template-columns: 1fr;
+    }
+
+    .saved-place-modal {
+      width: 96%;
     }
   }
 </style>
@@ -382,6 +560,54 @@
       <div id="detailRouteMap"></div>
     </div>
 
+  </div>
+
+  <div id="saved-place-detail-modal" class="saved-place-modal-backdrop" aria-hidden="true">
+    <div class="saved-place-modal" role="dialog" aria-modal="true" aria-labelledby="saved-place-detail-title">
+      <div class="saved-place-summary">
+        <span id="saved-place-detail-role" class="saved-place-role" hidden></span>
+        <h2 id="saved-place-detail-title" class="saved-place-title">Place</h2>
+        <div id="saved-place-detail-location" class="saved-place-location"></div>
+      </div>
+
+      <div class="saved-place-body">
+        <div id="saved-place-detail-facts" class="saved-place-facts" hidden>
+          <div id="saved-place-duration-cell" class="saved-place-cell" hidden>
+            <strong>Planned Visit</strong>
+            <span id="saved-place-duration"></span>
+          </div>
+          <div id="saved-place-category-cell" class="saved-place-cell" hidden>
+            <strong>Category</strong>
+            <span id="saved-place-category"></span>
+          </div>
+          <div id="saved-place-rating-cell" class="saved-place-cell" hidden>
+            <strong>Rating</strong>
+            <span id="saved-place-rating"></span>
+          </div>
+        </div>
+
+        <div id="saved-place-about-section" class="saved-place-section" hidden>
+          <h3>About</h3>
+          <p id="saved-place-about"></p>
+        </div>
+
+        <div id="saved-place-interests-section" class="saved-place-section" hidden>
+          <h3>Travel interests</h3>
+          <div id="saved-place-interests" class="saved-place-pills"></div>
+        </div>
+
+        <div id="saved-place-reasons-section" class="saved-place-section" hidden>
+          <h3>Why recommended</h3>
+          <div id="saved-place-reasons" class="saved-place-pills"></div>
+        </div>
+      </div>
+
+      <div class="saved-place-footer">
+        <button type="button" id="saved-place-detail-close" class="btn btn-primary btn-md">
+          Close
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

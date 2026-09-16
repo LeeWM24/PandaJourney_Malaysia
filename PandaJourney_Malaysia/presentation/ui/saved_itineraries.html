@@ -84,6 +84,58 @@
     justify-content: flex-end;
   }
 
+  .saved-bulk-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: #fbfffd;
+  }
+
+  .saved-bulk-actions[hidden] {
+    display: none !important;
+  }
+
+  .saved-bulk-left,
+  .saved-bulk-buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .saved-bulk-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg);
+    font-weight: 800;
+  }
+
+  .saved-bulk-count {
+    color: var(--fg-2);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .saved-row-select {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-right: 2px;
+  }
+
+  .saved-row-select input,
+  .saved-bulk-select input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+  }
+
   .saved-status-badge {
     vertical-align: middle;
   }
@@ -163,6 +215,10 @@
   .saved-row {
     position: relative;
     min-width: 0;
+  }
+
+  .saved-row.is-selectable {
+    grid-template-columns: 24px 44px minmax(0, 1fr) auto;
   }
 
   .saved-info {
@@ -414,6 +470,15 @@
   }
 
   @media (max-width: 768px) {
+    .saved-bulk-actions {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .saved-row.is-selectable {
+      grid-template-columns: 24px 44px minmax(0, 1fr);
+    }
+
     .saved-actions {
       justify-content: flex-start;
       margin-top: 12px;
@@ -451,6 +516,25 @@
 
   <div id="saved-loading" class="card" style="padding:24px;">
     Loading saved itineraries...
+  </div>
+
+  <div id="saved-bulk-actions" class="saved-bulk-actions" hidden>
+    <div class="saved-bulk-left">
+      <label class="saved-bulk-select">
+        <input type="checkbox" id="saved-select-all">
+        Select All
+      </label>
+      <span id="saved-selected-count" class="saved-bulk-count">0 selected</span>
+    </div>
+
+    <div class="saved-bulk-buttons">
+      <button type="button" id="bulk-publish-btn" class="btn btn-warning btn-sm" disabled>
+        Publish Selected
+      </button>
+      <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-sm" disabled>
+        Delete Selected
+      </button>
+    </div>
   </div>
 
   <div id="upcoming-section" style="display:none;">

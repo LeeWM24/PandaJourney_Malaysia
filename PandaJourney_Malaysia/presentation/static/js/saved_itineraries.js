@@ -56,6 +56,11 @@ const peopleModal = document.getElementById("people-modal");
 const peopleTitle = document.getElementById("people-title");
 const peopleList = document.getElementById("people-list");
 const closePeopleButton = document.getElementById("close-people-btn");
+const bulkActionsElement = document.getElementById("saved-bulk-actions");
+const selectAllCheckbox = document.getElementById("saved-select-all");
+const selectedCountElement = document.getElementById("saved-selected-count");
+const bulkPublishButton = document.getElementById("bulk-publish-btn");
+const bulkDeleteButton = document.getElementById("bulk-delete-btn");
 
 let currentUser = null;
 let pastVisible = false;
@@ -64,13 +69,14 @@ let sharedPastVisible = false;
 let pastPlanCount = 0;
 let sharedPlanCount = 0;
 let sharedPastPlanCount = 0;
-let pendingDeleteDocumentId = null;
-let pendingDeleteItineraryId = null;
 let pendingInviteItinerary = null;
 let pendingInviteLink = "";
 let pendingInviteEmail = "";
 let inviteSearchTimer = null;
+let bulkOperationInProgress = false;
+let pendingBulkDeleteItems = [];
 let activityCollaboratorDocs = [];
+const selectedItineraries = new Map();
 const userProfileCache = new Map();
 
 function hideLoading() {
@@ -105,6 +111,8 @@ function resetView() {
   pastPlanCount = 0;
   sharedPlanCount = 0;
   sharedPastPlanCount = 0;
+  selectedItineraries.clear();
+  updateBulkActionUi();
 
   if (togglePastButton) togglePastButton.textContent = "View Past Plans";
   if (toggleSharedButton) toggleSharedButton.textContent = "Hide Shared Plans";
@@ -365,16 +373,25 @@ function closeStatusSuccessModal() {
   modal.setAttribute("aria-hidden", "true");
 }
 
-function openDeleteConfirmModal(documentId, itineraryId, itineraryTitle = "this itinerary") {
+function openBulkDeleteConfirmModal(items) {
   const modal = document.getElementById("delete-confirm-modal");
+  const titleElement = document.getElementById("delete-confirm-title");
   const messageElement = document.getElementById("delete-confirm-message");
   const confirmButton = document.getElementById("confirm-delete-btn");
+  const count = items.length;
 
-  pendingDeleteDocumentId = documentId;
-  pendingDeleteItineraryId = itineraryId;
+  pendingBulkDeleteItems = items;
+
+  if (titleElement) {
+    titleElement.textContent = `Delete ${count} Itinerar${count === 1 ? "y" : "ies"}?`;
+  }
 
   if (messageElement) {
-    messageElement.textContent = `Are you sure you want to delete "${itineraryTitle}"? This action cannot be undone.`;
+    messageElement.textContent = `Delete ${count} itinerar${count === 1 ? "y" : "ies"}? This will permanently delete the selected itineraries and their itinerary stops.`;
+  }
+
+  if (confirmButton) {
+    confirmButton.textContent = `Delete ${count} Itinerar${count === 1 ? "y" : "ies"}`;
   }
 
   if (!modal) return;
@@ -385,11 +402,197 @@ function openDeleteConfirmModal(documentId, itineraryId, itineraryTitle = "this 
 
 function closeDeleteConfirmModal() {
   const modal = document.getElementById("delete-confirm-modal");
-  pendingDeleteDocumentId = null;
-  pendingDeleteItineraryId = null;
+  pendingBulkDeleteItems = [];
   if (!modal) return;
   modal.classList.remove("show");
   modal.setAttribute("aria-hidden", "true");
+}
+
+function getSelectableItineraryCheckboxes(visibleOnly = false) {
+  return Array
+    .from(document.querySelectorAll(".js-bulk-select-itinerary"))
+    .filter(checkbox => {
+      if (checkbox.disabled) return false;
+      if (!visibleOnly) return true;
+      return Boolean(checkbox.closest(".saved-row")?.offsetParent);
+    });
+}
+
+function getSelectedItems() {
+  return [...selectedItineraries.values()];
+}
+
+function updateBulkActionUi() {
+  const allCheckboxes = getSelectableItineraryCheckboxes(false);
+  const visibleCheckboxes = getSelectableItineraryCheckboxes(true);
+  const activeIds = new Set(allCheckboxes.map(checkbox => checkbox.dataset.documentId));
+
+  selectedItineraries.forEach((value, key) => {
+    if (!activeIds.has(key)) {
+      selectedItineraries.delete(key);
+    }
+  });
+
+  const selectedCount = selectedItineraries.size;
+
+  if (bulkActionsElement) {
+    bulkActionsElement.hidden = allCheckboxes.length === 0;
+  }
+
+  if (selectedCountElement) {
+    selectedCountElement.textContent = `${selectedCount} selected`;
+  }
+
+  if (selectAllCheckbox) {
+    const visibleSelectedCount = visibleCheckboxes.filter(checkbox => checkbox.checked).length;
+    selectAllCheckbox.checked = visibleCheckboxes.length > 0 && visibleSelectedCount === visibleCheckboxes.length;
+    selectAllCheckbox.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleCheckboxes.length;
+    selectAllCheckbox.disabled = bulkOperationInProgress || visibleCheckboxes.length === 0;
+  }
+
+  if (bulkPublishButton) {
+    bulkPublishButton.disabled = bulkOperationInProgress || selectedCount === 0;
+  }
+
+  if (bulkDeleteButton) {
+    bulkDeleteButton.disabled = bulkOperationInProgress || selectedCount === 0;
+  }
+}
+
+function setBulkButtonsBusy(isBusy, mode = "") {
+  bulkOperationInProgress = isBusy;
+
+  if (bulkPublishButton) {
+    bulkPublishButton.textContent = isBusy && mode === "publish" ? "Publishing..." : "Publish Selected";
+  }
+
+  if (bulkDeleteButton) {
+    bulkDeleteButton.textContent = isBusy && mode === "delete" ? "Deleting..." : "Delete Selected";
+  }
+
+  updateBulkActionUi();
+}
+
+function checkboxItemFromDataset(checkbox) {
+  return {
+    documentId: checkbox.dataset.documentId || "",
+    itineraryId: checkbox.dataset.itineraryId || "",
+    title: checkbox.dataset.title || "Untitled Trip",
+    status: checkbox.dataset.status || "Draft"
+  };
+}
+
+function handleSelectAllChange() {
+  const checked = Boolean(selectAllCheckbox?.checked);
+  const visibleCheckboxes = getSelectableItineraryCheckboxes(true);
+
+  if (!checked) {
+    selectedItineraries.clear();
+    getSelectableItineraryCheckboxes(false).forEach(checkbox => {
+      checkbox.checked = false;
+    });
+    updateBulkActionUi();
+    return;
+  }
+
+  visibleCheckboxes.forEach(checkbox => {
+    checkbox.checked = true;
+    const item = checkboxItemFromDataset(checkbox);
+
+    if (item.documentId) {
+      selectedItineraries.set(item.documentId, item);
+    }
+  });
+
+  updateBulkActionUi();
+}
+
+function handleRowSelectionChange(checkbox) {
+  const item = checkboxItemFromDataset(checkbox);
+
+  if (checkbox.checked && item.documentId) {
+    selectedItineraries.set(item.documentId, item);
+  } else {
+    selectedItineraries.delete(item.documentId);
+  }
+
+  updateBulkActionUi();
+}
+
+async function bulkPublishSelected() {
+  const selectedItems = getSelectedItems();
+  const draftItems = selectedItems.filter(item => item.status !== "Published");
+
+  if (!draftItems.length) {
+    openStatusSuccessModal("No Draft Selected", "Selected published itineraries were skipped.", "!");
+    return;
+  }
+
+  if (!window.confirm(`Publish ${draftItems.length} selected draft itinerar${draftItems.length === 1 ? "y" : "ies"}?`)) {
+    return;
+  }
+
+  setBulkButtonsBusy(true, "publish");
+
+  const results = await Promise.allSettled(
+    draftItems.map(item => publishItineraryById(item.documentId, "Published"))
+  );
+  const failedCount = results.filter(result => result.status === "rejected").length;
+  const successCount = draftItems.length - failedCount;
+
+  selectedItineraries.clear();
+
+  if (currentUser) {
+    showLoading();
+    await loadSavedItineraries(currentUser);
+  }
+
+  setBulkButtonsBusy(false);
+
+  openStatusSuccessModal(
+    failedCount ? "Bulk Publish Partly Completed" : "Bulk Publish Complete",
+    failedCount
+      ? `${successCount} itinerar${successCount === 1 ? "y was" : "ies were"} published. ${failedCount} could not be updated.`
+      : `${successCount} draft itinerar${successCount === 1 ? "y has" : "ies have"} been published.`,
+    failedCount ? "!" : "✓"
+  );
+}
+
+function bulkDeleteSelected() {
+  const selectedItems = getSelectedItems();
+
+  if (!selectedItems.length) {
+    return;
+  }
+
+  openBulkDeleteConfirmModal(selectedItems);
+}
+
+async function performBulkDeleteItineraries(items) {
+  setBulkButtonsBusy(true, "delete");
+
+  const results = await Promise.allSettled(
+    items.map(item => deleteItineraryById(item.documentId, item.itineraryId))
+  );
+  const failedCount = results.filter(result => result.status === "rejected").length;
+  const successCount = items.length - failedCount;
+
+  selectedItineraries.clear();
+
+  if (currentUser) {
+    showLoading();
+    await loadSavedItineraries(currentUser);
+  }
+
+  setBulkButtonsBusy(false);
+
+  openStatusSuccessModal(
+    failedCount ? "Bulk Delete Partly Completed" : "Bulk Delete Complete",
+    failedCount
+      ? `${successCount} itinerar${successCount === 1 ? "y was" : "ies were"} deleted. ${failedCount} could not be deleted.`
+      : `${successCount} itinerar${successCount === 1 ? "y has" : "ies have"} been deleted.`,
+    failedCount ? "!" : "✓"
+  );
 }
 
 function normaliseEmail(value) {
@@ -622,14 +825,18 @@ function initModalEvents() {
   document.getElementById("status-success-ok")?.addEventListener("click", closeStatusSuccessModal);
   document.getElementById("cancel-delete-btn")?.addEventListener("click", closeDeleteConfirmModal);
   document.getElementById("confirm-delete-btn")?.addEventListener("click", function () {
-    if (!pendingDeleteDocumentId || !pendingDeleteItineraryId) return;
-    const targetDocumentId = pendingDeleteDocumentId;
-    const targetItineraryId = pendingDeleteItineraryId;
-    closeDeleteConfirmModal();
-    performDeleteItinerary(targetDocumentId, targetItineraryId).catch(error => {
-      console.error("Failed to delete itinerary:", error);
-      openStatusSuccessModal("Delete Failed", "The itinerary could not be deleted.", "!");
-    });
+    if (bulkOperationInProgress) return;
+
+    if (pendingBulkDeleteItems.length) {
+      const targetItems = [...pendingBulkDeleteItems];
+      closeDeleteConfirmModal();
+      performBulkDeleteItineraries(targetItems).catch(error => {
+        console.error("Failed to delete selected itineraries:", error);
+        setBulkButtonsBusy(false);
+        openStatusSuccessModal("Delete Failed", "The selected itineraries could not be deleted.", "!");
+      });
+      return;
+    }
   });
   closeInviteButton?.addEventListener("click", closeInviteModal);
   inviteModal?.addEventListener("click", function (event) {
@@ -639,6 +846,16 @@ function initModalEvents() {
   peopleModal?.addEventListener("click", function (event) {
     if (event.target === peopleModal) closePeopleModal();
   });
+
+  selectAllCheckbox?.addEventListener("change", handleSelectAllChange);
+  bulkPublishButton?.addEventListener("click", function () {
+    bulkPublishSelected().catch(error => {
+      console.error("Failed to publish selected itineraries:", error);
+      setBulkButtonsBusy(false);
+      openStatusSuccessModal("Publish Failed", "The selected itineraries could not be published.", "!");
+    });
+  });
+  bulkDeleteButton?.addEventListener("click", bulkDeleteSelected);
 }
 
 async function loadOwnedItineraries(user) {
@@ -970,8 +1187,20 @@ function renderItineraries(itineraries, targetElement, listType) {
     const badgeClass = getBadgeClass(status);
     const unreadActivityCount = Number(itinerary.unread_activity_count || 0);
     const row = document.createElement("div");
-    row.className = "saved-row";
+    row.className = listType === "owned" ? "saved-row is-selectable" : "saved-row";
     row.innerHTML = `
+      ${listType === "owned" ? `
+        <label class="saved-row-select" aria-label="Select ${escapeHtml(itinerary.title || "itinerary")}">
+          <input
+            type="checkbox"
+            class="js-bulk-select-itinerary"
+            data-document-id="${escapeHtml(itinerary.id)}"
+            data-itinerary-id="${escapeHtml(itinerary.itinerary_id)}"
+            data-title="${escapeHtml(itinerary.title || "Untitled Trip")}"
+            data-status="${escapeHtml(itinerary.status || "Draft")}"
+          >
+        </label>
+      ` : ""}
       <div class="saved-icon">🗓️</div>
       <div class="saved-info">
         <div class="saved-title">
@@ -1001,21 +1230,17 @@ function renderItineraries(itineraries, targetElement, listType) {
         ${canEdit ? `<a href="/saved-itineraries/${encodeURIComponent(itinerary.id)}/edit" class="btn btn-secondary btn-sm">Edit</a>` : ""}
         <button type="button" class="btn btn-secondary btn-sm js-people-itinerary">People</button>
         ${listType === "owned" ? `<button type="button" class="btn btn-secondary btn-sm js-invite-itinerary">Invite</button>` : ""}
-        ${listType === "owned" ? `<button type="button" class="btn btn-warning btn-sm js-toggle-publish">${itinerary.status === "Published" ? "Unpublish" : "Publish"}</button>` : ""}
-        ${listType === "owned" ? `<button type="button" class="btn btn-danger btn-sm js-delete-itinerary">Delete</button>` : ""}
       </div>
     `;
 
-    row.querySelector(".js-toggle-publish")?.addEventListener("click", function () {
-      togglePublishStatus(itinerary.id, itinerary.status).catch(error => {
-        console.error("Failed to update publish status:", error);
-        openStatusSuccessModal("Update Failed", "The publish status could not be updated.", "!");
-      });
-    });
+    const rowCheckbox = row.querySelector(".js-bulk-select-itinerary");
 
-    row.querySelector(".js-delete-itinerary")?.addEventListener("click", function () {
-      openDeleteConfirmModal(itinerary.id, itinerary.itinerary_id, itinerary.title || "this itinerary");
-    });
+    if (rowCheckbox) {
+      rowCheckbox.checked = selectedItineraries.has(itinerary.id);
+      rowCheckbox.addEventListener("change", function () {
+        handleRowSelectionChange(rowCheckbox);
+      });
+    }
 
     row.querySelector(".js-invite-itinerary")?.addEventListener("click", function () {
       openInviteModal(itinerary);
@@ -1046,6 +1271,8 @@ function renderItineraries(itineraries, targetElement, listType) {
 
     targetElement.appendChild(row);
   });
+
+  updateBulkActionUi();
 }
 
 function renderRequests(requests) {
@@ -1265,6 +1492,7 @@ togglePastButton?.addEventListener("click", function () {
   pastVisible = !pastVisible;
   if (pastSection) pastSection.style.display = pastVisible ? "block" : "none";
   togglePastButton.textContent = pastVisible ? "Hide Past Plans" : `View Past Plans (${pastPlanCount})`;
+  updateBulkActionUi();
 });
 
 toggleSharedButton?.addEventListener("click", function () {
@@ -1382,14 +1610,18 @@ copyInviteLinkButton?.addEventListener("click", async function () {
   setInviteMessage("Joining link copied.");
 });
 
-async function togglePublishStatus(documentId, currentStatus) {
-  const nextStatus = currentStatus === "Published" ? "Draft" : "Published";
+async function publishItineraryById(documentId, nextStatus = "Published") {
   await updateDoc(doc(db, ITINERARY_COLLECTION, documentId), {
     status: nextStatus,
     is_public: nextStatus === "Published",
     updated_at: serverTimestamp(),
     published_at: nextStatus === "Published" ? serverTimestamp() : null
   });
+}
+
+async function togglePublishStatus(documentId, currentStatus) {
+  const nextStatus = currentStatus === "Published" ? "Draft" : "Published";
+  await publishItineraryById(documentId, nextStatus);
 
   if (currentUser) {
     showLoading();
@@ -1403,7 +1635,7 @@ async function togglePublishStatus(documentId, currentStatus) {
   );
 }
 
-async function performDeleteItinerary(documentId, itineraryId) {
+async function deleteItineraryById(documentId, itineraryId) {
   const savedRef = doc(db, ITINERARY_COLLECTION, documentId);
   const savedSnap = await getDoc(savedRef);
 
@@ -1426,6 +1658,10 @@ async function performDeleteItinerary(documentId, itineraryId) {
   }
 
   await deleteDoc(doc(db, ITINERARY_COLLECTION, documentId));
+}
+
+async function performDeleteItinerary(documentId, itineraryId) {
+  await deleteItineraryById(documentId, itineraryId);
 
   if (currentUser) {
     showLoading();
