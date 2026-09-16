@@ -724,13 +724,15 @@
   font-size: 13px;
 }
 
-#remove-favourite-dialog .logout-dialog-actions {
+#remove-favourite-dialog .logout-dialog-actions,
+#remove-password-provider-dialog .logout-dialog-actions {
   display: flex;
   gap: 12px;
   margin-top: 22px;
 }
 
-#remove-favourite-dialog .logout-dialog-actions .btn {
+#remove-favourite-dialog .logout-dialog-actions .btn,
+#remove-password-provider-dialog .logout-dialog-actions .btn {
   flex: 1;
   min-height: 46px;
   padding: 12px 18px;
@@ -1467,7 +1469,7 @@
       type="button"
       class="btn btn-danger"
       id="confirm-remove-password-provider-btn">
-      Remove Password Sign-In
+      Remove
     </button>
   </div>
 </dialog>
