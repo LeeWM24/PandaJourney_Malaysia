@@ -3,6 +3,8 @@ import time
 import hashlib
 import threading
 import secrets
+import base64
+import json
 import requests
 from functools import wraps
 from datetime import datetime, timezone, timedelta
@@ -319,6 +321,22 @@ def _ensure_firebase_auth_ready() -> bool:
         return False
 
 
+def _get_firebase_sign_in_provider(id_token: str) -> str:
+    """Read the provider from a Firebase ID token after the token is verified."""
+    try:
+        payload_segment = id_token.split(".")[1]
+        padding = "=" * (-len(payload_segment) % 4)
+        payload_json = base64.urlsafe_b64decode(
+            f"{payload_segment}{padding}".encode("utf-8")
+        )
+        payload = json.loads(payload_json.decode("utf-8"))
+    except (IndexError, ValueError, TypeError, json.JSONDecodeError):
+        return ""
+
+    firebase_claim = payload.get("firebase") or {}
+    return str(firebase_claim.get("sign_in_provider") or "")
+
+
 def _verify_firebase_id_token(id_token: str) -> dict:
     """Verify with Admin SDK, or Firebase Auth REST when Admin is unavailable."""
     if _ensure_firebase_auth_ready():
@@ -363,6 +381,9 @@ def _verify_firebase_id_token(id_token: str) -> dict:
         "email": user.get("email", ""),
         "name": user.get("displayName", ""),
         "email_verified": bool(user.get("emailVerified", False)),
+        "firebase": {
+            "sign_in_provider": _get_firebase_sign_in_provider(id_token),
+        },
     }
 
 @app.route("/session-login", methods=["POST"])
@@ -391,7 +412,15 @@ def session_login():
             "error": "Authentication service is temporarily unavailable."
         }), 503
 
-    if not decoded_token.get("email_verified", False):
+    firebase_claim = decoded_token.get("firebase") or {}
+    sign_in_provider = str(
+        firebase_claim.get("sign_in_provider") or ""
+    )
+
+    if (
+        sign_in_provider != "google.com" and
+        not decoded_token.get("email_verified", False)
+    ):
         return jsonify({
             "error": "Please verify your email before logging in."
         }), 403
