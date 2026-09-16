@@ -273,8 +273,29 @@ Explore community favorites, search destinations, and save routes in a tap.
     // Sort Itineraries
     function getSortedItineraries(list) {
       const clone = [...list];
-      if (state.sort === 'popular') return clone.sort((a, b) => b.views - a.views);
-      if (state.sort === 'newest') return clone.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+      if (state.sort === 'popular') {
+        return clone.sort((a, b) => b.views - a.views);
+      }
+
+      if (state.sort === 'newest') {
+        return clone.sort((a, b) => {
+          const aDate = getPublishedDate(
+            a.published_at ||
+            a.updated_at ||
+            a.created_at
+          );
+
+          const bDate = getPublishedDate(
+            b.published_at ||
+            b.updated_at ||
+            b.created_at
+          );
+
+          return (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
+        });
+      }
+
       return clone.sort((a, b) => b.likes - a.likes);
     }
 
@@ -349,6 +370,62 @@ Explore community favorites, search destinations, and save routes in a tap.
         <div><strong>${count}</strong> of <strong>${total}</strong> itineraries</div>
         <div style="color: var(--muted-fg); font-size: 13px;">${hasAny ? 'Filtered to your vibe.' : 'Browse the community favorites.'}</div>
       `;
+    }
+
+    function getPublishedDate(value) {
+      if (!value) return null;
+
+      // Firestore Timestamp
+      if (typeof value.toDate === 'function') {
+        return value.toDate();
+      }
+
+      // Firestore Timestamp converted to plain object
+      if (typeof value === 'object' && value.seconds) {
+        return new Date(value.seconds * 1000);
+      }
+
+      const date = new Date(value);
+
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatPublishedAgo(value) {
+      const publishedDate = getPublishedDate(value);
+
+      if (!publishedDate) {
+        return 'Published recently';
+      }
+
+      const diffMs = Math.max(0, Date.now() - publishedDate.getTime());
+      const diffMinutes = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMinutes < 1) {
+        return 'Published just now';
+      }
+
+      if (diffMinutes < 60) {
+        return `Published ${diffMinutes} min${diffMinutes === 1 ? '' : 's'} ago`;
+      }
+
+      if (diffHours < 24) {
+        return `Published ${diffHours} hr${diffHours === 1 ? '' : 's'} ago`;
+      }
+
+      if (diffDays < 7) {
+        return `Published ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+      }
+
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+
+      return `Published in ${String(publishedDate.getDate()).padStart(2, '0')} ${
+        months[publishedDate.getMonth()]
+      } ${publishedDate.getFullYear()}`;
     }
 
     function formatPublicDate(value) {
@@ -427,7 +504,13 @@ Explore community favorites, search destinations, and save routes in a tap.
     }
 
     function getPublicMeta(item) {
-      return `${escapeHtml(formatTripDateRange(item))}`;
+      return escapeHtml(
+        formatPublishedAgo(
+          item.published_at ||
+          item.updated_at ||
+          item.created_at
+        )
+      );
     }
 
     function getStopPoint(stop) {
