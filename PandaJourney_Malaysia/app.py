@@ -417,6 +417,11 @@ def create_account():
     return render_template("create_account.html")
 
 
+@app.route("/resend-verification")
+def resend_verification():
+    return render_template("resend_verification.html")
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():

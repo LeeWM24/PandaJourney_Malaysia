@@ -132,7 +132,7 @@ async function createServerSession(user) {
     if (response.status === 503) {
       error.code = "auth/backend-unavailable";
     } else if (response.status === 401) {
-      error.code = "auth/session-token-expired";
+      error.code = "auth/session-verification-failed";
     } else {
       error.code = "auth/server-session-failed";
     }
@@ -559,6 +559,24 @@ if (loginForm && document.getElementById("email")) {
 // Email Create Account
 const registerForm = document.getElementById("registerForm");
 let registrationPending = false;
+let registrationFormDirty = false;
+
+registerForm?.addEventListener("input", () => {
+  registrationFormDirty = true;
+});
+
+window.addEventListener("beforeunload", event => {
+  if (
+    !registrationFormDirty ||
+    registrationPending ||
+    googleSignupPending
+  ) {
+    return;
+  }
+
+  event.preventDefault();
+  event.returnValue = "";
+});
 
 if (registerForm) {
   registerForm.addEventListener("submit", async (event) => {
@@ -707,7 +725,7 @@ if (registerForm) {
       sessionStorage.setItem(
         "pandajourney-auth-message",
         verificationSent
-          ? `Account created. Check your email and verify it before signing in. If you cannot find the email, check your spam or junk folder.${profileSaved ? "" : " Your profile will be completed when you sign in."}`
+          ? `Account created. A verification email was sent to ${email}. Verify it before signing in. If you cannot find it, check your spam or junk folder.${profileSaved ? "" : " Your profile will be completed when you sign in."}`
           : "Account created, but the verification email could not be sent. Sign in again to resend it. Also check your spam or junk folder."
       );
       window.location.href = "/login";
@@ -735,7 +753,7 @@ if (registerForm) {
         "auth/email-already-in-use"
       ) {
         errorBox.textContent =
-          "An account with this email address already exists.";
+          "This email is already registered. If you originally used Google, sign in with Google and add password sign-in from Profile → Account Security.";
 
       // M2: Firebase rejects the email format
       } else if (
@@ -840,8 +858,8 @@ function getAuthenticationErrorMessage(error) {
     case "auth/backend-unavailable":
       return "Sign-in succeeded, but PandaJourney could not reach its server. Please wait a moment and try again.";
 
-    case "auth/session-token-expired":
-      return "Your sign-in token expired before the session was created. Please sign in again.";
+    case "auth/session-verification-failed":
+      return "PandaJourney could not verify this sign-in with the server. Please try again. If it continues, the Firebase server configuration needs to be checked.";
 
     case "auth/server-session-failed":
       return error.message ||
