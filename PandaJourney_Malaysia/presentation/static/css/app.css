@@ -107,6 +107,7 @@ button, input, select, textarea { font: inherit; }
 .login-message {display: none; padding: 11px 14px; margin-bottom: 14px; border-radius: 12px; font-size: 13px; line-height: 1.45;}
 .login-message.show {display: block;}
 .login-message.success {color: #166534; background: #dcfce7; border: 1px solid #86efac;}
+.login-message.warning {color: #36584c; background: #f2faf6; border: 1px solid #cfe4dc;}
 .login-message.error {color: #991b1b; background: #fee2e2; border: 1px solid #fca5a5;}
 
 .logout-error {margin-top: 14px;padding: 10px 12px;color: #991b1b;background: #fef2f2;border: 1px solid #fecaca;border-radius: 8px;font-size: 13px;line-height: 1.5;text-align: left;}
