@@ -1727,7 +1727,7 @@ async function loadFavourites(user) {
             <button
               class="fav-name-button"
               type="button"
-              title="View attraction information">
+              title="Open attraction details">
               ${escapeHtml(attractionName)}
             </button>
           </div>
@@ -1744,7 +1744,20 @@ async function loadFavourites(user) {
           ?.addEventListener(
             "click",
             () => {
-              openFavouriteDetails(data);
+              const detailUrl =
+                new URL(
+                  "/attractions",
+                  window.location.origin
+                );
+
+              detailUrl.searchParams.set(
+                "favourite",
+                docSnap.id
+              );
+
+              window.location.assign(
+                detailUrl.toString()
+              );
             }
           );
 
