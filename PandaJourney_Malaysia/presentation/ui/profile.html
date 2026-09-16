@@ -454,12 +454,6 @@
   opacity: 1;
 }
 
-.interest-hint {
-  margin-top: 10px;
-  color: var(--fg-2);
-  font-size: 12px;
-}
-
 .profile-identity-edit {
   margin-top: 22px;
   padding-top: 22px;
@@ -477,7 +471,10 @@
 .profile-edit-interests {
   display: grid;
   gap: 14px;
-  margin-top: 18px;
+}
+
+.profile-edit-footer {
+  margin-top: 22px;
 }
 
 /* =================================
@@ -1006,7 +1003,43 @@
               class="profile-identity-edit"
               id="edit-profile-section">
 
-          <div class="profile-security-header">
+          <div class="profile-edit-interests">
+            <div>
+              <div class="profile-prefs-title">
+                Travel Interests
+              </div>
+
+              <div class="profile-prefs-sub">
+                Interests that describe this traveller
+              </div>
+            </div>
+
+            {% set interests_list = [
+              ('culture', '🏛️ Culture'),
+              ('museum', '🖼️ Museum'),
+              ('nature', '🌿 Nature'),
+              ('shopping', '🛍️ Shopping'),
+              ('food', '🍜 Food')
+            ] %}
+
+            <div
+              class="chips"
+              id="interest-chips">
+
+              {% for value, label in interests_list %}
+              <button
+                type="button"
+                class="chip interest-chip"
+                data-interest="{{ value }}"
+                aria-pressed="false">
+                {{ label }}
+              </button>
+              {% endfor %}
+            </div>
+
+          </div>
+
+          <div class="profile-security-header profile-edit-footer">
             <div>
               <div class="profile-security-title">
                 Edit Profile
@@ -1104,47 +1137,6 @@
             </div>
           </div>
 
-          <div class="profile-edit-interests">
-            <div>
-              <div class="profile-prefs-title">
-                Travel Interests
-              </div>
-
-              <div class="profile-prefs-sub">
-                Interests that describe this traveller
-              </div>
-            </div>
-
-            {% set interests_list = [
-              ('culture', '🏛️ Culture'),
-              ('museum', '🖼️ Museum'),
-              ('nature', '🌿 Nature'),
-              ('shopping', '🛍️ Shopping'),
-              ('food', '🍜 Food')
-            ] %}
-
-            <div
-              class="chips"
-              id="interest-chips">
-
-              {% for value, label in interests_list %}
-              <button
-                type="button"
-                class="chip interest-chip"
-                data-interest="{{ value }}"
-                aria-pressed="false">
-                {{ label }}
-              </button>
-              {% endfor %}
-            </div>
-
-            <div
-              class="interest-hint"
-              id="interest-hint">
-              Click Edit Profile to update your interests.
-            </div>
-          </div>
-
           <div
             class="edit-profile-confirm hidden"
             id="edit-actions">
@@ -1185,8 +1177,6 @@
             </div>
           </div>
             </div>
-
-
 
     </div>
 
