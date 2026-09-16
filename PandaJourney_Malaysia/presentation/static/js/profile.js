@@ -594,11 +594,16 @@ window.toggleEdit = function () {
       "profile-identity-card"
     );
 
+  const editProfileSection =
+    document.getElementById(
+      "edit-profile-section"
+    );
+
   profileIdentityCard
     ?.classList
     .add("profile-editing");
 
-  profileIdentityCard
+  editProfileSection
     ?.scrollIntoView({
       behavior: "smooth",
       block: "start"
