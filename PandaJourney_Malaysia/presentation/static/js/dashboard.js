@@ -396,7 +396,7 @@ async function loadItineraryData(user) {
     updateSavedCount(itineraries);
     updateSharedCount(itineraries);
     updateUpcomingTrip(itineraries);
-    updateRecentItineraries(itineraries);
+    updateSavedItineraries(itineraries);
 
     console.log(
       "Dashboard itineraries:",
@@ -533,10 +533,10 @@ function updateUpcomingTrip(itineraries) {
 
 
 // =================================
-// Recent Itineraries
+// Saved Itineraries
 // =================================
 
-function updateRecentItineraries(itineraries) {
+function updateSavedItineraries(itineraries) {
   if (!recentListElement) {
     return;
   }
