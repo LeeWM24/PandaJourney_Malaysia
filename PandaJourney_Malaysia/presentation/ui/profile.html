@@ -565,6 +565,13 @@
   gap: 20px;
 }
 
+.profile-security-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .profile-security-title {
   margin-bottom: 6px;
   font-size: 18px;
@@ -585,6 +592,7 @@
 }
 
 #open-change-password-btn.hidden,
+#remove-password-provider-btn.hidden,
 .change-password-form.hidden,
 .google-password-note.hidden {
   display: none !important;
@@ -1232,12 +1240,21 @@
           </div>
         </div>
 
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          id="open-change-password-btn">
-          🔒 Change Password
-        </button>
+        <div class="profile-security-actions">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            id="open-change-password-btn">
+            🔒 Change Password
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm hidden"
+            id="remove-password-provider-btn">
+            Remove Password Sign-In
+          </button>
+        </div>
       </div>
 
       <form
@@ -1413,6 +1430,47 @@
 
   </div>
 </div>
+
+<!-- =================================
+     Remove Password Sign-In Dialog
+================================= -->
+
+<dialog
+  class="logout-dialog"
+  id="remove-password-provider-dialog"
+  aria-labelledby="remove-password-provider-title">
+
+  <div class="logout-dialog-icon">
+    🔐
+  </div>
+
+  <div class="logout-dialog-content">
+    <h3 id="remove-password-provider-title">
+      Remove password sign-in?
+    </h3>
+
+    <p>
+      You will no longer be able to sign in with your email and password.
+      Your Google sign-in, profile, favourites and itineraries will remain.
+    </p>
+  </div>
+
+  <div class="logout-dialog-actions">
+    <button
+      type="button"
+      class="btn btn-ghost"
+      id="cancel-remove-password-provider-btn">
+      Cancel
+    </button>
+
+    <button
+      type="button"
+      class="btn btn-danger"
+      id="confirm-remove-password-provider-btn">
+      Remove Password Sign-In
+    </button>
+  </div>
+</dialog>
 
 <!-- =================================
      Favourite Details Dialog
