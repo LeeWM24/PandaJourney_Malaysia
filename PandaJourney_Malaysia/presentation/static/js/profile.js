@@ -531,11 +531,6 @@ window.toggleEdit = function () {
   isEditing = true;
   updateDisplayNameCount();
 
-  const identityView =
-    document.getElementById(
-      "identity-view"
-    );
-
   const identityEdit =
     document.getElementById(
       "identity-edit"
@@ -550,11 +545,6 @@ window.toggleEdit = function () {
     document.getElementById(
       "edit-toggle-btn"
     );
-
-  if (identityView) {
-    identityView.style.display =
-      "none";
-  }
 
   if (identityEdit) {
     identityEdit.style.display =
@@ -584,11 +574,6 @@ window.toggleEdit = function () {
       );
     });
 
-  if (interestHint) {
-    interestHint.textContent =
-      "Select the interests that describe you.";
-  }
-
   const profileIdentityCard =
     document.getElementById(
       "profile-identity-card"
@@ -617,7 +602,6 @@ window.toggleEdit = function () {
     450
   );
 };
-
 
 // Open Avatar Picker
 
@@ -1081,26 +1065,17 @@ window.cancelEdit = function () {
         "aria-pressed",
         selected ? "true" : "false"
       );
-      document
-      .getElementById(
-        "profile-identity-card"
-      )
-      ?.classList
-      .remove("profile-editing");
     });
 
-  if (interestHint) {
-    interestHint.textContent =
-      "Click Edit Profile to update your interests.";
-  }
+  document
+    .getElementById(
+      "profile-identity-card"
+    )
+    ?.classList
+    .remove("profile-editing");
 
   avatarPicker?.classList.add("hidden");
   avatarEditBtn?.classList.add("hidden");
-
-  const identityView =
-    document.getElementById(
-      "identity-view"
-    );
 
   const identityEdit =
     document.getElementById(
@@ -1116,10 +1091,6 @@ window.cancelEdit = function () {
     document.getElementById(
       "edit-toggle-btn"
     );
-
-  if (identityView) {
-    identityView.style.display = "block";
-  }
 
   if (identityEdit) {
     identityEdit.style.display = "none";
@@ -2032,9 +2003,17 @@ function updatePasswordGuidance() {
   const rules = getPasswordRules(password);
 
   passwordRequirementElements.forEach(element => {
+    const isMet =
+      Boolean(rules[element.dataset.passwordRule]);
+
     element.classList.toggle(
       "met",
-      Boolean(rules[element.dataset.passwordRule])
+      isMet
+    );
+
+    element.classList.toggle(
+      "invalid",
+      !isMet
     );
   });
 
@@ -2554,21 +2533,6 @@ changePasswordForm
             mismatchError.code =
               "auth/user-mismatch";
             throw mismatchError;
-          }
-
-          await reauthenticationResult.user.reload();
-
-          if (
-            !reauthenticationResult.user
-              .emailVerified
-          ) {
-            const verificationError =
-              new Error(
-                "This Google email has not been verified."
-              );
-            verificationError.code =
-              "auth/unverified-email";
-            throw verificationError;
           }
 
           const credential =

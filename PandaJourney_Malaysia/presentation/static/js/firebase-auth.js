@@ -61,9 +61,17 @@ function updateRegistrationPasswordGuidance() {
   document
     .querySelectorAll("[data-register-password-rule]")
     .forEach(element => {
+      const isMet =
+        Boolean(rules[element.dataset.registerPasswordRule]);
+
       element.classList.toggle(
         "met",
-        Boolean(rules[element.dataset.registerPasswordRule])
+        isMet
+      );
+
+      element.classList.toggle(
+        "invalid",
+        !isMet
       );
     });
 
