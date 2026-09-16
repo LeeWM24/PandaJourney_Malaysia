@@ -394,6 +394,30 @@ function hasRealDescription(
 }
 
 
+function getFallbackAttractionDescription(
+  detail = {}
+) {
+  const category =
+    attractionCategory(
+      detail
+    );
+
+  if (
+    !category ||
+    [
+      "Attraction",
+      "Tourist Attraction",
+      "Tourist Attractions",
+      "Point Of Interest"
+    ].includes(category)
+  ) {
+    return "";
+  }
+
+  return `A ${category.toLowerCase()} included as a stop in this itinerary.`;
+}
+
+
 function getDetailList(value) {
   return (
     Array.isArray(value)
@@ -988,6 +1012,131 @@ function setGpsStatus(
 }
 
 
+function hasCurrentLocationState() {
+  return (
+    getFormValue(
+      "use_current_location"
+    ) === "1" &&
+    Boolean(
+      getFormValue(
+        "start_latitude"
+      )
+    ) &&
+    Boolean(
+      getFormValue(
+        "start_longitude"
+      )
+    )
+  );
+}
+
+
+function updateCurrentLocationUi() {
+  const startInput =
+    document.getElementById(
+      "start"
+    );
+
+  const fieldElement =
+    document.getElementById(
+      "start-location-field"
+    );
+
+  const clearButton =
+    document.getElementById(
+      "clear-current-location-btn"
+    );
+
+  const isActive =
+    hasCurrentLocationState();
+
+
+  if (startInput) {
+    if (isActive) {
+      startInput.value =
+        "Current Location";
+    }
+
+    startInput.readOnly =
+      isActive;
+  }
+
+
+  fieldElement
+    ?.classList
+    .toggle(
+      "current-location-active",
+      isActive
+    );
+
+
+  if (clearButton) {
+    clearButton.hidden =
+      !isActive;
+  }
+}
+
+
+function clearCurrentLocation() {
+  const startInput =
+    document.getElementById(
+      "start"
+    );
+
+  const latitudeInput =
+    document.getElementById(
+      "start_latitude"
+    );
+
+  const longitudeInput =
+    document.getElementById(
+      "start_longitude"
+    );
+
+  const useCurrentLocationInput =
+    document.getElementById(
+      "use_current_location"
+    );
+
+
+  if (startInput) {
+    startInput.value =
+      "";
+  }
+
+  if (latitudeInput) {
+    latitudeInput.value =
+      "";
+  }
+
+  if (longitudeInput) {
+    longitudeInput.value =
+      "";
+  }
+
+  if (useCurrentLocationInput) {
+    useCurrentLocationInput.value =
+      "0";
+  }
+
+
+  setGpsStatus("");
+
+  updateCurrentLocationUi();
+
+  hideLocationSuggestions(
+    document.getElementById(
+      "start-suggestions"
+    )
+  );
+
+  persistSmartItineraryState();
+
+  startInput
+    ?.focus();
+}
+
+
 function useCurrentLocation() {
   const startInput =
     document.getElementById(
@@ -1081,6 +1230,9 @@ function useCurrentLocation() {
       setGpsStatus(
         `Current location selected (${latitude.toFixed(5)}, ${longitude.toFixed(5)}).`
       );
+
+
+      updateCurrentLocationUi();
 
 
       if (gpsButton) {
@@ -1211,6 +1363,10 @@ function resetGpsWhenStartEdited() {
         }
 
         setGpsStatus("");
+
+        updateCurrentLocationUi();
+
+        persistSmartItineraryState();
       }
 
     }
@@ -1575,6 +1731,8 @@ function renderLocationSuggestions(
 
 
             setGpsStatus("");
+
+            updateCurrentLocationUi();
           }
 
 
@@ -2913,6 +3071,21 @@ function collectSmartItineraryState() {
           "start"
         ),
 
+      use_current_location:
+        getFormValue(
+          "use_current_location"
+        ),
+
+      start_latitude:
+        getFormValue(
+          "start_latitude"
+        ),
+
+      start_longitude:
+        getFormValue(
+          "start_longitude"
+        ),
+
       end:
         getFormValue(
           "end"
@@ -3046,6 +3219,9 @@ function restoreSmartItineraryState() {
     'input[name="interests"]',
     state.form.interests
   );
+
+
+  updateCurrentLocationUi();
 
 
   updateMaximumStopsOptions();
@@ -4074,23 +4250,30 @@ async function openItineraryPlaceDetail(
     }
 
 
-    const showDescription =
+    const descriptionText =
       hasRealDescription(
         detail
-      );
+      )
+        ? String(
+            detail.description ||
+            ""
+          ).trim()
+        : getFallbackAttractionDescription(
+            detail
+          );
 
 
     if (descriptionElement) {
       descriptionElement.textContent =
-        showDescription
-          ? detail.description
-          : "";
+        descriptionText;
     }
 
 
     setSectionVisibility(
       "itinerary-detail-about-section",
-      showDescription
+      Boolean(
+        descriptionText
+      )
     );
 
 
@@ -5578,7 +5761,19 @@ document.addEventListener(
       );
 
 
+    document
+      .getElementById(
+        "clear-current-location-btn"
+      )
+      ?.addEventListener(
+        "click",
+        clearCurrentLocation
+      );
+
+
     resetGpsWhenStartEdited();
+
+    updateCurrentLocationUi();
 
 
     /*

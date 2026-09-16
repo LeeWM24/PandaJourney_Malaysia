@@ -2061,6 +2061,21 @@ def is_browser_current_location(place: dict[str, Any] | None) -> bool:
     )
 
 
+def is_current_location_point(place: dict[str, Any] | None) -> bool:
+    if not place:
+        return False
+
+    source = str(place.get("source", "")).lower()
+    display_name = str(place.get("display_name", "")).lower()
+    name = str(place.get("name", "")).lower()
+
+    return (
+        source == "browser gps"
+        or display_name == "current location"
+        or name == "current location"
+    )
+
+
 def build_coordinate_text(place: dict[str, Any] | None) -> str:
     if not place:
         return ""
@@ -2077,6 +2092,42 @@ def build_coordinate_text(place: dict[str, Any] | None) -> str:
         return ""
 
 
+def get_google_maps_place_id(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    return str(place.get("google_place_id") or "").strip()
+
+
+def build_google_maps_place_text(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    for key in ("name", "resolved_name", "display_name"):
+        text = " ".join(str(place.get(key) or "").split()).strip()
+
+        if text:
+            return text
+
+    return ""
+
+
+def build_google_maps_point_text(place: dict[str, Any] | None) -> str:
+    if not place:
+        return ""
+
+    if is_current_location_point(place):
+        return build_coordinate_text(place)
+
+    place_id = get_google_maps_place_id(place)
+    place_text = build_google_maps_place_text(place)
+
+    if place_id and place_text:
+        return place_text
+
+    return build_coordinate_text(place)
+
+
 def build_google_maps_route_url(
     origin: dict[str, Any] | None,
     destination: dict[str, Any] | None,
@@ -2084,41 +2135,70 @@ def build_google_maps_route_url(
     *,
     force_origin_coordinates: bool = False,
 ) -> str:
-    destination_text = build_coordinate_text(destination)
+    destination_text = build_google_maps_point_text(destination)
 
     if not destination_text:
         return ""
-
-    use_live_current_location = (
-        is_browser_current_location(origin)
-        and not force_origin_coordinates
-    )
 
     params = [
         ("api", "1"),
     ]
 
-    if not use_live_current_location:
-        origin_text = build_coordinate_text(origin)
+    force_origin_to_coordinates = (
+        force_origin_coordinates
+        and is_current_location_point(origin)
+    )
 
-        if origin_text:
-            params.append(("origin", origin_text))
+    origin_text = (
+        build_coordinate_text(origin)
+        if force_origin_to_coordinates
+        else build_google_maps_point_text(origin)
+    )
+
+    if origin_text:
+        params.append(("origin", origin_text))
+
+        origin_place_id = (
+            ""
+            if force_origin_to_coordinates or is_current_location_point(origin)
+            else get_google_maps_place_id(origin)
+        )
+
+        if origin_place_id:
+            params.append(("origin_place_id", origin_place_id))
 
     params.append(("destination", destination_text))
 
-    waypoint_texts = [
-        build_coordinate_text(point)
+    destination_place_id = get_google_maps_place_id(destination)
+
+    if destination_place_id and not is_current_location_point(destination):
+        params.append(("destination_place_id", destination_place_id))
+
+    waypoint_points = [
+        point
         for point in (waypoints or [])
+        if build_google_maps_point_text(point)
+    ]
+
+    waypoint_texts = [
+        build_google_maps_point_text(point)
+        for point in waypoint_points
     ]
     waypoint_texts = [text for text in waypoint_texts if text]
 
     if waypoint_texts:
         params.append(("waypoints", "|".join(waypoint_texts)))
 
-    params.append(("travelmode", "driving"))
+        waypoint_place_ids = [
+            get_google_maps_place_id(point)
+            for point in waypoint_points
+            if get_google_maps_place_id(point) and not is_current_location_point(point)
+        ]
 
-    if use_live_current_location:
-        params.append(("dir_action", "navigate"))
+        if len(waypoint_place_ids) == len(waypoint_texts):
+            params.append(("waypoint_place_ids", "|".join(waypoint_place_ids)))
+
+    params.append(("travelmode", "driving"))
 
     return "https://www.google.com/maps/dir/?" + "&".join(
         f"{key}={quote_plus(value)}"
