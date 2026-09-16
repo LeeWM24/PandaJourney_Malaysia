@@ -693,6 +693,12 @@ function getFilteredAttractions() {
 
 function getSortedAttractions(list) {
   const mode = document.getElementById('sort-select').value;
+  const lowestRatedValue = (item) => {
+    const rating = Number(item.rating);
+    // Google ratings start at 1. A zero or missing value means the place is
+    // unrated, so it cannot be meaningfully compared as "lowest rated".
+    return Number.isFinite(rating) && rating > 0 ? rating : Number.POSITIVE_INFINITY;
+  };
   return [...list].sort((a, b) => {
     // A selected venue is the user's explicit destination, so keep it first
     // for relevance and distance sorting when Google Maps returns it.
@@ -701,7 +707,12 @@ function getSortedAttractions(list) {
       if (destinationDifference) return destinationDifference;
     }
     if (mode === 'rating') return Number(b.rating || 0) - Number(a.rating || 0);
-    if (mode === 'rating-asc') return Number(a.rating || 0) - Number(b.rating || 0);
+    if (mode === 'rating-asc') {
+      const ratingDifference = lowestRatedValue(a) - lowestRatedValue(b);
+      if (ratingDifference) return ratingDifference;
+      // Prefer better-supported ratings when two places have the same score.
+      return Number(b.review_count || 0) - Number(a.review_count || 0);
+    }
     if (mode === 'nearest') return Number(a.distance_km ?? Infinity) - Number(b.distance_km ?? Infinity);
     return Number(b.relevance_score ?? b.score ?? 0) - Number(a.relevance_score ?? a.score ?? 0);
   });
