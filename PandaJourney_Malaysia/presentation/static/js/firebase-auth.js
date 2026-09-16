@@ -129,7 +129,13 @@ async function createServerSession(user) {
       "Unable to establish a secure session."
     );
 
-    error.code = "auth/server-session-failed";
+    if (response.status === 503) {
+      error.code = "auth/backend-unavailable";
+    } else if (response.status === 401) {
+      error.code = "auth/session-token-expired";
+    } else {
+      error.code = "auth/server-session-failed";
+    }
     throw error;
   }
 }
@@ -149,7 +155,7 @@ function getSafeLoginDestination() {
     return requested;
   }
 
-  return "/profile";
+  return "/dashboard";
 }
 
 provider.setCustomParameters({
@@ -701,8 +707,8 @@ if (registerForm) {
       sessionStorage.setItem(
         "pandajourney-auth-message",
         verificationSent
-          ? `Account created. Check your email and verify it before signing in.${profileSaved ? "" : " Your profile will be completed when you sign in."}`
-          : "Account created, but the verification email could not be sent. Sign in again to resend it."
+          ? `Account created. Check your email and verify it before signing in. If you cannot find the email, check your spam or junk folder.${profileSaved ? "" : " Your profile will be completed when you sign in."}`
+          : "Account created, but the verification email could not be sent. Sign in again to resend it. Also check your spam or junk folder."
       );
       window.location.href = "/login";
 
@@ -765,16 +771,29 @@ if (registerForm) {
     }
   });
 }
-function showLoginError(message) {
-  const errorBox = document.getElementById("loginError");
+function showLoginMessage(message, type = "error") {
+  const messageBox = document.getElementById("loginError");
 
-  if (!errorBox) {
+  if (!messageBox) {
     console.error(message);
     return;
   }
 
-  errorBox.textContent = message;
-  errorBox.style.display = "block";
+  messageBox.textContent = message;
+  messageBox.className = `login-message ${type} show`;
+  messageBox.setAttribute(
+    "role",
+    type === "error" ? "alert" : "status"
+  );
+  messageBox.setAttribute(
+    "aria-live",
+    type === "error" ? "assertive" : "polite"
+  );
+  messageBox.style.display = "block";
+}
+
+function showLoginError(message) {
+  showLoginMessage(message, "error");
 }
 
 function clearLoginError() {
@@ -801,8 +820,11 @@ if (storedAuthenticationMessage) {
     "pandajourney-auth-message"
   );
 
-  showLoginError(
-    storedAuthenticationMessage
+  showLoginMessage(
+    storedAuthenticationMessage,
+    storedAuthenticationMessage.startsWith("Account created")
+      ? "success"
+      : "warning"
   );
 }
 
@@ -815,9 +837,15 @@ function getAuthenticationErrorMessage(error) {
     case "auth/wrong-password":
       return "Invalid email address or password.";
 
+    case "auth/backend-unavailable":
+      return "Sign-in succeeded, but PandaJourney could not reach its server. Please wait a moment and try again.";
+
+    case "auth/session-token-expired":
+      return "Your sign-in token expired before the session was created. Please sign in again.";
+
     case "auth/server-session-failed":
       return error.message ||
-        "Unable to establish a secure session. Please try again.";
+        "Sign-in succeeded, but the secure PandaJourney session could not be created. Please try again.";
 
     case "auth/network-request-failed":
       return "Network error. Check your internet connection and try again.";
