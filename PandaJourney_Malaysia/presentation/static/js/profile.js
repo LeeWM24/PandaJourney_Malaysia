@@ -8,7 +8,8 @@ import {
   updateProfile,
   EmailAuthProvider,
   reauthenticateWithCredential,
-  updatePassword
+  updatePassword,
+  linkWithCredential
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 import {
@@ -180,6 +181,12 @@ const savePasswordBtn =
 const googlePasswordNote =
   document.getElementById("google-password-note");
 
+const currentPasswordGroup =
+  document.getElementById("current-password-group");
+
+const passwordSecuritySubtitle =
+  document.getElementById("password-security-subtitle");
+
 const passwordMatchHint =
   document.getElementById("password-match-hint");
 
@@ -190,6 +197,7 @@ const passwordRequirementElements =
 const FAVOURITES_COLLECTION = "Favourites";
 const FAVOURITES_PAGE_SIZE = 5;
 let favouriteCurrentPage = 1;
+let linkingPasswordProvider = false;
 
 
 // State
@@ -2051,6 +2059,16 @@ function configurePasswordSection(user) {
         "password"
     );
 
+  const hasGoogleProvider =
+    user.providerData.some(
+      provider =>
+        provider.providerId ===
+        "google.com"
+    );
+
+  linkingPasswordProvider =
+    !canChangePassword && hasGoogleProvider;
+
   changePasswordForm.reset();
   updatePasswordGuidance();
   changePasswordForm.classList.add(
@@ -2059,27 +2077,71 @@ function configurePasswordSection(user) {
 
   if (passwordMessage) {
     passwordMessage.textContent = "";
-
     passwordMessage.className =
       "password-message";
   }
 
-  if (canChangePassword) {
-    openChangePasswordBtn
-      .classList
-      .remove("hidden");
+  openChangePasswordBtn
+    .classList
+    .toggle(
+      "hidden",
+      !canChangePassword && !hasGoogleProvider
+    );
+
+  if (linkingPasswordProvider) {
+    openChangePasswordBtn.textContent =
+      "🔗 Add Password Sign-In";
+
+    currentPasswordGroup
+      ?.classList
+      .add("hidden");
+
+    currentPasswordInput?.removeAttribute(
+      "required"
+    );
+
+    googlePasswordNote.textContent =
+      "Your account currently uses Google. Add a password to sign in with the same email and keep the same profile, favourites and itineraries.";
 
     googlePasswordNote
       .classList
-      .add("hidden");
+      .remove("hidden");
+
+    if (passwordSecuritySubtitle) {
+      passwordSecuritySubtitle.textContent =
+        "Add another secure sign-in method to this account.";
+    }
+
+    if (savePasswordBtn) {
+      savePasswordBtn.textContent =
+        "Add Password Sign-In";
+    }
   } else {
-    openChangePasswordBtn
-      .classList
-      .add("hidden");
+    openChangePasswordBtn.textContent =
+      "🔒 Change Password";
+
+    currentPasswordGroup
+      ?.classList
+      .remove("hidden");
+
+    currentPasswordInput?.setAttribute(
+      "required",
+      ""
+    );
 
     googlePasswordNote
       .classList
-      .remove("hidden");
+      .add("hidden");
+
+    if (passwordSecuritySubtitle) {
+      passwordSecuritySubtitle.textContent =
+        "Update the password used to sign in to your account.";
+    }
+
+    if (savePasswordBtn) {
+      savePasswordBtn.textContent =
+        "Update Password";
+    }
   }
 }
 
@@ -2087,7 +2149,7 @@ function configurePasswordSection(user) {
 openChangePasswordBtn?.addEventListener(
   "click",
   () => {
-    if (!canChangePassword) {
+    if (!canChangePassword && !linkingPasswordProvider) {
       return;
     }
 
@@ -2099,7 +2161,11 @@ openChangePasswordBtn?.addEventListener(
       .classList
       .add("hidden");
 
-    currentPasswordInput?.focus();
+    if (linkingPasswordProvider) {
+      newPasswordInput?.focus();
+    } else {
+      currentPasswordInput?.focus();
+    }
   }
 );
 
@@ -2136,7 +2202,7 @@ function resetPasswordForm() {
     ?.classList
     .add("hidden");
 
-  if (canChangePassword) {
+  if (canChangePassword || linkingPasswordProvider) {
     openChangePasswordBtn
       ?.classList
       .remove("hidden");
@@ -2186,7 +2252,7 @@ changePasswordForm
       const confirmPassword =
         confirmNewPasswordInput?.value || "";
 
-      if (!currentPassword) {
+      if (!linkingPasswordProvider && !currentPassword) {
         showPasswordMessage(
           "Please enter your current password.",
           "error"
@@ -2218,6 +2284,7 @@ changePasswordForm
       }
 
       if (
+        !linkingPasswordProvider &&
         currentPassword ===
         newPassword
       ) {
@@ -2234,31 +2301,76 @@ changePasswordForm
             true;
 
           savePasswordBtn.textContent =
-            "Updating...";
+            linkingPasswordProvider
+              ? "Adding..."
+              : "Updating...";
         }
 
-        const credential =
-          EmailAuthProvider.credential(
-            user.email,
-            currentPassword
+        if (linkingPasswordProvider) {
+          const credential =
+            EmailAuthProvider.credential(
+              user.email,
+              newPassword
+            );
+
+          await linkWithCredential(
+            user,
+            credential
           );
 
-        await reauthenticateWithCredential(
-          user,
-          credential
-        );
+          canChangePassword = true;
+          linkingPasswordProvider = false;
 
-        await updatePassword(
-          user,
-          newPassword
-        );
+          currentPasswordGroup
+            ?.classList
+            .remove("hidden");
+
+          currentPasswordInput?.setAttribute(
+            "required",
+            ""
+          );
+
+          googlePasswordNote
+            ?.classList
+            .add("hidden");
+
+          openChangePasswordBtn.textContent =
+            "🔒 Change Password";
+
+          if (passwordSecuritySubtitle) {
+            passwordSecuritySubtitle.textContent =
+              "Update the password used to sign in to your account.";
+          }
+
+          showPasswordMessage(
+            "Password sign-in added successfully. You can now use Google or your email and password with the same account.",
+            "success"
+          );
+        } else {
+          const credential =
+            EmailAuthProvider.credential(
+              user.email,
+              currentPassword
+            );
+
+          await reauthenticateWithCredential(
+            user,
+            credential
+          );
+
+          await updatePassword(
+            user,
+            newPassword
+          );
+
+          showPasswordMessage(
+            "Password updated successfully.",
+            "success"
+          );
+        }
 
         changePasswordForm.reset();
-
-        showPasswordMessage(
-          "Password updated successfully.",
-          "success"
-        );
+        updatePasswordGuidance();
       } catch (error) {
         console.error(
           "Failed to update password:",
@@ -2294,6 +2406,32 @@ changePasswordForm
         ) {
           message =
             "Network error. Please check your connection.";
+        } else if (
+          error.code ===
+          "auth/provider-already-linked"
+        ) {
+          message =
+            "Password sign-in is already connected to this account.";
+        } else if (
+          error.code ===
+            "auth/credential-already-in-use" ||
+          error.code ===
+            "auth/email-already-in-use"
+        ) {
+          message =
+            "This email/password sign-in belongs to another Firebase account and cannot be linked automatically.";
+        } else if (
+          error.code ===
+          "auth/requires-recent-login"
+        ) {
+          message =
+            "For security, sign out and sign in with Google again before adding a password.";
+        } else if (
+          error.code ===
+          "auth/operation-not-allowed"
+        ) {
+          message =
+            "Email/password sign-in is not enabled for this Firebase project.";
         }
 
         showPasswordMessage(
@@ -2306,7 +2444,9 @@ changePasswordForm
             false;
 
           savePasswordBtn.textContent =
-            "Update Password";
+            linkingPasswordProvider
+              ? "Add Password Sign-In"
+              : "Update Password";
         }
       }
     }
