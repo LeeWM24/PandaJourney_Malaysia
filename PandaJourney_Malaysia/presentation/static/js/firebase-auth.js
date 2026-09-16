@@ -809,8 +809,22 @@ if (registerForm) {
     errorBox.textContent = "";
     errorBox.style.display = "none";
 
-    // M1: Required fields are missing
-    if (!name || !email || !password || !confirmPassword) {
+    if (!name) {
+      errorBox.textContent = "Username cannot be empty.";
+      errorBox.style.display = "block";
+      document.getElementById("name")?.focus();
+      return;
+    }
+
+    if (!email) {
+      errorBox.textContent = "Email cannot be empty.";
+      errorBox.style.display = "block";
+      document.getElementById("email")?.focus();
+      return;
+    }
+
+    // M1: Required password fields are missing
+    if (!password || !confirmPassword) {
       errorBox.textContent =
         "Please complete all required fields.";
 
