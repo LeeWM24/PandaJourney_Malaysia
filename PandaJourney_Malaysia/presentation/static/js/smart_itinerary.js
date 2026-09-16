@@ -80,6 +80,51 @@ const ITINERARY_PLACEHOLDER_IMAGE =
   `);
 
 
+const ITINERARY_DETAIL_LOADING_IMAGE =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(`
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 800 450"
+    >
+      <rect
+        width="800"
+        height="450"
+        fill="#eef8f3"
+      />
+
+      <circle
+        cx="400"
+        cy="188"
+        r="42"
+        fill="none"
+        stroke="#bfe7cf"
+        stroke-width="14"
+      />
+
+      <path
+        d="M400 146a42 42 0 0 1 42 42"
+        fill="none"
+        stroke="#059669"
+        stroke-width="14"
+        stroke-linecap="round"
+      />
+
+      <text
+        x="400"
+        y="300"
+        text-anchor="middle"
+        font-family="Arial"
+        font-size="26"
+        font-weight="700"
+        fill="#47685b"
+      >
+        Loading photo...
+      </text>
+    </svg>
+  `);
+
+
 const PROJECT_DEMO_IMAGE_MARKERS = [
   "images.unsplash.com/photo-1512453979798-5ea266f8880c",
   "images.unsplash.com/photo-1500530855697-b586d89ba3ee",
@@ -115,6 +160,8 @@ let favouriteSearchText = "";
 let itineraryStateClearedForHandoff = false;
 
 const detailPhotoCache = new Map();
+const DETAIL_PHOTO_RETRY_DELAY_MS = 700;
+let detailPhotoRequestId = 0;
 
 
 // =====================================================
@@ -1078,13 +1125,72 @@ function isUsableAttractionImage(
 async function getPlaceDetailPhoto(
   placeName
 ) {
+  const result =
+    await getPlaceDetailPhotoResult(
+      placeName
+    );
+
+  return result.imageUrl;
+}
+
+
+function delay(
+  milliseconds
+) {
+  return new Promise(
+    resolve =>
+      window.setTimeout(
+        resolve,
+        milliseconds
+      )
+  );
+}
+
+
+async function getPlaceDetailPhotoWithRetry(
+  placeName
+) {
+  const firstResult =
+    await getPlaceDetailPhotoResult(
+      placeName
+    );
+
+  if (
+    firstResult.imageUrl ||
+    firstResult.rateLimited
+  ) {
+    return firstResult.imageUrl;
+  }
+
+  await delay(
+    DETAIL_PHOTO_RETRY_DELAY_MS
+  );
+
+  const secondResult =
+    await getPlaceDetailPhotoResult(
+      placeName
+    );
+
+  return secondResult.imageUrl;
+}
+
+
+async function getPlaceDetailPhotoResult(
+  placeName
+) {
   const name =
     String(
       placeName || ""
     ).trim();
 
   if (!name) {
-    return "";
+    return {
+      imageUrl:
+        "",
+
+      rateLimited:
+        false
+    };
   }
 
 
@@ -1104,26 +1210,46 @@ async function getPlaceDetailPhoto(
       `/api/public-place-photo?name=${encodeURIComponent(name)}`
     )
       .then(
-        response =>
-          response.ok
-            ? response.json()
-            : null
-      )
-      .then(
-        data => {
+        async response => {
+          if (!response.ok) {
+            return {
+              imageUrl:
+                "",
+
+              rateLimited:
+                response.status ===
+                  429
+            };
+          }
+
+          const data =
+            await response.json();
+
           const imageUrl =
             data?.image_url ||
             "";
 
-          return isUsableAttractionImage(
-            imageUrl
-          )
-            ? imageUrl
-            : "";
+          return {
+            imageUrl:
+              isUsableAttractionImage(
+                imageUrl
+              )
+                ? imageUrl
+                : "",
+
+            rateLimited:
+              false
+          };
         }
       )
       .catch(
-        () => ""
+        () => ({
+          imageUrl:
+            "",
+
+          rateLimited:
+            false
+        })
       );
 
 
@@ -1132,8 +1258,18 @@ async function getPlaceDetailPhoto(
     promise
   );
 
+  const result =
+    await promise;
 
-  return await promise;
+  if (
+    !result.imageUrl
+  ) {
+    detailPhotoCache.delete(
+      name
+    );
+  }
+
+  return result;
 }
 
 
@@ -4323,6 +4459,27 @@ function setItineraryDetailImage(
 }
 
 
+function setItineraryDetailImageLoading() {
+  setItineraryDetailImage(
+    ITINERARY_DETAIL_LOADING_IMAGE
+  );
+}
+
+
+function shouldApplyDetailPhoto(
+  requestId,
+  modal
+) {
+  return (
+    requestId ===
+      detailPhotoRequestId &&
+    modal?.classList.contains(
+      "show"
+    )
+  );
+}
+
+
 async function openItineraryPlaceDetail(
   kind,
   index = -1
@@ -4355,6 +4512,10 @@ async function openItineraryPlaceDetail(
 
 
   resetItineraryPlaceDetailModal();
+
+
+  const photoRequestId =
+    ++detailPhotoRequestId;
 
 
   const placeKind =
@@ -4574,32 +4735,41 @@ async function openItineraryPlaceDetail(
       detail
     );
 
+  const fallbackPhotoName =
+    isRouteLocation
+      ? (
+          detail.address ||
+          detail.name
+        )
+      : String(
+          detail.name ||
+          detail.stop_name ||
+          detail.place ||
+          detail.address ||
+          ""
+        ).trim();
 
   if (
-    isRouteLocation
+    !isRouteLocation &&
+    !detailImageUrl &&
+    fallbackPhotoName
   ) {
-    detailImageUrl =
-      await getPlaceDetailPhoto(
-        detail.address ||
-        detail.name
-      );
-
-  } else if (
-    !detailImageUrl
-  ) {
-    detailImageUrl =
-      await getPlaceDetailPhoto(
-        detail.name ||
-        detail.address ||
-        detail.area ||
-        detail.location
-      );
+    console.log(
+      "[Planner Photo Lookup]",
+      fallbackPhotoName
+    );
   }
 
-
-  setItineraryDetailImage(
+  if (
     detailImageUrl
-  );
+  ) {
+    setItineraryDetailImage(
+      detailImageUrl
+    );
+
+  } else {
+    setItineraryDetailImageLoading();
+  }
 
 
   if (titleElement) {
@@ -4926,6 +5096,76 @@ async function openItineraryPlaceDetail(
 
   document.body.style.overflow =
     "hidden";
+
+
+  if (
+    !detailImageUrl
+  ) {
+
+    if (
+      !String(
+        fallbackPhotoName ||
+        ""
+      ).trim()
+    ) {
+      if (
+        shouldApplyDetailPhoto(
+          photoRequestId,
+          modal
+        )
+      ) {
+        setItineraryDetailImage(
+          ITINERARY_PLACEHOLDER_IMAGE
+        );
+      }
+
+      return;
+    }
+
+
+    const photoPromise =
+      isRouteLocation
+        ? getPlaceDetailPhoto(
+            fallbackPhotoName
+          )
+        : getPlaceDetailPhotoWithRetry(
+            fallbackPhotoName
+          );
+
+
+    photoPromise
+      .then(
+        imageUrl => {
+          if (
+            !shouldApplyDetailPhoto(
+              photoRequestId,
+              modal
+            )
+          ) {
+            return;
+          }
+
+          setItineraryDetailImage(
+            imageUrl ||
+            ITINERARY_PLACEHOLDER_IMAGE
+          );
+        }
+      )
+      .catch(
+        () => {
+          if (
+            shouldApplyDetailPhoto(
+              photoRequestId,
+              modal
+            )
+          ) {
+            setItineraryDetailImage(
+              ITINERARY_PLACEHOLDER_IMAGE
+            );
+          }
+        }
+      );
+  }
 }
 
 
@@ -4938,6 +5178,10 @@ function closeItineraryAttractionDetail() {
   if (!modal) {
     return;
   }
+
+  detailPhotoRequestId +=
+    1;
+
 
   modal.classList.remove(
     "show"
@@ -5519,6 +5763,35 @@ async function saveItinerary(
       "Start Location";
 
 
+    const startResolvedName =
+      String(
+        startPoint.resolved_name ||
+        plan.start?.resolved_name ||
+        ""
+      )
+        .trim();
+
+
+    const rawStartDisplayName =
+      startText.trim().toLowerCase() ===
+        "current location" &&
+      startResolvedName
+        ? `Near ${startResolvedName}`
+        : (
+            mapData.startDisplayText ||
+            plan.start_display_text ||
+            ""
+          );
+
+
+    const startDisplayName =
+      rawStartDisplayName &&
+      rawStartDisplayName.trim().toLowerCase() !==
+        startText.trim().toLowerCase()
+        ? rawStartDisplayName.trim()
+        : "";
+
+
     const endText =
       mapData.endText ||
       getFormValue(
@@ -5644,6 +5917,9 @@ async function saveItinerary(
 
     start_location_name:
       startText,
+
+    start_display_name:
+      startDisplayName,
 
     start_latitude:
       normaliseCoordinate(

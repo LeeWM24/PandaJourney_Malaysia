@@ -30,6 +30,30 @@
     background: var(--surface);
   }
 
+  .end-location-card {
+    position: relative;
+  }
+
+  .end-location-card .detail-location-value {
+    box-sizing: border-box;
+    padding-right: 96px;
+  }
+
+  .end-location-action {
+    position: absolute;
+    right: 12px;
+    top: 34px;
+    max-width: 88px;
+  }
+
+  .end-route-btn {
+    min-height: 0;
+    padding: 4px 8px;
+    font-size: 10px;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
   .detail-label {
     font-size: 12px;
     color: var(--text-muted);
@@ -434,6 +458,18 @@
 
     .saved-place-modal {
       width: 96%;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .end-location-card .detail-location-value {
+      padding-right: 0;
+    }
+
+    .end-location-action {
+      position: static;
+      max-width: none;
+      margin-top: 8px;
     }
   }
 </style>

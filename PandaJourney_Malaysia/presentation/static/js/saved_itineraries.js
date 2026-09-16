@@ -59,7 +59,6 @@ const closePeopleButton = document.getElementById("close-people-btn");
 const bulkActionsElement = document.getElementById("saved-bulk-actions");
 const selectAllCheckbox = document.getElementById("saved-select-all");
 const selectedCountElement = document.getElementById("saved-selected-count");
-const bulkPublishButton = document.getElementById("bulk-publish-btn");
 const bulkDeleteButton = document.getElementById("bulk-delete-btn");
 
 let currentUser = null;
@@ -450,10 +449,6 @@ function updateBulkActionUi() {
     selectAllCheckbox.disabled = bulkOperationInProgress || visibleCheckboxes.length === 0;
   }
 
-  if (bulkPublishButton) {
-    bulkPublishButton.disabled = bulkOperationInProgress || selectedCount === 0;
-  }
-
   if (bulkDeleteButton) {
     bulkDeleteButton.disabled = bulkOperationInProgress || selectedCount === 0;
   }
@@ -461,10 +456,6 @@ function updateBulkActionUi() {
 
 function setBulkButtonsBusy(isBusy, mode = "") {
   bulkOperationInProgress = isBusy;
-
-  if (bulkPublishButton) {
-    bulkPublishButton.textContent = isBusy && mode === "publish" ? "Publishing..." : "Publish Selected";
-  }
 
   if (bulkDeleteButton) {
     bulkDeleteButton.textContent = isBusy && mode === "delete" ? "Deleting..." : "Delete Selected";
@@ -517,45 +508,6 @@ function handleRowSelectionChange(checkbox) {
   }
 
   updateBulkActionUi();
-}
-
-async function bulkPublishSelected() {
-  const selectedItems = getSelectedItems();
-  const draftItems = selectedItems.filter(item => item.status !== "Published");
-
-  if (!draftItems.length) {
-    openStatusSuccessModal("No Draft Selected", "Selected published itineraries were skipped.", "!");
-    return;
-  }
-
-  if (!window.confirm(`Publish ${draftItems.length} selected draft itinerar${draftItems.length === 1 ? "y" : "ies"}?`)) {
-    return;
-  }
-
-  setBulkButtonsBusy(true, "publish");
-
-  const results = await Promise.allSettled(
-    draftItems.map(item => publishItineraryById(item.documentId, "Published"))
-  );
-  const failedCount = results.filter(result => result.status === "rejected").length;
-  const successCount = draftItems.length - failedCount;
-
-  selectedItineraries.clear();
-
-  if (currentUser) {
-    showLoading();
-    await loadSavedItineraries(currentUser);
-  }
-
-  setBulkButtonsBusy(false);
-
-  openStatusSuccessModal(
-    failedCount ? "Bulk Publish Partly Completed" : "Bulk Publish Complete",
-    failedCount
-      ? `${successCount} itinerar${successCount === 1 ? "y was" : "ies were"} published. ${failedCount} could not be updated.`
-      : `${successCount} draft itinerar${successCount === 1 ? "y has" : "ies have"} been published.`,
-    failedCount ? "!" : "✓"
-  );
 }
 
 function bulkDeleteSelected() {
@@ -848,13 +800,6 @@ function initModalEvents() {
   });
 
   selectAllCheckbox?.addEventListener("change", handleSelectAllChange);
-  bulkPublishButton?.addEventListener("click", function () {
-    bulkPublishSelected().catch(error => {
-      console.error("Failed to publish selected itineraries:", error);
-      setBulkButtonsBusy(false);
-      openStatusSuccessModal("Publish Failed", "The selected itineraries could not be published.", "!");
-    });
-  });
   bulkDeleteButton?.addEventListener("click", bulkDeleteSelected);
 }
 
@@ -1182,7 +1127,8 @@ function renderItineraries(itineraries, targetElement, listType) {
   targetElement.innerHTML = "";
 
   itineraries.forEach(itinerary => {
-    const status = listType === "shared" ? "Shared" : itinerary.status;
+    const isPublished = itinerary.status === "Published" || itinerary.is_public === true;
+    const status = listType === "shared" ? "Shared" : isPublished ? "Published" : itinerary.status;
     const canEdit = listType === "owned" || ["owner", "editor"].includes(String(itinerary.role || "").toLowerCase());
     const badgeClass = getBadgeClass(status);
     const unreadActivityCount = Number(itinerary.unread_activity_count || 0);
@@ -1230,6 +1176,7 @@ function renderItineraries(itineraries, targetElement, listType) {
         ${canEdit ? `<a href="/saved-itineraries/${encodeURIComponent(itinerary.id)}/edit" class="btn btn-secondary btn-sm">Edit</a>` : ""}
         <button type="button" class="btn btn-secondary btn-sm js-people-itinerary">People</button>
         ${listType === "owned" ? `<button type="button" class="btn btn-secondary btn-sm js-invite-itinerary">Invite</button>` : ""}
+        ${listType === "owned" ? `<button type="button" class="btn btn-warning btn-sm js-toggle-publish">${isPublished ? "Unpublish" : "Publish"}</button>` : ""}
       </div>
     `;
 
@@ -1248,6 +1195,13 @@ function renderItineraries(itineraries, targetElement, listType) {
 
     row.querySelector(".js-people-itinerary")?.addEventListener("click", function () {
       openPeopleModal(itinerary);
+    });
+
+    row.querySelector(".js-toggle-publish")?.addEventListener("click", function () {
+      togglePublishStatus(itinerary.id, isPublished ? "Published" : "Draft").catch(error => {
+        console.error("Failed to update publish status:", error);
+        openStatusSuccessModal("Update Failed", "The publish status could not be updated.", "!");
+      });
     });
 
     row.querySelector(".js-row-activity")?.addEventListener("click", function (event) {
@@ -1658,17 +1612,6 @@ async function deleteItineraryById(documentId, itineraryId) {
   }
 
   await deleteDoc(doc(db, ITINERARY_COLLECTION, documentId));
-}
-
-async function performDeleteItinerary(documentId, itineraryId) {
-  await deleteItineraryById(documentId, itineraryId);
-
-  if (currentUser) {
-    showLoading();
-    await loadSavedItineraries(currentUser);
-  }
-
-  openStatusSuccessModal("Itinerary Deleted", "The itinerary has been deleted successfully.", "✓");
 }
 
 initModalEvents();

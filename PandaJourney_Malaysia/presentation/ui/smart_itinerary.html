@@ -196,6 +196,7 @@
 
   .timetable-actions {
     margin-top: 10px;
+    min-width: 0;
   }
 
   .timetable-actions .btn {
@@ -203,6 +204,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .timetable-content {
+    min-width: 0;
   }
 
   .save-modal-overlay {
@@ -446,12 +451,16 @@
   }
 
 .timetable-name-button {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
 
-  width: fit-content;
+  width: 100%;
   max-width: 100%;
 
-  display: inline-block;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 
   border: 0;
   background: transparent;
@@ -468,7 +477,9 @@
 
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 
 .timetable-name-button:hover,
@@ -492,12 +503,13 @@
     gap: 8px;
     flex: 0 0 auto;
     margin-left: auto;
+    max-width: 100%;
     white-space: nowrap;
   }
 
   .stop-inline-tag {
-    display: inline-flex;
-    align-items: center;
+    display: inline-block;
+    max-width: 180px;
     padding: 4px 10px;
     border-radius: 999px;
     background: #e8f7ef;
@@ -505,6 +517,10 @@
     font-size: 12px;
     font-weight: 800;
     border: 1px solid #bfe7cf;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
   }
 
   .stop-rating {
@@ -514,6 +530,17 @@
     font-size: 12px;
     font-weight: 800;
     color: #b77900;
+    flex-shrink: 0;
+  }
+
+  .generated-route-btn {
+    width: fit-content;
+    max-width: 100%;
+    min-height: 0;
+    padding: 5px 10px;
+    font-size: 11px;
+    line-height: 1.15;
+    white-space: nowrap;
   }
 
   .timetable-remove {
@@ -779,8 +806,13 @@
 
     .timetable-stop-actions {
       margin-left: 0;
-      justify-content: flex-start;
+      align-self: stretch;
+      justify-content: flex-end;
       flex-wrap: wrap;
+    }
+
+    .stop-inline-tag {
+      max-width: 150px;
     }
   }
 
@@ -1278,6 +1310,7 @@
             {% for item in plan["timetable"] %}
               {% set is_start_row = loop.first %}
               {% set is_end_row = loop.last %}
+              {% set display_name = item.name | default(item.activity) %}
               {% set stop_match = namespace(attraction=None, index=-1) %}
 
               {% for attraction in plan["selected"] %}
@@ -1309,23 +1342,25 @@
                       class="timetable-name timetable-name-button js-open-place-detail"
                       data-place-kind="{% if is_start_row %}start{% elif is_end_row %}end{% else %}attraction{% endif %}"
                       data-attraction-index="{{ stop_match.index }}"
+                      title="{{ display_name | e }}"
                     >
-                      {{ item.name | default(item.activity) }}
+                      {{ display_name }}
                     </button>
 
                     {% if stop_match.attraction %}
                       {% set raw_category = stop_match.attraction.get("category") or stop_match.attraction.get("type") or "" %}
                       {% set matched_interests = stop_match.attraction.get("matched_interests", []) %}
+                      {% set category_label = namespace(text="Attraction") %}
+
+                      {% if raw_category | lower in ["", "attraction", "tourist attraction", "tourist attractions", "point of interest"] and matched_interests %}
+                        {% set category_label.text = matched_interests[0] | title %}
+                      {% elif raw_category %}
+                        {% set category_label.text = raw_category %}
+                      {% endif %}
 
                       <div class="timetable-stop-actions">
-                        <span class="stop-inline-tag">
-                          {% if raw_category | lower in ["", "attraction", "tourist attraction", "tourist attractions", "point of interest"] and matched_interests %}
-                            {{ matched_interests[0] | title }}
-                          {% elif raw_category %}
-                            {{ raw_category }}
-                          {% else %}
-                            Attraction
-                          {% endif %}
+                        <span class="stop-inline-tag" title="{{ category_label.text | e }}">
+                          {{ category_label.text }}
                         </span>
 
                         {% if stop_match.attraction.get("rating") %}
@@ -1367,14 +1402,19 @@
                   </div>
 
                   {% if item.google_maps_url %}
+                    {% set marker_index = loop.index0 %}
+                    {% set route_from_marker = "S" if marker_index <= 1 else marker_index - 1 %}
+                    {% set route_to_marker = "E" if is_end_row else marker_index %}
+
                     <div class="timetable-actions">
                       <a
                         href="{{ item.google_maps_url }}"
                         target="_blank"
                         rel="noopener noreferrer"
-                        class="btn btn-secondary btn-sm"
+                        class="btn btn-secondary btn-sm generated-route-btn"
+                        title="{{ item.google_maps_label | default('Google Maps') | e }}"
                       >
-                        {{ item.google_maps_label | default('Google Maps') }}
+                        Google Maps {{ route_from_marker }} &rarr; {{ route_to_marker }}
                       </a>
                     </div>
                   {% endif %}

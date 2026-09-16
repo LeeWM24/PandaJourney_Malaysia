@@ -147,6 +147,31 @@ function cleanDisplayText(value) {
     .trim();
 }
 
+function isRawCoordinateText(value) {
+  return /^-?\d+(?:\.\d+)?\s*,\s*-?\d+(?:\.\d+)?$/.test(
+    cleanDisplayText(value)
+  );
+}
+
+function getReadableLocationText(value, mainText = "") {
+  const text = cleanDisplayText(value);
+  const main = cleanDisplayText(mainText);
+
+  if (
+    !text ||
+    isRawCoordinateText(text) ||
+    isGenericLocationName(text)
+  ) {
+    return "";
+  }
+
+  if (main && text.toLowerCase() === main.toLowerCase()) {
+    return "";
+  }
+
+  return text;
+}
+
 function getDetailList(value) {
   if (Array.isArray(value)) {
     return value.flatMap(getDetailList);
@@ -195,18 +220,15 @@ function uniqueCleanValues(values, formatter = cleanDisplayText) {
 }
 
 function getSavedStopLocationText(stop) {
-  const locationText = cleanDisplayText(
+  return getReadableLocationText(
     stop.address ||
     stop.location ||
     stop.area ||
+    "",
+    stop.stop_name ||
+    stop.name ||
     ""
   );
-
-  if (locationText) {
-    return locationText;
-  }
-
-  return buildCoordinateText(getStopPoint(stop));
 }
 
 function getSavedStopAboutText(stop) {
@@ -319,7 +341,10 @@ function openSavedPlaceDetailModal(place, options = {}) {
   const isRouteLocation = Boolean(options.isRouteLocation);
   const roleText = cleanDisplayText(options.role || place.role || "");
   const titleText = cleanDisplayText(place.name || place.stop_name || "Place");
-  const locationText = cleanDisplayText(place.location || getSavedStopLocationText(place));
+  const locationText = getReadableLocationText(
+    place.location || getSavedStopLocationText(place),
+    titleText
+  );
 
   const roleElement = document.getElementById("saved-place-detail-role");
   const titleElement = document.getElementById("saved-place-detail-title");
@@ -602,6 +627,49 @@ function getPhotoStops(stops) {
   });
 }
 
+function addPhotoLocationCandidate(candidates, seen, queryText, labelText = "") {
+  const query = getReadableLocationText(queryText);
+  const label = getReadableLocationText(labelText) || query;
+  const key = query.toLowerCase();
+
+  if (!query || isGenericLocationName(query) || seen.has(key)) {
+    return;
+  }
+
+  seen.add(key);
+  candidates.push({
+    query,
+    label
+  });
+}
+
+function getPhotoLocationCandidates(itinerary, stops) {
+  const candidates = [];
+  const seen = new Set();
+  const startLocationName = getStartLocationName(itinerary);
+  const startQuery = isCurrentLocationName(startLocationName)
+    ? getStartSecondaryLocationText(itinerary)
+    : getStartDisplayName(itinerary);
+
+  addPhotoLocationCandidate(candidates, seen, startQuery);
+
+  getPhotoStops(stops).forEach(function (stop) {
+    addPhotoLocationCandidate(
+      candidates,
+      seen,
+      getStopPlaceName(stop)
+    );
+  });
+
+  addPhotoLocationCandidate(
+    candidates,
+    seen,
+    getEndDisplayName(itinerary)
+  );
+
+  return candidates;
+}
+
 async function getPlacePhoto(placeName) {
   if (placePhotoCache.has(placeName)) {
     return placePhotoCache.get(placeName);
@@ -637,6 +705,15 @@ function getStartLocationName(itinerary) {
   );
 }
 
+function getStartSecondaryLocationText(itinerary) {
+  return getReadableLocationText(
+    itinerary.start_display_name ||
+    itinerary.startDisplayName ||
+    "",
+    getStartLocationName(itinerary)
+  );
+}
+
 function getEndLocationName(itinerary) {
   return (
     itinerary.end_location_name ||
@@ -647,6 +724,12 @@ function getEndLocationName(itinerary) {
 }
 
 function getStartDisplayName(itinerary) {
+  const startDisplayName = getStartSecondaryLocationText(itinerary);
+
+  if (startDisplayName) {
+    return shortLocationName(startDisplayName);
+  }
+
   return shortLocationName(getStartLocationName(itinerary)) || "Start Location";
 }
 
@@ -1183,7 +1266,7 @@ async function loadDetail(user) {
 
   renderItinerary(itinerary, stops);
   renderDetailStops(itinerary, stops);
-  renderPhotoCarousel(stops).catch(function (error) {
+  renderPhotoCarousel(itinerary, stops).catch(function (error) {
     console.error("Failed to render itinerary photos:", error);
   });
 
@@ -1235,14 +1318,42 @@ function renderItinerary(itinerary, stops) {
   renderEndLocationAction(itinerary, stops);
 }
 
-async function renderPhotoCarousel(stops) {
+async function renderPhotoCarousel(itinerary, stops) {
   const carousel = document.getElementById("saved-detail-photo-carousel");
 
   if (!carousel) return;
 
-  const photoStops = getPhotoStops(stops);
+  const photoLocations = getPhotoLocationCandidates(itinerary, stops);
 
-  if (!photoStops.length) {
+  if (!photoLocations.length) {
+    carousel.innerHTML = `
+      <div class="community-photo-placeholder">
+        No photo available
+      </div>
+    `;
+    return;
+  }
+
+  carousel.innerHTML = `
+    <div class="community-photo-placeholder">
+      Loading photo...
+    </div>
+  `;
+
+  const photos = [];
+
+  for (const location of photoLocations) {
+    const photo = await getPlacePhoto(location.query);
+
+    if (photo.imageUrl) {
+      photos.push({
+        imageUrl: photo.imageUrl,
+        placeName: location.label || photo.placeName
+      });
+    }
+  }
+
+  if (!photos.length) {
     carousel.innerHTML = `
       <div class="community-photo-placeholder">
         No photo available
@@ -1253,41 +1364,24 @@ async function renderPhotoCarousel(stops) {
 
   let currentIndex = 0;
 
-  async function renderPhoto() {
-    carousel.innerHTML = `
-      <div class="community-photo-placeholder">
-        Loading photo...
-      </div>
-    `;
-
-    const placeName = getStopPlaceName(photoStops[currentIndex]);
-    const photo = await getPlacePhoto(placeName);
+  function renderPhoto() {
+    const photo = photos[currentIndex];
 
     carousel.innerHTML = `
-      ${
-        photo.imageUrl
-          ? `
-            <img
-              class="saved-detail-photo"
-              src="${escapeHtml(photo.imageUrl)}"
-              alt="${escapeHtml(photo.placeName)}"
-              loading="lazy"
-            >
-          `
-          : `
-            <div class="community-photo-placeholder">
-              No photo available
-            </div>
-          `
-      }
+      <img
+        class="saved-detail-photo"
+        src="${escapeHtml(photo.imageUrl)}"
+        alt="${escapeHtml(photo.placeName)}"
+        loading="lazy"
+      >
       <div class="saved-detail-photo-label">
         ${escapeHtml(photo.placeName)}
       </div>
       <div class="saved-detail-photo-count">
-        ${currentIndex + 1} / ${photoStops.length}
+        ${currentIndex + 1} / ${photos.length}
       </div>
       ${
-        photoStops.length > 1
+        photos.length > 1
           ? `
             <button class="saved-detail-carousel-btn saved-detail-carousel-prev" type="button" aria-label="Previous photo">&lsaquo;</button>
             <button class="saved-detail-carousel-btn saved-detail-carousel-next" type="button" aria-label="Next photo">&rsaquo;</button>
@@ -1297,17 +1391,17 @@ async function renderPhotoCarousel(stops) {
     `;
 
     carousel.querySelector(".saved-detail-carousel-prev")?.addEventListener("click", function () {
-      currentIndex = (currentIndex - 1 + photoStops.length) % photoStops.length;
-      renderPhoto().catch(console.error);
+      currentIndex = (currentIndex - 1 + photos.length) % photos.length;
+      renderPhoto();
     });
 
     carousel.querySelector(".saved-detail-carousel-next")?.addEventListener("click", function () {
-      currentIndex = (currentIndex + 1) % photoStops.length;
-      renderPhoto().catch(console.error);
+      currentIndex = (currentIndex + 1) % photos.length;
+      renderPhoto();
     });
   }
 
-  await renderPhoto();
+  renderPhoto();
 }
 
 function renderEndLocationAction(itinerary, stops) {
@@ -1383,6 +1477,8 @@ function renderDetailStops(itinerary, stops) {
 
   const routeRows = [];
   const startName = getStartDisplayName(itinerary);
+  const startLocationName = getStartLocationName(itinerary);
+  const startSecondaryLocationText = getStartSecondaryLocationText(itinerary);
   const endName = getEndDisplayName(itinerary);
   const dayStartTimes = getDayStartTimes(itinerary);
   const startTime = formatClockMinutes(parseClockMinutes(dayStartTimes["1"] || itinerary.start_time || "09:00"));
@@ -1403,8 +1499,10 @@ function renderDetailStops(itinerary, stops) {
       title: startName,
       meta: `Starting location - Start time: ${startTime}`,
       detail: {
-        name: startName,
-        location: getStartLocationName(itinerary),
+        name: isCurrentLocationName(startLocationName)
+          ? "Current Location"
+          : startName,
+        location: startSecondaryLocationText,
         latitude: getStartPoint(itinerary)?.latitude,
         longitude: getStartPoint(itinerary)?.longitude
       }
