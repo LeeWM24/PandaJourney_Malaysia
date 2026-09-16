@@ -3657,6 +3657,31 @@ function isDuplicateManualAttraction(
   attraction,
   existing
 ) {
+  const attractionProviderId =
+    String(
+      attraction.google_place_id ||
+      attraction.data_id ||
+      attraction.place_id ||
+      ""
+    ).trim();
+
+  const existingProviderId =
+    String(
+      existing.google_place_id ||
+      existing.data_id ||
+      existing.place_id ||
+      ""
+    ).trim();
+
+  if (
+    attractionProviderId &&
+    existingProviderId &&
+    attractionProviderId ===
+      existingProviderId
+  ) {
+    return true;
+  }
+
   const name =
     normaliseManualAttractionName(
       attraction.name
@@ -3908,7 +3933,7 @@ function addManualAttraction(
   ) {
     openPlannerAlertModal(
       "Maximum Stop Limit Reached",
-      `Maximum stop limit reached. Your favourites and selected attractions already use all ${maxStops} stop slot${maxStops > 1 ? "s" : ""}.`
+      "Maximum stop limit reached. Your selected attractions and favourites already use all available stop slots."
     );
 
     return;
@@ -3923,6 +3948,11 @@ function addManualAttraction(
         )
     )
   ) {
+    openPlannerAlertModal(
+      "Attraction Already Selected",
+      "This attraction is already selected."
+    );
+
     return;
   }
 
@@ -4009,6 +4039,27 @@ function renderManualAttractionSuggestions(
             ""
           ).trim();
 
+        const rating =
+          Number(
+            suggestion.rating ||
+            0
+          );
+
+        const metadata =
+          [
+            suggestion.category,
+            rating > 0
+              ? `★ ${rating.toFixed(1)}`
+              : ""
+          ]
+            .map(
+              value =>
+                String(value || "")
+                  .trim()
+            )
+            .filter(Boolean)
+            .join(" · ");
+
         const button =
           document.createElement(
             "button"
@@ -4021,7 +4072,7 @@ function renderManualAttractionSuggestions(
           "location-suggestion-item";
 
         button.innerHTML = `
-          <span class="location-suggestion-icon">+</span>
+          <span class="location-suggestion-icon">📍</span>
           <span class="location-suggestion-main">
             <span class="location-suggestion-name">
               ${escapeHtml(mainName)}
@@ -4031,6 +4082,15 @@ function renderManualAttractionSuggestions(
                 ? `
                   <span class="location-suggestion-sub">
                     ${escapeHtml(subText)}
+                  </span>
+                `
+                : ""
+            }
+            ${
+              metadata
+                ? `
+                  <span class="location-suggestion-sub">
+                    ${escapeHtml(metadata)}
                   </span>
                 `
                 : ""
@@ -4187,6 +4247,20 @@ function setupManualAttractionSearch() {
   );
 
   inputElement.addEventListener(
+    "keydown",
+    function (event) {
+      if (
+        event.key ===
+        "Escape"
+      ) {
+        hideLocationSuggestions(
+          boxElement
+        );
+      }
+    }
+  );
+
+  inputElement.addEventListener(
     "blur",
     function () {
       setTimeout(
@@ -4196,6 +4270,26 @@ function setupManualAttractionSearch() {
           );
         },
         180
+      );
+    }
+  );
+
+  document.addEventListener(
+    "click",
+    function (event) {
+      if (
+        event.target.closest(
+          "#manual-attraction-search"
+        ) ||
+        event.target.closest(
+          "#manual-attraction-suggestions"
+        )
+      ) {
+        return;
+      }
+
+      hideLocationSuggestions(
+        boxElement
       );
     }
   );

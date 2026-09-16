@@ -27,6 +27,7 @@ from services.itinerary_service import (
     build_map_data,
     get_default_itinerary_form,
     get_location_suggestions,
+    search_named_poi_suggestions,
     search_attractions_serpapi
 )
 
@@ -660,6 +661,33 @@ def location_suggestions():
     except Exception as error:
         print(
             f"[LOCATION SUGGESTION ERROR] {error}",
+            flush=True
+        )
+
+        suggestions = []
+
+    return jsonify({
+        "suggestions": suggestions
+    })
+
+
+@app.route("/api/itinerary-attraction-suggestions")
+@login_required
+@rate_limit(max_calls=10, window_seconds=60)
+def itinerary_attraction_suggestions():
+    query = request.args.get("q", "").strip()
+
+    if len(query) < 2:
+        return jsonify({
+            "suggestions": []
+        })
+
+    try:
+        suggestions = search_named_poi_suggestions(query, limit=5)
+
+    except Exception as error:
+        print(
+            f"[ITINERARY ATTRACTION SUGGESTION ERROR] {error}",
             flush=True
         )
 

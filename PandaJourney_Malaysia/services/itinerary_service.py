@@ -1661,7 +1661,7 @@ def score_named_poi_suggestion(query_text: str, suggestion: dict[str, Any]) -> i
 def search_named_poi_suggestions(query: str, limit: int = 5) -> list[dict[str, Any]]:
     search_text = str(query or "").strip()
 
-    if len(search_text) < 3:
+    if len(search_text) < 2:
         return []
 
     api_key = os.getenv("SERPAPI_KEY", "").strip()
