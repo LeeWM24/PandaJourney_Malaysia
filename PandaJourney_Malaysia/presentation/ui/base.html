@@ -61,6 +61,21 @@
   <button type="button" id="keep-session-active">Stay signed in</button>
 </div>
 
+<div class="modal-backdrop" id="session-expired-modal" role="dialog" aria-modal="true" aria-labelledby="session-expired-title">
+  <div class="modal-box">
+    <div class="modal-icon">🔒</div>
+    <div class="modal-title" id="session-expired-title">Session expired</div>
+    <div class="modal-desc">
+      Your sign-in session has expired for security. Please sign in again to continue.
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary btn-md btn-full" id="session-expired-login">
+        Go to Login
+      </button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="logout-modal" role="dialog" aria-modal="true">
   <div class="modal-box">
     <div class="modal-icon">🚪</div>
