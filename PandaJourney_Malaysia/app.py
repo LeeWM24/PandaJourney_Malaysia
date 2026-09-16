@@ -248,11 +248,31 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> dict[str, in
         }
 
 
-def rate_limit(max_calls: int, window_seconds: int):
+def _request_client_ip() -> str:
+    """Return the original visitor IP when the app is behind Render's proxy."""
+    forwarded_for = request.headers.get("X-Forwarded-For", "")
+    if forwarded_for:
+        client_ip = forwarded_for.split(",", 1)[0].strip()
+        if client_ip:
+            return client_ip
+    return request.remote_addr or "unknown"
+
+
+def rate_limit(
+    max_calls: int,
+    window_seconds: int,
+    methods: set[str] | None = None,
+    html_fallback_endpoint: str | None = None,
+):
+    limited_methods = {method.upper() for method in methods} if methods else None
+
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(*args, **kwargs):
-            client_id = request.remote_addr or "unknown"
+            if limited_methods and request.method.upper() not in limited_methods:
+                return view_func(*args, **kwargs)
+
+            client_id = _request_client_ip()
             key = f"{view_func.__name__}:{client_id}"
             now = time.time()
 
@@ -263,9 +283,11 @@ def rate_limit(max_calls: int, window_seconds: int):
                 smart_attraction_logger.warning(
                     f"[RATE LIMIT] {client_id} exceeded {max_calls}/{window_seconds}s on {view_func.__name__}"
                 )
-                return jsonify({
-                    "error": "Too many requests — please slow down and try again shortly."
-                }), 429
+                message = "Too many searches. Please wait a minute and try again."
+                if html_fallback_endpoint:
+                    flash(message, "warning")
+                    return redirect(url_for(html_fallback_endpoint), code=303)
+                return jsonify({"error": message}), 429
 
             hits.append(now)
             return view_func(*args, **kwargs)
@@ -511,7 +533,12 @@ def public_place_photo():
 @app.route("/", methods=["GET", "POST"])
 @app.route("/attractions", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
-@rate_limit(max_calls=6, window_seconds=60)
+@rate_limit(
+    max_calls=6,
+    window_seconds=60,
+    methods={"POST"},
+    html_fallback_endpoint="smart_attraction",
+)
 def smart_attraction():
     filters = {
         "destination": "",
@@ -565,7 +592,7 @@ def smart_attraction():
         search_destination = filters["destination"] or "Malaysia"
 
         verified_uid = _verified_firebase_uid()
-        client_ip = request.remote_addr or "unknown"
+        client_ip = _request_client_ip()
         quota_available = True
 
         try:
@@ -612,6 +639,7 @@ def smart_attraction():
                         destination_lon=(
                             float(destination_lon) if destination_lon else None
                         ),
+                        max_results=search_max_pages * 20,
                         max_pages=search_max_pages,
                     )
                 )
