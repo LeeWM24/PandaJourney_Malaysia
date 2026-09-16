@@ -635,14 +635,18 @@
 
 .password-requirements {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 5px 12px;
+  grid-template-columns: 1fr;
+  gap: 5px;
   margin: 8px 0 0;
   padding: 0;
   list-style: none;
   color: #78968a;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.password-requirement {
+  white-space: nowrap;
 }
 
 .password-requirement::before {
