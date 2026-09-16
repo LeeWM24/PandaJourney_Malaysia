@@ -266,9 +266,7 @@ if (googleLogin) {
         );
       } else {
         showLoginError(
-          isPasswordCredentialError(error)
-            ? recordFailedEmailLogin(email)
-            : getAuthenticationErrorMessage(error)
+          getAuthenticationErrorMessage(error)
         );
       }
     } finally {
@@ -739,7 +737,9 @@ if (loginForm && document.getElementById("email")) {
         }
 
         showLoginError(
-          getAuthenticationErrorMessage(error)
+          isPasswordCredentialError(error)
+            ? recordFailedEmailLogin(email)
+            : getAuthenticationErrorMessage(error)
         );
       } finally {
         emailLoginPending = false;
