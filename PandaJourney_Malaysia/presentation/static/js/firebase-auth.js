@@ -486,7 +486,7 @@ if (loginForm && document.getElementById("email")) {
 
           showLoginError(
             verificationResent
-              ? "Please verify your email before logging in. A new verification email has been sent."
+              ? "Please verify your email before logging in. A new verification email has been sent. Check your spam or junk folder if it is not in your inbox."
               : "Please verify your email before logging in. We could not resend the email right now; please try again later."
           );
 
