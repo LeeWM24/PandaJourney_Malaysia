@@ -1035,6 +1035,18 @@ function clearLoginError() {
 // Display the inactivity logout message
 // after redirecting to the Login page.
 
+const sessionExpiredFromServer =
+  new URLSearchParams(window.location.search).get("session_expired") === "1";
+
+if (sessionExpiredFromServer) {
+  sessionStorage.setItem(
+    "pandajourney-auth-message",
+    "Your session expired. Please sign in again."
+  );
+
+  localStorage.removeItem("pandajourney-authenticated");
+}
+
 const storedAuthenticationMessage =
   sessionStorage.getItem(
     "pandajourney-auth-message"
@@ -1105,6 +1117,7 @@ let sessionRestorePending = false;
 if (googleLogin) {
   onAuthStateChanged(auth, async user => {
     if (
+      sessionExpiredFromServer ||
       !user ||
       !user.emailVerified ||
       googleLoginPending ||

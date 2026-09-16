@@ -312,7 +312,11 @@ def login_required(view_function):
 
             next_url = request.full_path.rstrip("?")
             return redirect(
-                url_for("login", next=next_url)
+                url_for(
+                    "login",
+                    next=next_url,
+                    session_expired="1"
+                )
             )
 
         return view_function(*args, **kwargs)
