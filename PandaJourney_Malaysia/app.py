@@ -3,8 +3,6 @@ import time
 import hashlib
 import threading
 import secrets
-import base64
-import json
 import requests
 from functools import wraps
 from datetime import datetime, timezone, timedelta
@@ -29,18 +27,14 @@ from services.itinerary_service import (
     build_map_data,
     get_default_itinerary_form,
     get_location_suggestions,
-    search_named_poi_suggestions,
-    search_attractions_serpapi,
-    rebuild_manual_route_plan
+    search_attractions_serpapi
 )
 
 from services.smart_attraction import (
     build_attraction_results,
     suggest_destinations,
     get_public_place_photo,
-    get_current_weather_batch,
     get_cached_initial_attractions,
-    search_named_attractions,
     _get_firestore_db,
     logger as smart_attraction_logger,
 )
@@ -99,21 +93,6 @@ def asset_version(relative_path: str) -> int:
 app.jinja_env.globals["asset_version"] = asset_version
 
 
-# ---------------------------------------------------------------------------
-# Lightweight rate limiting for the smart-attraction routes specifically —
-# these are the only routes that spend real SerpAPI credits (search) or hit
-# Nominatim's rate-limited free API (suggest) per request, and neither route
-# requires login, so without this a single user (or a bot) could rack up
-# real cost or get our Nominatim User-Agent temporarily blocked.
-#
-# This is an in-memory sliding window keyed by IP — good enough for a single
-# dev-server process. It intentionally does NOT scale to multiple worker
-# processes (e.g. gunicorn -w 4): each worker would track its own separate
-# counts, so the effective limit becomes limit * worker_count. Fine for this
-# project's current deployment; swap for Flask-Limiter with a shared Redis
-# backend before running with more than one worker.
-# ---------------------------------------------------------------------------
-
 from collections import defaultdict
 from functools import wraps
 
@@ -142,14 +121,18 @@ class FirebaseAuthUnavailable(Exception):
 def _verified_firebase_uid() -> str | None:
     token = request.form.get("_firebase_id_token", "").strip()
 
-    if not token:
+    if not token or firebase_admin_auth is None:
         return None
 
     try:
-        decoded_token = _verify_firebase_id_token(token)
+        # Initialises the same Firebase Admin app used by the cache.
+        if _get_firestore_db() is None:
+            return None
+
+        decoded_token = firebase_admin_auth.verify_id_token(token)
         uid = str(decoded_token.get("uid") or "").strip()
         return uid or None
-    except (FirebaseTokenRejected, FirebaseAuthUnavailable) as error:
+    except Exception as error:
         smart_attraction_logger.warning(
             f"[AUTH TOKEN INVALID] {error}"
         )
@@ -252,31 +235,11 @@ def _consume_daily_search_quota(uid: str | None, client_ip: str) -> dict[str, in
         }
 
 
-def _request_client_ip() -> str:
-    """Return the original visitor IP when the app is behind Render's proxy."""
-    forwarded_for = request.headers.get("X-Forwarded-For", "")
-    if forwarded_for:
-        client_ip = forwarded_for.split(",", 1)[0].strip()
-        if client_ip:
-            return client_ip
-    return request.remote_addr or "unknown"
-
-
-def rate_limit(
-    max_calls: int,
-    window_seconds: int,
-    methods: set[str] | None = None,
-    html_fallback_endpoint: str | None = None,
-):
-    limited_methods = {method.upper() for method in methods} if methods else None
-
+def rate_limit(max_calls: int, window_seconds: int):
     def decorator(view_func):
         @wraps(view_func)
         def wrapped(*args, **kwargs):
-            if limited_methods and request.method.upper() not in limited_methods:
-                return view_func(*args, **kwargs)
-
-            client_id = _request_client_ip()
+            client_id = request.remote_addr or "unknown"
             key = f"{view_func.__name__}:{client_id}"
             now = time.time()
 
@@ -287,11 +250,9 @@ def rate_limit(
                 smart_attraction_logger.warning(
                     f"[RATE LIMIT] {client_id} exceeded {max_calls}/{window_seconds}s on {view_func.__name__}"
                 )
-                message = "Too many searches. Please wait a minute and try again."
-                if html_fallback_endpoint:
-                    flash(message, "warning")
-                    return redirect(url_for(html_fallback_endpoint), code=303)
-                return jsonify({"error": message}), 429
+                return jsonify({
+                    "error": "Too many requests — please slow down and try again shortly."
+                }), 429
 
             hits.append(now)
             return view_func(*args, **kwargs)
@@ -316,11 +277,7 @@ def login_required(view_function):
 
             next_url = request.full_path.rstrip("?")
             return redirect(
-                url_for(
-                    "login",
-                    next=next_url,
-                    session_expired="1"
-                )
+                url_for("login", next=next_url)
             )
 
         return view_function(*args, **kwargs)
@@ -345,22 +302,6 @@ def _ensure_firebase_auth_ready() -> bool:
     except Exception as error:
         app.logger.error("Firebase Auth initialisation failed: %s", error)
         return False
-
-
-def _get_firebase_sign_in_provider(id_token: str) -> str:
-    """Read the provider from a Firebase ID token after the token is verified."""
-    try:
-        payload_segment = id_token.split(".")[1]
-        padding = "=" * (-len(payload_segment) % 4)
-        payload_json = base64.urlsafe_b64decode(
-            f"{payload_segment}{padding}".encode("utf-8")
-        )
-        payload = json.loads(payload_json.decode("utf-8"))
-    except (IndexError, ValueError, TypeError, json.JSONDecodeError):
-        return ""
-
-    firebase_claim = payload.get("firebase") or {}
-    return str(firebase_claim.get("sign_in_provider") or "")
 
 
 def _verify_firebase_id_token(id_token: str) -> dict:
@@ -407,9 +348,6 @@ def _verify_firebase_id_token(id_token: str) -> dict:
         "email": user.get("email", ""),
         "name": user.get("displayName", ""),
         "email_verified": bool(user.get("emailVerified", False)),
-        "firebase": {
-            "sign_in_provider": _get_firebase_sign_in_provider(id_token),
-        },
     }
 
 @app.route("/session-login", methods=["POST"])
@@ -438,15 +376,7 @@ def session_login():
             "error": "Authentication service is temporarily unavailable."
         }), 503
 
-    firebase_claim = decoded_token.get("firebase") or {}
-    sign_in_provider = str(
-        firebase_claim.get("sign_in_provider") or ""
-    )
-
-    if (
-        sign_in_provider != "google.com" and
-        not decoded_token.get("email_verified", False)
-    ):
+    if not decoded_token.get("email_verified", False):
         return jsonify({
             "error": "Please verify your email before logging in."
         }), 403
@@ -523,7 +453,7 @@ def smart_attraction_suggest():
 
 
 @app.route("/api/public-place-photo", methods=["GET"])
-@rate_limit(max_calls=20, window_seconds=60)
+@rate_limit(max_calls=10, window_seconds=60)
 def public_place_photo():
     place_name = request.args.get("name", "").strip()
 
@@ -538,36 +468,10 @@ def public_place_photo():
     return jsonify(result)
 
 
-@app.route("/api/attraction-weather", methods=["GET"])
-@rate_limit(max_calls=12, window_seconds=60)
-def attraction_weather():
-    """Returns current weather for the visible attraction cards only."""
-    raw_coords = request.args.get("coords", "")
-    coords: list[tuple[float, float]] = []
-
-    for raw_coord in raw_coords.split(";")[:6]:
-        try:
-            latitude_text, longitude_text = raw_coord.split(",", 1)
-            latitude = float(latitude_text)
-            longitude = float(longitude_text)
-        except ValueError:
-            continue
-
-        if -90 <= latitude <= 90 and -180 <= longitude <= 180:
-            coords.append((latitude, longitude))
-
-    return jsonify({"weather": get_current_weather_batch(coords)})
-
-
 @app.route("/", methods=["GET", "POST"])
 @app.route("/attractions", methods=["GET", "POST"])
 @app.route("/smart-attraction", methods=["GET", "POST"])
-@rate_limit(
-    max_calls=6,
-    window_seconds=60,
-    methods={"POST"},
-    html_fallback_endpoint="smart_attraction",
-)
+@rate_limit(max_calls=6, window_seconds=60)
 def smart_attraction():
     filters = {
         "destination": "",
@@ -621,7 +525,7 @@ def smart_attraction():
         search_destination = filters["destination"] or "Malaysia"
 
         verified_uid = _verified_firebase_uid()
-        client_ip = _request_client_ip()
+        client_ip = request.remote_addr or "unknown"
         quota_available = True
 
         try:
@@ -668,7 +572,6 @@ def smart_attraction():
                         destination_lon=(
                             float(destination_lon) if destination_lon else None
                         ),
-                        max_results=search_max_pages * 20,
                         max_pages=search_max_pages,
                     )
                 )
@@ -746,13 +649,13 @@ def smart_attraction():
 def location_suggestions():
     query = request.args.get("q", "").strip()
 
-    if len(query) < 1:
+    if len(query) < 3:
         return jsonify({
             "suggestions": []
         })
 
     try:
-        suggestions = get_location_suggestions(query, limit=5)
+        suggestions = get_location_suggestions(query, limit=3)
 
     except Exception as error:
         print(
@@ -769,7 +672,7 @@ def location_suggestions():
 
 @app.route("/api/edit-stop-suggestions")
 @login_required
-@rate_limit(max_calls=20, window_seconds=60)
+@rate_limit(max_calls=8, window_seconds=60)
 def edit_stop_suggestions():
     query_text = request.args.get("q", "").strip()
     raw_interests = request.args.get("interests", "")
@@ -801,6 +704,7 @@ def edit_stop_suggestions():
                 longitude=float(custom_location["longitude"]),
                 interests=interests or ["culture"],
                 minimum_rating=4.0,
+                max_pages=3 if get_current_user() else 1,
             )
 
             for candidate in candidates[:3]:
@@ -837,97 +741,6 @@ def edit_stop_suggestions():
     })
 
 
-@app.route("/api/manual-attraction-suggestions")
-@login_required
-@rate_limit(max_calls=8, window_seconds=60)
-def manual_attraction_suggestions():
-    query_text = request.args.get("q", "").strip()
-
-    if len(query_text) < 3:
-        return jsonify({
-            "suggestions": []
-        })
-
-    try:
-        suggestions = search_named_poi_suggestions(query_text, limit=5)
-
-    except Exception as error:
-        print(f"[MANUAL ATTRACTION SUGGESTION ERROR] {error}", flush=True)
-        suggestions = []
-
-    return jsonify({
-        "suggestions": suggestions
-    })
-
-
-@app.route("/api/itinerary-attraction-suggestions")
-@login_required
-@rate_limit(max_calls=8, window_seconds=60)
-def itinerary_attraction_suggestions():
-    query_text = request.args.get("q", "").strip()
-
-    if len(query_text) < 2:
-        return jsonify({
-            "suggestions": []
-        })
-
-    try:
-        suggestions = search_named_attractions(query_text, limit=5)
-
-    except Exception as error:
-        print(f"[ITINERARY ATTRACTION SUGGESTION ERROR] {error}", flush=True)
-        suggestions = []
-
-    return jsonify({
-        "suggestions": suggestions
-    })
-
-
-@app.route("/api/itinerary/reorder-route", methods=["POST"])
-@login_required
-@rate_limit(max_calls=12, window_seconds=60)
-def reorder_itinerary_route():
-    payload = request.get_json(silent=True) or {}
-    current_plan = payload.get("plan") or {}
-    route_points = payload.get("route_points") or []
-    trip_date = str(payload.get("trip_date") or current_plan.get("trip_date") or "").strip()
-    start_time = str(payload.get("start_time") or current_plan.get("start_time") or "09:00").strip()
-
-    try:
-        available_hours = int(payload.get("available_hours") or current_plan.get("available_hours") or 6)
-    except (TypeError, ValueError):
-        available_hours = 6
-
-    try:
-        if not isinstance(current_plan, dict) or not isinstance(route_points, list):
-            raise ValueError("Invalid route reorder payload.")
-
-        plan = rebuild_manual_route_plan(
-            current_plan=current_plan,
-            route_points=route_points,
-            trip_date=trip_date,
-            start_time=start_time,
-            available_hours=available_hours,
-        )
-        map_data = build_map_data(plan)
-
-    except ValueError as error:
-        return jsonify({
-            "error": str(error) or "Unable to reorder this route."
-        }), 400
-
-    except Exception as error:
-        print(f"[ROUTE REORDER ERROR] {error}", flush=True)
-        return jsonify({
-            "error": "This route order cannot be completed using the current road-based route. Please try a different order."
-        }), 400
-
-    return jsonify({
-        "plan": plan,
-        "map_data": map_data
-    })
-
-
 # =========================
 # Lee Part 1: Smart Itinerary Planning
 # =========================
@@ -961,11 +774,6 @@ def smart_itinerary():
         itinerary_form["start_latitude"] = request.args.get("start_latitude", "").strip()
         itinerary_form["start_longitude"] = request.args.get("start_longitude", "").strip()
         itinerary_form["use_current_location"] = "0"
-
-    if request.method == "GET" and request.args.get("end", "").strip():
-        itinerary_form["end"] = request.args.get("end", "").strip()
-        itinerary_form["end_latitude"] = request.args.get("end_latitude", "").strip()
-        itinerary_form["end_longitude"] = request.args.get("end_longitude", "").strip()
 
     return render_template(
         "smart_itinerary.html",
