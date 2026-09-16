@@ -681,12 +681,20 @@ Explore community favorites, search destinations, and save routes in a tap.
             ${popular.map((item, index) => `
               <article class="popular-card card">
                 <div class="medal">${index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
+                <div class="community-photo-carousel popular-photo-carousel" data-carousel="${item.id}">
+                  <div class="community-photo-placeholder">
+                    <div class="photo-loading-content">
+                      <div class="photo-loading-spinner"></div>
+                      <span>Loading photo...</span>
+                    </div>
+                  </div>
+                </div>
                 <div class="card-content">
                   <div class="card-title">${escapeHtml(item.title)}</div>
                   <div class="meta-line">${getPublicMeta(item)}</div>
-                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} stops</div>
+                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}</div>
                   <div class="pill-stack">
-                    <span class="tag">${item.views.toLocaleString()} views</span>
+                    <span class="tag" data-view-count="${item.id}">${item.views.toLocaleString()} views</span>
                     <span class="tag">${item.likes} likes</span>
                   </div>
                   <div class="card-actions">
@@ -715,11 +723,11 @@ Explore community favorites, search destinations, and save routes in a tap.
                   <div class="meta-line">
                     ${escapeHtml(item.interest || 'General')} •
                     ${escapeHtml(item.duration)} •
-                    ${item.stops} stops
+                    ${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}
                   </div>
 
                   <div class="community-stats">
-                    <span class="tag">${item.views.toLocaleString()} views</span>
+                    <span class="tag" data-view-count="${item.id}">${item.views.toLocaleString()} views</span>
                     <span class="tag">${item.likes} likes</span>
                   </div>
 
@@ -738,7 +746,10 @@ Explore community favorites, search destinations, and save routes in a tap.
                   data-carousel="${item.id}"
                 >
                   <div class="community-photo-placeholder">
-                    Loading photo...
+                    <div class="photo-loading-content">
+                      <div class="photo-loading-spinner"></div>
+                      <span>Loading photo...</span>
+                    </div>
                   </div>
                 </div>
               </article>
@@ -763,10 +774,10 @@ Explore community favorites, search destinations, and save routes in a tap.
               <div class="meta-line">
                 ${escapeHtml(item.interest || 'General')} •
                 ${escapeHtml(item.duration)} •
-                ${item.stops} stops
+                ${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}
               </div>
               <div class="community-stats">
-                <span class="tag">${item.views.toLocaleString()} views</span>
+                <span class="tag" data-view-count="${item.id}">${item.views.toLocaleString()} views</span>
                 <span class="tag">${item.likes} likes</span>
               </div>
               <div class="card-actions">
@@ -818,6 +829,11 @@ Explore community favorites, search destinations, and save routes in a tap.
       try {
         await window.addPublicItineraryView(item.id);
         item.views += 1;
+        document
+          .querySelectorAll(`[data-view-count="${item.id}"]`)
+          .forEach((element) => {
+            element.textContent = `${item.views.toLocaleString()} views`;
+          });
       } catch (error) {
         console.error("View update failed:", error);
       }
@@ -829,7 +845,10 @@ Explore community favorites, search destinations, and save routes in a tap.
           data-detail-carousel="${item.id}"
         >
           <div class="community-photo-placeholder">
-            Loading photo...
+            <div class="photo-loading-content">
+              <div class="photo-loading-spinner"></div>
+              <span>Loading photo...</span>
+            </div>
           </div>
         </div>
 
@@ -839,7 +858,7 @@ Explore community favorites, search destinations, and save routes in a tap.
           <div class="meta-strip">
             <span class="tag">${escapeHtml(item.interest || 'General')}</span>
             <span class="tag">${escapeHtml(item.duration)}</span>
-            <span class="tag">${item.stops} stops</span>
+            <span class="tag">${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}</span>
             <span class="tag">by ${escapeHtml(item.author)}</span>
           </div>
           <div class="stats-row">
@@ -871,13 +890,15 @@ Explore community favorites, search destinations, and save routes in a tap.
             aria-pressed="${state.likedIds.has(item.id)}">
             ${state.likedIds.has(item.id) ? 'Unlike' : 'Like'}
           </button>
-          <button
-            class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}"
-            type="button"
-            data-save="${item.id}"
-            aria-pressed="${state.savedIds.has(item.id)}">
-            ${state.savedIds.has(item.id) ? 'Unsave' : 'Save'}
-          </button>
+          ${item.user_id !== window.currentPublicUserId ? `
+            <button
+              class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}"
+              type="button"
+              data-save="${item.id}"
+              aria-pressed="${state.savedIds.has(item.id)}">
+              ${state.savedIds.has(item.id) ? 'Unsave' : 'Save'}
+            </button>
+          ` : ''}
           <button
             class="btn btn-ghost"
             type="button"

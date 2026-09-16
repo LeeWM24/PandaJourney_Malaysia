@@ -79,7 +79,7 @@ ATTRACTION_CACHE_TTL_SECONDS = int(
 ATTRACTION_STALE_CACHE_TTL_SECONDS = int(
     os.getenv("SMART_ATTRACTION_STALE_CACHE_TTL_SECONDS", str(30 * 24 * 3600))
 )  # fallback attraction cache, default 30 days
-PUBLIC_PHOTO_CACHE_TTL_SECONDS = 7 * 24 * 3600 # 7 days
+PUBLIC_PHOTO_CACHE_TTL_SECONDS = 30 * 24 * 3600 # 30 days
 
 _firestore_db = None
 _firestore_checked = False
@@ -326,9 +326,17 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
     if cached is not None and cached.get("image_url"):
         return cached
 
+    stale_cached = cache_get(
+        cache_key,
+        90 * 24 * 3600
+    )
+
     api_key = os.getenv("SERPAPI_KEY", "").strip()
 
     if not api_key:
+        if stale_cached is not None and stale_cached.get("image_url"):
+            return stale_cached
+
         return {
             "image_url": "",
             "place_name": place_name
@@ -348,6 +356,9 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
         )
 
     except requests.RequestException as error:
+        if stale_cached is not None and stale_cached.get("image_url"):
+            return stale_cached
+        
         return {
             "image_url": "",
             "place_name": place_name
@@ -407,7 +418,10 @@ def get_public_place_photo(place_name: str) -> dict[str, Any]:
         "place_name": place_name
     }
 
-    cache_set(cache_key, result)
+    if image_url:
+        cache_set(cache_key, result)
+    elif stale_cached is not None and stale_cached.get("image_url"):
+        return stale_cached
 
     return result
 
