@@ -351,6 +351,12 @@ def _verify_firebase_id_token(id_token: str) -> dict:
         "email_verified": bool(user.get("emailVerified", False)),
     }
 
+@app.errorhandler(404)
+def page_not_found(error):
+    if session.get("user"):
+        return redirect(url_for("dashboard"))
+    return redirect(url_for("login"))
+
 @app.route("/session-login", methods=["POST"])
 def session_login():
     payload = request.get_json(silent=True) or {}
