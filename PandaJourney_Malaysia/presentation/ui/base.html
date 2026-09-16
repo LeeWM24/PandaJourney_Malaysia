@@ -233,6 +233,7 @@
       <div class="topbar-actions">
         {% block topbar_actions %}{% endblock %}
         {% if active_page != 'profile' %}
+          <span id="topbarUserName" class="topbar-user-name" hidden></span>
           <a
             href="{{ url_for('profile') }}"
             class="avatar avatar-lg"
