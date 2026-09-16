@@ -67,6 +67,67 @@
     margin-bottom: 10px;
   }
 
+  .manual-attraction-picker {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: var(--surface);
+  }
+
+  .manual-attraction-title {
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .manual-attraction-selected {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .manual-attraction-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: #eef8f4;
+    color: var(--fg);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .manual-attraction-chip span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .manual-attraction-remove {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #047857;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .custom-number-field {
+    margin-top: 8px;
+  }
+
+  .custom-number-field[hidden] {
+    display: none !important;
+  }
+
   .favourites-scroll {
     max-height: 280px;
     overflow-y: auto;
@@ -211,6 +272,33 @@
 
   .timetable-content {
     min-width: 0;
+  }
+
+  .timetable-row.is-route-draggable {
+    cursor: grab;
+  }
+
+  .timetable-row.is-route-dragging {
+    opacity: .55;
+    cursor: grabbing;
+  }
+
+  .timetable-row.is-route-drop-target .timetable-content {
+    box-shadow: inset 0 2px 0 #2563eb;
+  }
+
+  .route-drag-handle {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    cursor: grab;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+
+  .route-drag-handle:active {
+    cursor: grabbing;
   }
 
   .save-modal-overlay {
@@ -1030,12 +1118,21 @@
 
           <input
             type="hidden"
+            name="selected_manual_attractions_json"
+            id="selected_manual_attractions_json"
+            value="{{ form.selected_manual_attractions_json | default('[]') | e }}"
+          />
+
+          <input
+            type="hidden"
             name="excluded_stop_names"
             id="excluded_stop_names"
             value="{{ form.excluded_stop_names | default('[]') | e }}"
           />
 
           <input type="hidden" name="regenerate_token" id="regenerate_token" value="" />
+
+          <input type="hidden" name="manual_route_order_json" id="manual_route_order_json" value="[]" />
 
           <input
             type="hidden"
@@ -1113,6 +1210,36 @@
           </div>
 
           <div class="form-group mb-3">
+            <div class="manual-attraction-picker">
+              <label class="manual-attraction-title" for="manual-attraction-search">
+                Add Attraction (Optional)
+              </label>
+
+              <div class="location-autocomplete">
+                <input
+                  class="form-input"
+                  id="manual-attraction-search"
+                  type="text"
+                  placeholder="Search attraction..."
+                  autocomplete="off"
+                />
+
+                <div id="manual-attraction-suggestions" class="location-suggestions" hidden></div>
+              </div>
+
+              <div class="favourite-picker-sub">
+                Selected attractions use the same maximum stop slots.
+              </div>
+
+              <div
+                id="selected-manual-attractions"
+                class="manual-attraction-selected"
+                aria-live="polite"
+              ></div>
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
             <label class="form-label" for="end">End Location</label>
 
             <div class="location-autocomplete">
@@ -1162,26 +1289,84 @@
 
           <div class="form-group mb-3">
             <label class="form-label" for="available_hours">Time Available</label>
+            {% set available_hour_presets = ["4", "5", "6", "7", "8", "9", "10"] %}
+            {% set available_hours_value = form.get("available_hours", 6) | string %}
+            {% set custom_available_hours = form.get("custom_available_hours", "") %}
+            {% if not custom_available_hours and available_hours_value not in available_hour_presets and available_hours_value != "other" %}
+              {% set custom_available_hours = available_hours_value %}
+              {% set available_hours_value = "other" %}
+            {% endif %}
+
             <select class="form-select" id="available_hours" name="available_hours">
               {% for h in [4, 5, 6, 7, 8, 9, 10] %}
-                <option value="{{ h }}" {% if form.available_hours | default(6) | int == h %}selected{% endif %}>
+                <option value="{{ h }}" {% if available_hours_value == h|string %}selected{% endif %}>
                   {{ h }} hours
                 </option>
               {% endfor %}
+              <option value="other" {% if available_hours_value == "other" %}selected{% endif %}>
+                Other...
+              </option>
             </select>
+
+            <div
+              id="custom-available-hours-field"
+              class="custom-number-field"
+              {% if available_hours_value != "other" %}hidden{% endif %}
+            >
+              <input
+                class="form-input"
+                id="custom_available_hours"
+                name="custom_available_hours"
+                type="number"
+                min="4"
+                max="24"
+                step="1"
+                inputmode="numeric"
+                placeholder="Custom available hours"
+                value="{{ custom_available_hours }}"
+              />
+            </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="max_stops">Maximum Stops</label>
-            {% set max_stops = form.get("max_stops", 3) | int %}
+            {% set max_stop_presets = ["1", "2", "3", "4", "5", "6"] %}
+            {% set max_stops_value = form.get("max_stops", 3) | string %}
+            {% set custom_max_stops = form.get("custom_max_stops", "") %}
+            {% if not custom_max_stops and max_stops_value not in max_stop_presets and max_stops_value != "other" %}
+              {% set custom_max_stops = max_stops_value %}
+              {% set max_stops_value = "other" %}
+            {% endif %}
 
-            <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops }}">
+            <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops_value }}">
               {% for n in [1, 2, 3, 4, 5, 6] %}
-                <option value="{{ n }}" {% if max_stops == n %}selected{% endif %}>
+                <option value="{{ n }}" {% if max_stops_value == n|string %}selected{% endif %}>
                   {{ n }} stop{% if n > 1 %}s{% endif %}
                 </option>
               {% endfor %}
+              <option value="other" {% if max_stops_value == "other" %}selected{% endif %}>
+                Other...
+              </option>
             </select>
+
+            <div
+              id="custom-max-stops-field"
+              class="custom-number-field"
+              {% if max_stops_value != "other" %}hidden{% endif %}
+            >
+              <input
+                class="form-input"
+                id="custom_max_stops"
+                name="custom_max_stops"
+                type="number"
+                min="1"
+                max="6"
+                step="1"
+                inputmode="numeric"
+                placeholder="Custom maximum stops"
+                value="{{ custom_max_stops }}"
+              />
+            </div>
           </div>
 
           <div class="form-group mb-3">
@@ -1474,6 +1659,14 @@
       {{ plan | tojson }}
     </script>
   {% endif %}
+
+  <script id="planner-post-render-data" type="application/json">
+    {{ {
+      "generated_from_post": generated_from_post,
+      "has_server_error": error is not none,
+      "planner_url": url_for("smart_itinerary")
+    } | tojson }}
+  </script>
 
   <script
     type="module"

@@ -29,7 +29,9 @@ from services.itinerary_service import (
     build_map_data,
     get_default_itinerary_form,
     get_location_suggestions,
-    search_attractions_serpapi
+    search_named_poi_suggestions,
+    search_attractions_serpapi,
+    rebuild_manual_route_plan
 )
 
 from services.smart_attraction import (
@@ -38,6 +40,7 @@ from services.smart_attraction import (
     get_public_place_photo,
     get_current_weather_batch,
     get_cached_initial_attractions,
+    search_named_attractions,
     _get_firestore_db,
     logger as smart_attraction_logger,
 )
@@ -743,13 +746,13 @@ def smart_attraction():
 def location_suggestions():
     query = request.args.get("q", "").strip()
 
-    if len(query) < 3:
+    if len(query) < 1:
         return jsonify({
             "suggestions": []
         })
 
     try:
-        suggestions = get_location_suggestions(query, limit=3)
+        suggestions = get_location_suggestions(query, limit=5)
 
     except Exception as error:
         print(
@@ -831,6 +834,97 @@ def edit_stop_suggestions():
     return jsonify({
         "custom_location": custom_location,
         "suggestions": attraction_suggestions
+    })
+
+
+@app.route("/api/manual-attraction-suggestions")
+@login_required
+@rate_limit(max_calls=8, window_seconds=60)
+def manual_attraction_suggestions():
+    query_text = request.args.get("q", "").strip()
+
+    if len(query_text) < 3:
+        return jsonify({
+            "suggestions": []
+        })
+
+    try:
+        suggestions = search_named_poi_suggestions(query_text, limit=5)
+
+    except Exception as error:
+        print(f"[MANUAL ATTRACTION SUGGESTION ERROR] {error}", flush=True)
+        suggestions = []
+
+    return jsonify({
+        "suggestions": suggestions
+    })
+
+
+@app.route("/api/itinerary-attraction-suggestions")
+@login_required
+@rate_limit(max_calls=8, window_seconds=60)
+def itinerary_attraction_suggestions():
+    query_text = request.args.get("q", "").strip()
+
+    if len(query_text) < 2:
+        return jsonify({
+            "suggestions": []
+        })
+
+    try:
+        suggestions = search_named_attractions(query_text, limit=5)
+
+    except Exception as error:
+        print(f"[ITINERARY ATTRACTION SUGGESTION ERROR] {error}", flush=True)
+        suggestions = []
+
+    return jsonify({
+        "suggestions": suggestions
+    })
+
+
+@app.route("/api/itinerary/reorder-route", methods=["POST"])
+@login_required
+@rate_limit(max_calls=12, window_seconds=60)
+def reorder_itinerary_route():
+    payload = request.get_json(silent=True) or {}
+    current_plan = payload.get("plan") or {}
+    route_points = payload.get("route_points") or []
+    trip_date = str(payload.get("trip_date") or current_plan.get("trip_date") or "").strip()
+    start_time = str(payload.get("start_time") or current_plan.get("start_time") or "09:00").strip()
+
+    try:
+        available_hours = int(payload.get("available_hours") or current_plan.get("available_hours") or 6)
+    except (TypeError, ValueError):
+        available_hours = 6
+
+    try:
+        if not isinstance(current_plan, dict) or not isinstance(route_points, list):
+            raise ValueError("Invalid route reorder payload.")
+
+        plan = rebuild_manual_route_plan(
+            current_plan=current_plan,
+            route_points=route_points,
+            trip_date=trip_date,
+            start_time=start_time,
+            available_hours=available_hours,
+        )
+        map_data = build_map_data(plan)
+
+    except ValueError as error:
+        return jsonify({
+            "error": str(error) or "Unable to reorder this route."
+        }), 400
+
+    except Exception as error:
+        print(f"[ROUTE REORDER ERROR] {error}", flush=True)
+        return jsonify({
+            "error": "This route order cannot be completed using the current road-based route. Please try a different order."
+        }), 400
+
+    return jsonify({
+        "plan": plan,
+        "map_data": map_data
     })
 
 

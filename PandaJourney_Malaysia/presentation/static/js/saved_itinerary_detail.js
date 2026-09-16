@@ -27,6 +27,7 @@ const contentElement = document.getElementById("detail-content");
 
 let detailMap = null;
 const placePhotoCache = new Map();
+let liveCurrentLocationPoint = null;
 
 // ================================
 // Itinerary ID
@@ -738,6 +739,16 @@ function getEndDisplayName(itinerary) {
 }
 
 function getStartPoint(itinerary) {
+  if (
+    isCurrentLocationName(getStartLocationName(itinerary)) &&
+    liveCurrentLocationPoint
+  ) {
+    return {
+      latitude: liveCurrentLocationPoint.latitude,
+      longitude: liveCurrentLocationPoint.longitude
+    };
+  }
+
   const latitude = normaliseNumber(
     getFirstValue(itinerary, [
       "start_latitude",
@@ -762,6 +773,42 @@ function getStartPoint(itinerary) {
     latitude,
     longitude
   };
+}
+
+function requestLiveCurrentLocationPoint() {
+  return new Promise(function (resolve) {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude
+        });
+      },
+      function (error) {
+        console.warn("[Saved Detail] Live current location unavailable:", error);
+        resolve(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 8000,
+        maximumAge: 30000
+      }
+    );
+  });
+}
+
+async function refreshLiveCurrentLocationForItinerary(itinerary) {
+  if (!isCurrentLocationName(getStartLocationName(itinerary))) {
+    liveCurrentLocationPoint = null;
+    return;
+  }
+
+  liveCurrentLocationPoint = await requestLiveCurrentLocationPoint();
 }
 
 function getEndPoint(itinerary) {
@@ -1058,6 +1105,38 @@ async function getRoadRouteGeometry(mapPoints) {
 
 const DAY_ROUTE_COLORS = ["#15956f", "#2563eb", "#d97706", "#db2777", "#7c3aed", "#dc2626"];
 
+function createRouteMarkerIcon(type, label = "") {
+  if (typeof L === "undefined") {
+    return undefined;
+  }
+
+  const config = {
+    start: {
+      color: "#16a34a",
+      label: "S"
+    },
+    stop: {
+      color: "#2563eb",
+      label: String(label || "")
+    },
+    end: {
+      color: "#dc2626",
+      label: "E"
+    }
+  }[type] || {
+    color: "#2563eb",
+    label: String(label || "")
+  };
+
+  return L.divIcon({
+    className: "",
+    html: `<span style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:${config.color};color:#fff;border:2px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.3);font-size:12px;font-weight:700;">${escapeHtml(config.label)}</span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14]
+  });
+}
+
 function getDayRouteColor(dayNumber) {
   return DAY_ROUTE_COLORS[(Math.max(1, Number(dayNumber) || 1) - 1) % DAY_ROUTE_COLORS.length];
 }
@@ -1263,6 +1342,8 @@ async function loadDetail(user) {
   ];
 
   const stops = (await getItineraryStops(targetItineraryIds)).filter(isUsableStop);
+
+  await refreshLiveCurrentLocationForItinerary(itinerary);
 
   renderItinerary(itinerary, stops);
   renderDetailStops(itinerary, stops);
@@ -1870,7 +1951,10 @@ async function renderMap(itinerary, stops) {
       : point.type === "end"
         ? 900
         : Math.max(0, 500 - Number(point.number || 0));
-    const marker = L.marker([point.latitude, point.longitude], { zIndexOffset })
+    const marker = L.marker([point.latitude, point.longitude], {
+      icon: createRouteMarkerIcon(point.type, point.number),
+      zIndexOffset
+    })
       .bindPopup(point.label)
       .addTo(detailMap);
 

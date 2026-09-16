@@ -63,9 +63,12 @@ def get_default_itinerary_form():
         "start_time": "09:00",
         "available_hours": 6,
         "max_stops": 3,
+        "custom_available_hours": "",
+        "custom_max_stops": "",
         "minimum_rating": "4.0",
         "interests": ["culture"],
-        "selected_attractions": []
+        "selected_attractions": [],
+        "selected_manual_attractions_json": "[]",
     }
 
 
@@ -464,7 +467,7 @@ def get_stop_limit_by_available_hours(available_hours: int | str) -> int:
     6 hours -> max 3 stops
     7 hours -> max 4 stops
     8 hours -> max 5 stops
-    9 or 10 hours -> max 6 stops
+    9+ hours -> max 6 stops
     """
     try:
         hours = int(available_hours)
@@ -684,6 +687,51 @@ def parse_float(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def parse_integer_choice(value: Any, field_label: str) -> int:
+    text = str(value or "").strip()
+
+    if not re.fullmatch(r"\d+", text):
+        raise ValueError(f"{field_label} must be a whole number.")
+
+    return int(text)
+
+
+def parse_available_hours(form: dict[str, Any]) -> int:
+    raw_value = form.get("available_hours", 6)
+
+    if str(raw_value).strip().lower() == "other":
+        raw_value = form.get("custom_available_hours", "")
+
+    hours = parse_integer_choice(raw_value, "Available hours")
+
+    if hours < 4 or hours > 24:
+        raise ValueError("Available hours must be between 4 and 24 hours.")
+
+    return hours
+
+
+def parse_maximum_stops(form: dict[str, Any], available_hours: int) -> tuple[int, int]:
+    raw_value = form.get("max_stops", get_stop_limit_by_available_hours(available_hours))
+
+    if str(raw_value).strip().lower() == "other":
+        raw_value = form.get("custom_max_stops", "")
+
+    requested_max_stops = parse_integer_choice(raw_value, "Maximum stops")
+
+    if requested_max_stops < 1 or requested_max_stops > 6:
+        raise ValueError("Maximum stops must be between 1 and 6.")
+
+    stop_limit = get_stop_limit_by_available_hours(available_hours)
+
+    if requested_max_stops > stop_limit:
+        raise ValueError(
+            f"For {available_hours} available hours, "
+            f"the maximum supported stop count is {stop_limit}."
+        )
+
+    return requested_max_stops, stop_limit
+
+
 def reverse_geocode_coordinates(
     latitude: Any,
     longitude: Any,
@@ -827,27 +875,6 @@ def add_current_location_display_metadata(place: dict[str, Any]) -> dict[str, An
     reverse_name = get_readable_reverse_location_name(data)
     reverse_area = get_readable_reverse_area_name(data)
 
-    nearby_poi = get_current_location_nearby_poi(
-        place.get("latitude"),
-        place.get("longitude"),
-    )
-
-    if nearby_poi:
-        place["resolved_name"] = nearby_poi["name"]
-        place["nearby_name"] = nearby_poi["name"]
-        place["nearby_category"] = nearby_poi["category"]
-        place["nearby_distance_m"] = nearby_poi["distance_m"]
-        place["nearby_source"] = "serpapi"
-
-        place["latitude"] = nearby_poi["latitude"]
-        place["longitude"] = nearby_poi["longitude"]
-
-        place["route_start_snapped"] = True
-
-        return place
-
-    # No suitable SerpAPI POI:
-    # keep original GPS coordinate but preserve a readable nearby name.
     fallback_name = reverse_name or reverse_area
 
     if fallback_name:
@@ -1283,6 +1310,104 @@ def parse_selected_favourites(form: dict[str, Any]) -> list[dict[str, Any]]:
     return selected
 
 
+def parse_selected_manual_attractions(form: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_attractions = form.get("selected_manual_attractions_json", "[]")
+    attractions = parse_json_list(raw_attractions)
+    selected: list[dict[str, Any]] = []
+
+    for index, attraction in enumerate(attractions, start=1):
+        if not isinstance(attraction, dict):
+            continue
+
+        name = str(attraction.get("name", "")).strip()
+        latitude = parse_float(attraction.get("latitude"))
+        longitude = parse_float(attraction.get("longitude"))
+
+        if not name or latitude is None or longitude is None:
+            continue
+
+        if not is_point_in_malaysia_bounds(latitude, longitude):
+            continue
+
+        category = str(attraction.get("category") or "Attraction").strip()
+
+        try:
+            rating = float(attraction.get("rating") or 0)
+        except (TypeError, ValueError):
+            rating = 0
+
+        selected.append(
+            {
+                "id": attraction.get("id") or f"manual_{index}",
+                "place_id": attraction.get("place_id") or attraction.get("id") or f"manual_{index}",
+                "google_place_id": attraction.get("google_place_id") or "",
+                "data_id": attraction.get("data_id") or "",
+                "name": name,
+                "display_name": attraction.get("display_name") or name,
+                "address": attraction.get("address") or attraction.get("display_name") or "",
+                "latitude": latitude,
+                "longitude": longitude,
+                "tags": ["manual", category.lower() if category else "attraction"],
+                "category": category or "Attraction",
+                "estimated_minutes": 90,
+                "rating": rating,
+                "source": attraction.get("source") or "Manual attraction search",
+                "is_favourite": False,
+            }
+        )
+
+    return selected
+
+
+def is_duplicate_required_stop(
+    candidate: dict[str, Any],
+    existing: dict[str, Any],
+) -> bool:
+    candidate_name = normalise_name_key(candidate.get("name", ""))
+    existing_name = normalise_name_key(existing.get("name", ""))
+
+    if not candidate_name or candidate_name != existing_name:
+        return False
+
+    candidate_lat = parse_float(candidate.get("latitude"))
+    candidate_lon = parse_float(candidate.get("longitude"))
+    existing_lat = parse_float(existing.get("latitude"))
+    existing_lon = parse_float(existing.get("longitude"))
+
+    if None in {candidate_lat, candidate_lon, existing_lat, existing_lon}:
+        return True
+
+    return calculate_distance_km(
+        candidate_lat,
+        candidate_lon,
+        existing_lat,
+        existing_lon,
+    ) <= 0.2
+
+
+def dedupe_required_stops(stops: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+
+    for stop in stops:
+        if any(is_duplicate_required_stop(stop, existing) for existing in unique):
+            continue
+
+        unique.append(stop)
+
+    return unique
+
+
+def get_missing_required_stops(
+    required_stops: list[dict[str, Any]],
+    selected_stops: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        stop
+        for stop in required_stops
+        if not any(is_duplicate_required_stop(stop, selected) for selected in selected_stops)
+    ]
+
+
 def remove_excluded_candidates(
     candidates: list[dict[str, Any]],
     excluded_names: set[str]
@@ -1294,6 +1419,67 @@ def remove_excluded_candidates(
         candidate
         for candidate in candidates
         if normalise_name_key(candidate.get("name", "")) not in excluded_names
+    ]
+
+
+def is_same_route_endpoint(
+    candidate: dict[str, Any],
+    endpoint: dict[str, Any],
+    endpoint_names: set[str],
+) -> bool:
+    candidate_names = {
+        normalise_name_key(candidate.get("name")),
+        normalise_name_key(candidate.get("display_name")),
+        normalise_name_key(candidate.get("address")),
+    }
+    candidate_names.discard("")
+
+    if candidate_names.intersection(endpoint_names):
+        return True
+
+    candidate_lat = parse_float(candidate.get("latitude"))
+    candidate_lon = parse_float(candidate.get("longitude"))
+    endpoint_lat = parse_float(endpoint.get("latitude"))
+    endpoint_lon = parse_float(endpoint.get("longitude"))
+
+    if None in {candidate_lat, candidate_lon, endpoint_lat, endpoint_lon}:
+        return False
+
+    return calculate_distance_km(
+        candidate_lat,
+        candidate_lon,
+        endpoint_lat,
+        endpoint_lon,
+    ) <= 0.2
+
+
+def remove_route_endpoint_candidates(
+    candidates: list[dict[str, Any]],
+    start: dict[str, Any],
+    end: dict[str, Any],
+    start_text: str,
+    end_text: str,
+) -> list[dict[str, Any]]:
+    start_names = {
+        normalise_name_key(start_text),
+        normalise_name_key(start.get("name")),
+        normalise_name_key(start.get("display_name")),
+        normalise_name_key(start.get("resolved_name")),
+    }
+    end_names = {
+        normalise_name_key(end_text),
+        normalise_name_key(end.get("name")),
+        normalise_name_key(end.get("display_name")),
+        normalise_name_key(end.get("resolved_name")),
+    }
+    start_names.discard("")
+    end_names.discard("")
+
+    return [
+        candidate
+        for candidate in candidates
+        if not is_same_route_endpoint(candidate, start, start_names)
+        and not is_same_route_endpoint(candidate, end, end_names)
     ]
 
 
@@ -1323,7 +1509,294 @@ def _request_json(
     return response.json()
 
 
-def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]:
+def normalise_search_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def token_prefix_match(query_text: str, place_name: str) -> bool:
+    query_tokens = [
+        token
+        for token in normalise_search_text(query_text).split(" ")
+        if token
+    ]
+    name_tokens = [
+        token
+        for token in normalise_search_text(place_name).split(" ")
+        if token
+    ]
+
+    if not query_tokens or not name_tokens:
+        return False
+
+    cursor = 0
+
+    for query_token in query_tokens:
+        matched = False
+
+        while cursor < len(name_tokens):
+            if name_tokens[cursor].startswith(query_token):
+                matched = True
+                cursor += 1
+                break
+
+            cursor += 1
+
+        if not matched:
+            return False
+
+    return True
+
+
+def get_nominatim_short_name(item: dict[str, Any]) -> str:
+    address = item.get("address") or {}
+    candidates = [
+        item.get("name"),
+        item.get("namedetails", {}).get("name") if isinstance(item.get("namedetails"), dict) else "",
+        address.get("amenity"),
+        address.get("tourism"),
+        address.get("leisure"),
+        address.get("shop"),
+        address.get("building"),
+        address.get("historic"),
+        address.get("attraction"),
+        address.get("railway"),
+        address.get("station"),
+        address.get("suburb"),
+        address.get("town"),
+        address.get("city"),
+        address.get("municipality"),
+    ]
+
+    for candidate in candidates:
+        text = " ".join(str(candidate or "").split()).strip()
+
+        if text:
+            return text
+
+    display_name = str(item.get("display_name") or "").strip()
+
+    return display_name.split(",", 1)[0].strip() if display_name else ""
+
+
+def build_nominatim_subtitle(display_name: str, name: str) -> str:
+    parts = [
+        part.strip()
+        for part in str(display_name or "").split(",")
+        if part.strip()
+    ]
+
+    if parts and normalise_search_text(parts[0]) == normalise_search_text(name):
+        parts = parts[1:]
+
+    return ", ".join(parts[:4])
+
+
+def score_location_suggestion(query_text: str, suggestion: dict[str, Any]) -> int:
+    query = normalise_search_text(query_text)
+    name = normalise_search_text(suggestion.get("name"))
+    display_name = normalise_search_text(suggestion.get("display_name"))
+    address = normalise_search_text(
+        suggestion.get("address")
+        or suggestion.get("subtitle")
+        or ""
+    )
+
+    if not query:
+        return 0
+
+    if name == query:
+        return 1000
+
+    if name.startswith(query):
+        return 850
+
+    if token_prefix_match(query, name):
+        return 760
+
+    if query in name:
+        return 620
+
+    if display_name.startswith(query):
+        return 520
+
+    if query in display_name:
+        return 360
+
+    if query in address:
+        return 120
+
+    return 0
+
+
+def score_named_poi_suggestion(query_text: str, suggestion: dict[str, Any]) -> int:
+    query = normalise_search_text(query_text)
+    name = normalise_search_text(suggestion.get("name"))
+    address = normalise_search_text(suggestion.get("address"))
+    display_name = normalise_search_text(suggestion.get("display_name"))
+
+    if not query:
+        return 0
+
+    if name == query:
+        return 1000
+
+    if name.startswith(query):
+        return 850
+
+    if token_prefix_match(query, name):
+        return 760
+
+    if query in name:
+        return 620
+
+    if query in display_name:
+        return 420
+
+    if query in address:
+        return 160
+
+    return 0
+
+
+def search_named_poi_suggestions(query: str, limit: int = 5) -> list[dict[str, Any]]:
+    search_text = str(query or "").strip()
+
+    if len(search_text) < 3:
+        return []
+
+    api_key = os.getenv("SERPAPI_KEY", "").strip()
+
+    if not api_key:
+        print("[MANUAL ATTRACTION SEARCH] Missing SERPAPI_KEY", flush=True)
+        return []
+
+    safe_limit = max(1, min(int(limit or 5), 5))
+
+    try:
+        data = _request_json(
+            SERPAPI_URL,
+            params={
+                "engine": "google_maps",
+                "type": "search",
+                "q": f"{search_text}, Malaysia",
+                "hl": "en",
+                "gl": "my",
+                "api_key": api_key,
+            },
+        )
+    except requests.RequestException as error:
+        print(f"[MANUAL ATTRACTION SEARCH ERROR] {error}", flush=True)
+        return []
+
+    suggestions: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+
+    for item in data.get("local_results", [])[:20]:
+        coordinates = item.get("gps_coordinates") or {}
+        latitude = parse_float(coordinates.get("latitude"))
+        longitude = parse_float(coordinates.get("longitude"))
+        name = str(item.get("title") or "").strip()
+        address = str(item.get("address") or "").strip()
+
+        if not name or latitude is None or longitude is None:
+            continue
+
+        if not is_point_in_malaysia_bounds(latitude, longitude):
+            continue
+
+        if is_bad_candidate_name(name):
+            continue
+
+        suggestion = {
+            "display_name": f"{name}, {address}".strip(", "),
+            "name": name,
+            "address": address,
+            "latitude": latitude,
+            "longitude": longitude,
+            "rating": item.get("rating"),
+            "category": item.get("type") or item.get("category") or "Attraction",
+            "google_place_id": item.get("place_id") or "",
+            "data_id": item.get("data_id") or "",
+            "place_id": item.get("place_id") or item.get("data_id") or "",
+            "source": "SerpAPI named place search",
+            "suggestion_type": "attraction",
+        }
+        score = score_named_poi_suggestion(search_text, suggestion)
+
+        if score <= 0:
+            continue
+
+        dedupe_key = (
+            suggestion.get("google_place_id")
+            or suggestion.get("data_id")
+            or f"{normalise_search_text(name)}:{latitude:.5f}:{longitude:.5f}"
+        )
+
+        if dedupe_key in seen_keys:
+            continue
+
+        seen_keys.add(dedupe_key)
+        suggestion["_relevance_score"] = score
+        suggestions.append(suggestion)
+
+    suggestions.sort(
+        key=lambda item: (
+            item.get("_relevance_score", 0),
+            float(item.get("rating") or 0),
+        ),
+        reverse=True,
+    )
+
+    for suggestion in suggestions:
+        suggestion.pop("_relevance_score", None)
+
+    return suggestions[:safe_limit]
+
+
+def is_duplicate_location_suggestion(
+    suggestion: dict[str, Any],
+    existing: dict[str, Any],
+) -> bool:
+    name_key = normalise_search_text(suggestion.get("name"))
+    existing_name_key = normalise_search_text(existing.get("name"))
+
+    if not name_key or name_key != existing_name_key:
+        return False
+
+    suggestion_lat = parse_float(suggestion.get("latitude"))
+    suggestion_lon = parse_float(suggestion.get("longitude"))
+    existing_lat = parse_float(existing.get("latitude"))
+    existing_lon = parse_float(existing.get("longitude"))
+
+    if None in {suggestion_lat, suggestion_lon, existing_lat, existing_lon}:
+        return True
+
+    return calculate_distance_km(
+        suggestion_lat,
+        suggestion_lon,
+        existing_lat,
+        existing_lon,
+    ) <= 0.2
+
+
+def dedupe_location_suggestions(
+    suggestions: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    unique: list[dict[str, Any]] = []
+
+    for suggestion in suggestions:
+        if any(
+            is_duplicate_location_suggestion(suggestion, existing)
+            for existing in unique
+        ):
+            continue
+
+        unique.append(suggestion)
+
+    return unique
+
+
+def get_location_suggestions(query: str, limit: int = 5) -> list[dict[str, Any]]:
     """Return Malaysian location suggestions for start/end autocomplete.
 
     This uses OpenStreetMap Nominatim, not SerpAPI, to avoid consuming
@@ -1331,11 +1804,12 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
     """
     search_text = str(query or "").strip()
 
-    if len(search_text) < 3:
+    if len(search_text) < 1:
         return []
 
-    safe_limit = max(1, min(int(limit or 3), 3))
-    cache_key = f"{search_text.lower()}:{safe_limit}"
+    safe_limit = max(1, min(int(limit or 5), 5))
+    raw_limit = 10
+    cache_key = f"{search_text.lower()}:{safe_limit}:{raw_limit}"
 
     if cache_key in LOCATION_SUGGESTION_CACHE:
         print(f"[LOCATION SUGGESTION CACHE] {search_text}", flush=True)
@@ -1344,8 +1818,9 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
     params: dict[str, Any] = {
         "q": search_text,
         "format": "jsonv2",
-        "limit": safe_limit,
+        "limit": raw_limit,
         "addressdetails": 1,
+        "namedetails": 1,
         "countrycodes": "my",
     }
 
@@ -1386,25 +1861,36 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
         if not display_name or latitude is None or longitude is None:
             continue
 
-        suggestions.append(
-            {
-                "display_name": display_name,
-                "latitude": float(latitude),
-                "longitude": float(longitude),
-                "source": "OpenStreetMap Nominatim",
-                "country_code": str(address.get("country_code", "")).lower(),
-            }
-        )
+        name = get_nominatim_short_name(item)
+        subtitle = build_nominatim_subtitle(display_name, name)
+
+        suggestions.append({
+            "name": name or display_name,
+            "display_name": display_name,
+            "address": subtitle,
+            "subtitle": subtitle,
+            "latitude": float(latitude),
+            "longitude": float(longitude),
+            "source": "OpenStreetMap Nominatim",
+            "country_code": str(address.get("country_code", "")).lower(),
+        })
 
     if not suggestions:
         demo_matches: list[dict[str, Any]] = []
-        key = search_text.lower()
+        key = normalise_search_text(search_text)
 
         for demo_key, value in DEMO_LOCATIONS.items():
             if key in demo_key or demo_key in key:
+                display_name = value["display_name"]
+                name = display_name.split(",", 1)[0].strip()
+                subtitle = build_nominatim_subtitle(display_name, name)
+
                 demo_matches.append(
                     {
-                        "display_name": value["display_name"],
+                        "name": name,
+                        "display_name": display_name,
+                        "address": subtitle,
+                        "subtitle": subtitle,
                         "latitude": value["latitude"],
                         "longitude": value["longitude"],
                         "source": "Local demo fallback",
@@ -1414,7 +1900,13 @@ def get_location_suggestions(query: str, limit: int = 3) -> list[dict[str, Any]]
 
         suggestions = demo_matches
 
-    LOCATION_SUGGESTION_CACHE[cache_key] = suggestions[:safe_limit]
+    ranked_suggestions = sorted(
+        dedupe_location_suggestions(suggestions),
+        key=lambda suggestion: score_location_suggestion(search_text, suggestion),
+        reverse=True,
+    )
+
+    LOCATION_SUGGESTION_CACHE[cache_key] = ranked_suggestions[:safe_limit]
     return LOCATION_SUGGESTION_CACHE[cache_key]
 
 
@@ -2330,22 +2822,28 @@ def assign_visit_duration_by_available_hours(
     if not selected:
         return selected
 
-    available_minutes = int(available_hours) * 60
-    travel_minutes = round(float((route or {}).get("duration_s", 0)) / 60)
+    available_seconds = int(available_hours) * 3600
+    travel_seconds = float((route or {}).get("duration_s", 0))
+    remaining_seconds = available_seconds - travel_seconds
+    minimum_total_visit_seconds = 30 * 60 * len(selected)
 
-    remaining_visit_minutes = available_minutes - travel_minutes
-    minimum_total_visit_minutes = 30 * len(selected)
+    if remaining_seconds < minimum_total_visit_seconds:
+        raise ValueError(
+            "The selected attractions cannot fit within the available travel time. "
+            "Please remove an attraction or increase the available hours."
+        )
 
-    if remaining_visit_minutes < minimum_total_visit_minutes:
-        remaining_visit_minutes = minimum_total_visit_minutes
-
-    visit_minutes_each = max(30, round(remaining_visit_minutes / len(selected)))
+    total_visit_minutes = int(remaining_seconds // 60)
+    base_visit_minutes = total_visit_minutes // len(selected)
+    extra_visit_slots = total_visit_minutes % len(selected)
 
     updated_selected = []
 
-    for attraction in selected:
+    for index, attraction in enumerate(selected):
         item = dict(attraction)
-        item["estimated_minutes"] = visit_minutes_each
+        item["estimated_minutes"] = base_visit_minutes + (
+            1 if index < extra_visit_slots else 0
+        )
         updated_selected.append(item)
 
     return updated_selected
@@ -2362,6 +2860,29 @@ def get_itinerary_duration_seconds(
     )
 
     return travel_seconds + visit_seconds
+
+
+def log_itinerary_time_budget(
+    available_hours: int,
+    route: dict[str, Any] | None,
+    selected: list[dict[str, Any]],
+    total_seconds: float
+) -> None:
+    travel_seconds = float((route or {}).get("duration_s", 0))
+    visit_minutes = sum(
+        int(attraction.get("estimated_minutes", 90))
+        for attraction in selected
+    )
+
+    print(
+        "[ITINERARY TIME] "
+        f"available_seconds={int(available_hours) * 3600} "
+        f"travel_seconds={travel_seconds:.0f} "
+        f"visit_minutes={visit_minutes} "
+        f"total_seconds={total_seconds:.0f}",
+        flush=True,
+    )
+
 
 def is_browser_current_location(place: dict[str, Any] | None) -> bool:
     if not place:
@@ -2836,6 +3357,23 @@ def build_timetable(
     return timetable
 
 
+def build_selected_location_place(
+    display_text: str,
+    latitude: float,
+    longitude: float,
+) -> dict[str, Any]:
+    return {
+        "display_name": display_text,
+        "resolved_name": get_short_location_name(display_text),
+        "latitude": float(latitude),
+        "longitude": float(longitude),
+        "source": "Selected autocomplete suggestion",
+        "country_code": "",
+        "is_approximate": False,
+        "location_source": "autocomplete",
+    }
+
+
 def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     start_text = str(form.get("start", "")).strip()
     end_text = str(form.get("end", "")).strip()
@@ -2845,6 +3383,8 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     use_current_location = parse_bool(form.get("use_current_location", "0"))
     start_latitude = parse_float(form.get("start_latitude"))
     start_longitude = parse_float(form.get("start_longitude"))
+    end_latitude = parse_float(form.get("end_latitude"))
+    end_longitude = parse_float(form.get("end_longitude"))
 
     if not start_text and not use_current_location:
         raise ValueError("Start location is required.")
@@ -2867,12 +3407,11 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     print(f"[SELECTED INTERESTS] {interests}", flush=True)
 
-    available_hours = int(form.get("available_hours", 6))
+    available_hours = parse_available_hours(form)
     minimum_rating = float(form.get("minimum_rating", 4.0))
 
-    stop_limit = get_stop_limit_by_available_hours(available_hours)
-    requested_max_stops = int(form.get("max_stops", stop_limit))
-    max_stops = max(1, min(requested_max_stops, stop_limit))
+    requested_max_stops, stop_limit = parse_maximum_stops(form, available_hours)
+    max_stops = requested_max_stops
 
     excluded_stop_names = parse_excluded_stop_names(form)
     selected_favourites = parse_selected_favourites(form)
@@ -2880,8 +3419,11 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         selected_favourites,
         excluded_stop_names
     )
-    selected_favourites = selected_favourites[:max_stops]
-    remaining_stop_slots = max(0, max_stops - len(selected_favourites))
+    selected_manual_attractions = parse_selected_manual_attractions(form)
+    selected_manual_attractions = remove_excluded_candidates(
+        selected_manual_attractions,
+        excluded_stop_names
+    )
     regenerate_token = str(form.get("regenerate_token", "")).strip()
 
     transport_option = DRIVING_OPTION
@@ -2897,10 +3439,24 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             }
         )
     else:
-        start = geocode_place(start_text)
-        time.sleep(1.05)
+        if start_latitude is not None and start_longitude is not None:
+            start = build_selected_location_place(
+                start_text,
+                start_latitude,
+                start_longitude,
+            )
+        else:
+            start = geocode_place(start_text)
+            time.sleep(1.05)
 
-    end = geocode_place(end_text)
+    if end_latitude is not None and end_longitude is not None:
+        end = build_selected_location_place(
+            end_text,
+            end_latitude,
+            end_longitude,
+        )
+    else:
+        end = geocode_place(end_text)
 
     if not start or not end:
         raise ValueError(
@@ -2913,6 +3469,31 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
 
     if not get_valid_driving_route([start, end]):
         raise ValueError(ROAD_ROUTE_UNAVAILABLE_MESSAGE)
+
+    selected_favourites = remove_route_endpoint_candidates(
+        selected_favourites,
+        start,
+        end,
+        start_text,
+        end_text,
+    )
+    selected_manual_attractions = remove_route_endpoint_candidates(
+        selected_manual_attractions,
+        start,
+        end,
+        start_text,
+        end_text,
+    )
+    required_selected_stops = dedupe_required_stops(
+        selected_favourites + selected_manual_attractions
+    )
+
+    if len(required_selected_stops) > max_stops:
+        raise ValueError(
+            f"Maximum stop limit reached. You can select up to {max_stops} required stops."
+        )
+
+    remaining_stop_slots = max(0, max_stops - len(required_selected_stops))
 
     start_datetime = datetime.fromisoformat(f"{trip_date}T{start_time}")
 
@@ -2951,14 +3532,22 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             if not is_bad_candidate_name(candidate.get("name", ""))
         ]
 
-    favourite_names = {
-        normalise_name_key(favourite.get("name", ""))
-        for favourite in selected_favourites
+    candidates = remove_route_endpoint_candidates(
+        candidates,
+        start,
+        end,
+        start_text,
+        end_text,
+    )
+
+    required_stop_names = {
+        normalise_name_key(stop.get("name", ""))
+        for stop in required_selected_stops
     }
 
     candidates = remove_excluded_candidates(
         candidates,
-        excluded_stop_names.union(favourite_names)
+        excluded_stop_names.union(required_stop_names)
     )
 
     candidates = rotate_candidates_for_regenerate(
@@ -2977,7 +3566,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
             remaining_stop_slots
         )
 
-    selected = selected_favourites + recommended_selected
+    selected = required_selected_stops + recommended_selected
     selected = prepare_selected_attractions(selected)
     backfill_candidates = prepare_selected_attractions(candidates)
     selected = select_road_reachable_attractions(
@@ -2987,6 +3576,21 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         end,
         max_stops,
     )
+    missing_required_stops = get_missing_required_stops(
+        required_selected_stops,
+        selected,
+    )
+
+    if missing_required_stops:
+        missing_names = ", ".join(
+            stop.get("name", "Selected attraction")
+            for stop in missing_required_stops[:3]
+        )
+        plural = "s are" if len(missing_required_stops) > 1 else " is"
+        raise ValueError(
+            f"The selected attraction{plural} not road reachable in this itinerary: "
+            f"{missing_names}. Please remove it or choose another attraction."
+        )
 
     print(
         "[ROUTE ORDER BEFORE] "
@@ -3017,6 +3621,21 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         route,
         available_hours
     )
+
+    itinerary_duration_seconds = get_itinerary_duration_seconds(route, selected)
+
+    log_itinerary_time_budget(
+        available_hours,
+        route,
+        selected,
+        itinerary_duration_seconds,
+    )
+
+    if itinerary_duration_seconds > available_hours * 3600:
+        raise ValueError(
+            "The selected attractions cannot fit within the available travel time. "
+            "Please remove an attraction or increase the available hours."
+        )
 
 
     # Keep full start_text/end_text for routing + saving, but use concise
@@ -3062,7 +3681,6 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
     total_distance_km = round(float(route.get("distance_m", 0)) / 1000, 1) if route else 0
     google_maps_full_route_url = build_google_maps_full_route_url(start, selected, end)
 
-    itinerary_duration_seconds = get_itinerary_duration_seconds(route, selected)
     itinerary_duration = human_duration(itinerary_duration_seconds)
 
     total_duration = itinerary_duration
@@ -3096,6 +3714,7 @@ def make_plan(form: dict[str, Any]) -> dict[str, Any]:
         "stop_limit_message": "",
         "interests": interests,
         "selected_favourites_count": len(selected_favourites),
+        "selected_manual_attractions_count": len(selected_manual_attractions),
         "excluded_stop_names": list(excluded_stop_names),
 
         "weather": weather,
@@ -3140,6 +3759,164 @@ def build_map_data(plan: dict[str, Any] | None) -> dict[str, Any] | None:
         "endDisplayText": plan.get("end_display_text") or get_short_location_name(plan.get("end_text", "End")),
         "googleMapsFullRouteUrl": plan.get("google_maps_full_route_url", "")
     }
+
+
+def _manual_route_place(raw_place: dict[str, Any], fallback_name: str) -> dict[str, Any]:
+    name = str(
+        raw_place.get("name")
+        or raw_place.get("display_name")
+        or raw_place.get("displayName")
+        or raw_place.get("label")
+        or fallback_name
+    ).strip()
+    display_name = str(
+        raw_place.get("display_name")
+        or raw_place.get("displayName")
+        or raw_place.get("address")
+        or name
+    ).strip()
+    latitude = parse_float(raw_place.get("latitude"))
+    longitude = parse_float(raw_place.get("longitude"))
+
+    if not name or latitude is None or longitude is None:
+        raise ValueError("Route points must include a name, latitude, and longitude.")
+
+    place = dict(raw_place)
+    place["name"] = name
+    place["display_name"] = display_name or name
+    place["latitude"] = latitude
+    place["longitude"] = longitude
+    return place
+
+
+def rebuild_manual_route_plan(
+    current_plan: dict[str, Any],
+    route_points: list[dict[str, Any]],
+    trip_date: str,
+    start_time: str,
+    available_hours: int,
+) -> dict[str, Any]:
+    """Recalculate route/timetable for a user-controlled route order.
+
+    This does not run attraction recommendation search. The supplied route
+    points are treated as the complete route: first point remains Start,
+    last point becomes End, and all middle points become itinerary stops.
+    """
+    if len(route_points) < 2:
+        raise ValueError("At least a start and end route point are required.")
+
+    start = _manual_route_place(route_points[0], "Start Location")
+    end = _manual_route_place(route_points[-1], "End Location")
+
+    ensure_malaysian_place(start)
+    ensure_malaysian_place(end)
+
+    selected: list[dict[str, Any]] = []
+
+    for index, raw_stop in enumerate(route_points[1:-1], start=1):
+        stop = _manual_route_place(raw_stop, f"Route waypoint {index}")
+        ensure_malaysian_place(stop)
+
+        if not stop.get("category"):
+            stop["category"] = "Route waypoint"
+
+        stop["is_manual_route_waypoint"] = bool(
+            stop.get("is_manual_route_waypoint")
+            or stop.get("source") == "Manual route waypoint"
+        )
+
+        selected.append(stop)
+
+    route = get_valid_driving_route([start, *selected, end])
+
+    if not route:
+        raise ValueError(ROAD_ROUTE_UNAVAILABLE_MESSAGE)
+
+    try:
+        selected = assign_visit_duration_by_available_hours(
+            selected,
+            route,
+            available_hours,
+        )
+    except ValueError as error:
+        raise ValueError(
+            "The selected route order cannot fit within the available travel time. "
+            "Please choose a shorter order or increase the available hours."
+        ) from error
+
+    itinerary_duration_seconds = get_itinerary_duration_seconds(route, selected)
+
+    log_itinerary_time_budget(
+        available_hours,
+        route,
+        selected,
+        itinerary_duration_seconds,
+    )
+
+    if itinerary_duration_seconds > available_hours * 3600:
+        raise ValueError(
+            "The selected route order cannot fit within the available travel time. "
+            "Please choose a shorter order or increase the available hours."
+        )
+
+    start_datetime = datetime.fromisoformat(f"{trip_date}T{start_time}")
+    start_text = str(
+        start.get("display_name")
+        or start.get("name")
+        or current_plan.get("start_text")
+        or "Start Location"
+    ).strip()
+    end_text = str(
+        end.get("name")
+        or end.get("display_name")
+        or "End Location"
+    ).strip()
+    start_display_text = get_short_location_name(start_text) or "Start Location"
+    end_display_text = get_short_location_name(end_text) or "End Location"
+
+    timetable = build_timetable(
+        start_datetime,
+        start_display_text,
+        selected,
+        end_display_text,
+        route,
+        DRIVING_OPTION,
+        start_place=start,
+        end_place=end,
+    )
+
+    plan = dict(current_plan)
+    plan.update({
+        "end": end,
+        "end_text": end_text,
+        "end_display_text": end_display_text,
+        "destination": end_text,
+        "selected": selected,
+        "route": route,
+        "timetable": timetable,
+        "stop_count": len(selected),
+        "actual_stop_count": len(selected),
+        "total_distance_km": round(float(route.get("distance_m", 0)) / 1000, 1),
+        "google_maps_full_route_url": build_google_maps_full_route_url(
+            start,
+            selected,
+            end,
+        ),
+        "travel_duration": human_duration(route.get("duration_s")),
+        "itinerary_duration": human_duration(itinerary_duration_seconds),
+        "total_duration": human_duration(itinerary_duration_seconds),
+        "exceeds_hours": False,
+        "manual_route_order": [
+            {
+                "name": point.get("name") or point.get("display_name") or "",
+                "latitude": point.get("latitude"),
+                "longitude": point.get("longitude"),
+            }
+            for point in [start, *selected, end]
+        ],
+    })
+
+    return plan
 
 
 def format_date_for_display(date_text: str) -> str:
