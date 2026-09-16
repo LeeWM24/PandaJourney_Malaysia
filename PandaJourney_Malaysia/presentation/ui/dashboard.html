@@ -110,6 +110,47 @@ Welcome back,
 
 
   /* =================================
+     Header Profile Summary
+  ================================= */
+
+  .hero-banner {
+    overflow: visible;
+  }
+
+  .hero-user {
+    top: -76px;
+    right: 28px;
+    z-index: 8;
+    color: #12382c;
+    text-shadow: none;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .hero-user > div {
+    text-align: right;
+    min-width: 0;
+  }
+
+  .hero-user-name {
+    color: #12382c;
+  }
+
+  .hero-user-email {
+    max-width: 240px;
+    color: #5f7f70;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .hero-user .avatar {
+    box-shadow: 0 6px 16px rgba(15, 69, 52, .14);
+  }
+
+
+  /* =================================
      Quick Access
   ================================= */
 
@@ -173,6 +214,24 @@ Welcome back,
   ================================= */
 
   @media (max-width: 1100px) {
+    .hero-user {
+      position: static;
+      justify-content: flex-start;
+      margin: 16px 0 0;
+      padding: 0 22px 18px;
+      color: #ffffff;
+      text-shadow: 0 1px 2px rgba(0,0,0,.35);
+    }
+
+    .hero-user > div {
+      text-align: left;
+    }
+
+    .hero-user-name,
+    .hero-user-email {
+      color: #ffffff;
+    }
+
     .quick-access-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -228,7 +287,7 @@ Welcome back,
       <a
         href="{{ url_for('smart_itinerary') }}"
         class="btn btn-accent btn-lg">
-        ✈️ Plan a Trip
+        🚗 Plan a Trip
       </a>
     </div>
   </div>
@@ -249,17 +308,17 @@ Welcome back,
     <a
       href="{{ url_for('profile') }}"
       class="avatar avatar-lg"
-      id="dashboardAvatar"
+      id="dashboardHeroAvatar"
       aria-label="Open profile"
       style="
         text-decoration: none;
         overflow: hidden;
       ">
 
-      <span id="avatarInitials"></span>
+      <span id="dashboardHeroAvatarInitials"></span>
 
       <img
-        id="avatarImage"
+        id="dashboardHeroAvatarImage"
         src=""
         alt="Profile picture"
         style="
@@ -388,7 +447,7 @@ Welcome back,
       title="Your nearest future trip, based on its saved travel date.">
       <div class="summary-card-header">
         <span class="summary-icon">
-          ✈️
+          🚗
         </span>
 
         <div
