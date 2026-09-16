@@ -42,7 +42,6 @@ function renderAvatar({ type = "", emoji = "", uploadUrl = "", googleUrl = "", n
 onAuthStateChanged(auth, async user => {
   if (!user) {
     topbarAvatar?.setAttribute("hidden", "");
-    topbarUserName?.setAttribute("hidden", "");
     return;
   }
 
@@ -78,6 +77,5 @@ onAuthStateChanged(auth, async user => {
 
   if (topbarUserName) {
     topbarUserName.textContent = name;
-    topbarUserName.removeAttribute("hidden");
   }
 });
