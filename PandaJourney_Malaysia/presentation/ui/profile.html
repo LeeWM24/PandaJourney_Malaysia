@@ -565,6 +565,13 @@
   gap: 20px;
 }
 
+.profile-security-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .profile-security-title {
   margin-bottom: 6px;
   font-size: 18px;
@@ -585,6 +592,7 @@
 }
 
 #open-change-password-btn.hidden,
+#remove-password-provider-btn.hidden,
 .change-password-form.hidden,
 .google-password-note.hidden {
   display: none !important;
@@ -701,6 +709,12 @@
   border: 1px solid #fca5a5;
 }
 
+.password-message.info {
+  color: var(--fg-2);
+  background: #f2faf6;
+  border: 1px solid var(--line);
+}
+
 .google-password-note {
   margin-top: 18px;
   padding: 12px 14px;
@@ -710,13 +724,15 @@
   font-size: 13px;
 }
 
-#remove-favourite-dialog .logout-dialog-actions {
+#remove-favourite-dialog .logout-dialog-actions,
+#remove-password-provider-dialog .logout-dialog-actions {
   display: flex;
   gap: 12px;
   margin-top: 22px;
 }
 
-#remove-favourite-dialog .logout-dialog-actions .btn {
+#remove-favourite-dialog .logout-dialog-actions .btn,
+#remove-password-provider-dialog .logout-dialog-actions .btn {
   flex: 1;
   min-height: 46px;
   padding: 12px 18px;
@@ -844,7 +860,7 @@
                 type="button"
                 class="btn btn-secondary btn-sm"
                 id="use-google-avatar">
-                Google Photo
+                Account Photo
               </button>
 
               <button
@@ -860,6 +876,10 @@
               id="avatar-file-input"
               accept="image/jpeg,image/png,image/webp"
               hidden>
+
+            <div class="profile-field-hint">
+              JPG, PNG or WebP. Maximum file size: 10 MB.
+            </div>
 
             <div class="avatar-divider">
               or choose an avatar
@@ -1030,7 +1050,7 @@
 
                 <div class="profile-field-meta">
                   <div class="profile-field-hint">
-                    Your login email cannot be changed here.
+                    Your login email cannot be changed here. To use another email, create a different account or contact the project administrator.
                   </div>
                 </div>
               </div>
@@ -1222,12 +1242,21 @@
           </div>
         </div>
 
-        <button
-          type="button"
-          class="btn btn-secondary btn-sm"
-          id="open-change-password-btn">
-          🔒 Change Password
-        </button>
+        <div class="profile-security-actions">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            id="open-change-password-btn">
+            🔒 Change Password
+          </button>
+
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm hidden"
+            id="remove-password-provider-btn">
+            Remove Password Sign-In
+          </button>
+        </div>
       </div>
 
       <form
@@ -1403,6 +1432,47 @@
 
   </div>
 </div>
+
+<!-- =================================
+     Remove Password Sign-In Dialog
+================================= -->
+
+<dialog
+  class="logout-dialog"
+  id="remove-password-provider-dialog"
+  aria-labelledby="remove-password-provider-title">
+
+  <div class="logout-dialog-icon">
+    🔐
+  </div>
+
+  <div class="logout-dialog-content">
+    <h3 id="remove-password-provider-title">
+      Remove password sign-in?
+    </h3>
+
+    <p>
+      You will no longer be able to sign in with your email and password.
+      Your Google sign-in, profile, favourites and itineraries will remain.
+    </p>
+  </div>
+
+  <div class="logout-dialog-actions">
+    <button
+      type="button"
+      class="btn btn-ghost"
+      id="cancel-remove-password-provider-btn">
+      Cancel
+    </button>
+
+    <button
+      type="button"
+      class="btn btn-danger"
+      id="confirm-remove-password-provider-btn">
+      Remove
+    </button>
+  </div>
+</dialog>
 
 <!-- =================================
      Favourite Details Dialog

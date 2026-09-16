@@ -53,6 +53,11 @@ let appliedFilters = {
 };
 let currentAttr = null;
 let toastTimer = null;
+const requestedFavouriteId =
+  new URLSearchParams(
+    window.location.search
+  ).get("favourite")?.trim() || "";
+let requestedFavouriteOpened = false;
 
 function attractionIdentity(attraction = {}) {
   if (attraction.place_id) return `place:${attraction.place_id}`;
@@ -403,6 +408,130 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
+function clearRequestedFavouriteUrl() {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("favourite");
+  window.history.replaceState(
+    {},
+    "",
+    url.pathname +
+      (url.searchParams.toString()
+        ? `?${url.searchParams.toString()}`
+        : "") +
+      url.hash
+  );
+}
+
+function openRequestedFavouriteDetail(docSnap) {
+  if (
+    requestedFavouriteOpened ||
+    !requestedFavouriteId
+  ) {
+    return;
+  }
+
+  requestedFavouriteOpened = true;
+
+  if (!docSnap) {
+    showToast(
+      "This favourite attraction is no longer available."
+    );
+    clearRequestedFavouriteUrl();
+    return;
+  }
+
+  const data = docSnap.data();
+  const key = favouriteIdentity(data);
+
+  let attraction =
+    attractionsData.find(
+      item =>
+        attractionIdentity(item) === key
+    ) ||
+    attractionsData.find(
+      item =>
+        item.name === data.name
+    );
+
+  if (!attraction) {
+    const existingIds =
+      attractionsData
+        .map(item => Number(item.id))
+        .filter(Number.isFinite);
+
+    const syntheticId =
+      (existingIds.length
+        ? Math.max(...existingIds)
+        : 0) + 1;
+
+    const imageUrl =
+      data.image_url || "";
+
+    attraction = {
+      id: syntheticId,
+      attraction_key: key,
+      place_id: data.place_id || "",
+      name:
+        data.name ||
+        data.attraction_name ||
+        "Favourite attraction",
+      category:
+        data.category || "Attraction",
+      rating:
+        Number(data.rating) || 0,
+      latitude:
+        data.latitude ?? null,
+      longitude:
+        data.longitude ?? null,
+      area:
+        data.area ||
+        data.location ||
+        "",
+      location:
+        data.location ||
+        data.area ||
+        "",
+      image_url: imageUrl,
+      photo_urls:
+        imageUrl ? [imageUrl] : [],
+      has_provider_photo:
+        Boolean(imageUrl),
+      waze_url:
+        data.waze_url || "",
+      description:
+        data.description || "",
+      reason_tags: [],
+      interest_tags: [],
+      visitor_tips: []
+    };
+
+    attractionsData.push(attraction);
+    favouriteDocIds.set(
+      attractionIdentity(attraction),
+      docSnap.id
+    );
+    favourites.add(attraction.id);
+  }
+
+  const attractionIndex =
+    attractionsData.indexOf(attraction);
+
+  currentPage =
+    Math.floor(
+      attractionIndex / PAGE_SIZE
+    ) + 1;
+
+  renderCards();
+  updateFavUI();
+  saveAttractionSessionState();
+  clearRequestedFavouriteUrl();
+
+  window.requestAnimationFrame(
+    () => openDetail(attraction.id)
+  );
+}
+
+
 async function loadFavourites(user) {
   try {
     const favouritesQuery = query(
@@ -427,6 +556,19 @@ async function loadFavourites(user) {
     saveFavouritesToLocalStorage(user);
     renderCards();
     updateFavUI();
+
+    const requestedDoc =
+      requestedFavouriteId
+        ? snapshot.docs.find(
+            item =>
+              item.id ===
+              requestedFavouriteId
+          )
+        : null;
+
+    openRequestedFavouriteDetail(
+      requestedDoc
+    );
   } catch (error) {
     console.error('Failed to load favourites:', error);
   }

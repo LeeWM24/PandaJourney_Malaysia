@@ -134,7 +134,7 @@
         id="googleSignup"
       >
         <span style="font-weight:800; color:#4285F4;">G</span>
-        Continue with Google
+        Sign up with Google
       </button>
 
 
@@ -150,7 +150,7 @@
         <div class="form-group">
 
           <label class="form-label" for="name">
-            Full Name
+            Display Name
           </label>
 
           <div class="form-input-icon">
@@ -162,12 +162,19 @@
               id="name"
               name="name"
               type="text"
-              placeholder="Ahmad Faris"
+              placeholder="Name shown to other travellers"
+              aria-describedby="display-name-register-hint"
               autocomplete="name"
               maxlength="100"
               required
             />
 
+          </div>
+
+          <div
+            class="profile-field-hint"
+            id="display-name-register-hint">
+            This name appears on your profile, itineraries and collaboration activity.
           </div>
 
         </div>

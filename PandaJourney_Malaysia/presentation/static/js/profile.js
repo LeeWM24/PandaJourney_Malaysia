@@ -1,6 +1,7 @@
 import {
   auth,
-  db
+  db,
+  provider
 } from "./firebase-config.js";
 
 import {
@@ -8,8 +9,10 @@ import {
   updateProfile,
   EmailAuthProvider,
   reauthenticateWithCredential,
+  reauthenticateWithPopup,
   updatePassword,
-  linkWithCredential
+  linkWithCredential,
+  unlink
 } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-auth.js";
 
 import {
@@ -192,6 +195,18 @@ const passwordMatchHint =
 
 const passwordRequirementElements =
   document.querySelectorAll("[data-password-rule]");
+
+const removePasswordProviderBtn =
+  document.getElementById("remove-password-provider-btn");
+
+const removePasswordProviderDialog =
+  document.getElementById("remove-password-provider-dialog");
+
+const cancelRemovePasswordProviderBtn =
+  document.getElementById("cancel-remove-password-provider-btn");
+
+const confirmRemovePasswordProviderBtn =
+  document.getElementById("confirm-remove-password-provider-btn");
 
 
 const FAVOURITES_COLLECTION = "Favourites";
@@ -650,7 +665,7 @@ if (useGoogleAvatarBtn) {
         }
 
         if (!user.photoURL) {
-          showProfilePageMessage("No Google profile photo is available for this account.", "warning");
+          showProfilePageMessage("No sign-in account photo is available for this account.", "warning");
           return;
         }
 
@@ -1712,7 +1727,7 @@ async function loadFavourites(user) {
             <button
               class="fav-name-button"
               type="button"
-              title="View attraction information">
+              title="Open attraction details">
               ${escapeHtml(attractionName)}
             </button>
           </div>
@@ -1729,7 +1744,20 @@ async function loadFavourites(user) {
           ?.addEventListener(
             "click",
             () => {
-              openFavouriteDetails(data);
+              const detailUrl =
+                new URL(
+                  "/attractions",
+                  window.location.origin
+                );
+
+              detailUrl.searchParams.set(
+                "favourite",
+                docSnap.id
+              );
+
+              window.location.assign(
+                detailUrl.toString()
+              );
             }
           );
 
@@ -2093,6 +2121,13 @@ function configurePasswordSection(user) {
       !canChangePassword && !hasGoogleProvider
     );
 
+  removePasswordProviderBtn
+    ?.classList
+    .toggle(
+      "hidden",
+      !canChangePassword || !hasGoogleProvider
+    );
+
   if (linkingPasswordProvider) {
     openChangePasswordBtn.textContent =
       "🔗 Add Password Sign-In";
@@ -2106,7 +2141,7 @@ function configurePasswordSection(user) {
     );
 
     googlePasswordNote.textContent =
-      "Your account currently uses Google. Add a password to sign in with the same email and keep the same profile, favourites and itineraries.";
+      `Your Google email is already verified. Google will ask you to confirm this account first. After adding a password, sign in with your email address (${user.email}) and the new password — not your display name.`;
 
     googlePasswordNote
       .classList
@@ -2149,6 +2184,171 @@ function configurePasswordSection(user) {
     }
   }
 }
+
+
+removePasswordProviderBtn?.addEventListener(
+  "click",
+  () => {
+    const user = auth.currentUser;
+    const providerIds =
+      user?.providerData?.map(
+        item => item.providerId
+      ) || [];
+
+    if (
+      !providerIds.includes("google.com") ||
+      !providerIds.includes("password")
+    ) {
+      showProfilePageMessage(
+        "Password sign-in can only be removed when Google sign-in is also connected."
+      );
+      return;
+    }
+
+    removePasswordProviderDialog
+      ?.showModal();
+  }
+);
+
+cancelRemovePasswordProviderBtn
+  ?.addEventListener(
+    "click",
+    () => {
+      removePasswordProviderDialog
+        ?.close();
+    }
+  );
+
+removePasswordProviderDialog
+  ?.addEventListener(
+    "click",
+    event => {
+      if (
+        event.target ===
+        removePasswordProviderDialog
+      ) {
+        removePasswordProviderDialog.close();
+      }
+    }
+  );
+
+confirmRemovePasswordProviderBtn
+  ?.addEventListener(
+    "click",
+    async () => {
+      const user = auth.currentUser;
+      const providerIds =
+        user?.providerData?.map(
+          item => item.providerId
+        ) || [];
+
+      if (
+        !user ||
+        !providerIds.includes("google.com") ||
+        !providerIds.includes("password")
+      ) {
+        removePasswordProviderDialog
+          ?.close();
+        showProfilePageMessage(
+          "Unable to remove password sign-in because Google sign-in is not available."
+        );
+        return;
+      }
+
+      try {
+        confirmRemovePasswordProviderBtn.disabled =
+          true;
+        confirmRemovePasswordProviderBtn.textContent =
+          "Confirming with Google...";
+
+        const reauthenticationResult =
+          await reauthenticateWithPopup(
+            user,
+            provider
+          );
+
+        if (
+          reauthenticationResult.user.uid !==
+          user.uid
+        ) {
+          const mismatchError =
+            new Error(
+              "The selected Google account does not match this profile."
+            );
+          mismatchError.code =
+            "auth/user-mismatch";
+          throw mismatchError;
+        }
+
+        const updatedUser =
+          await unlink(
+            reauthenticationResult.user,
+            "password"
+          );
+
+        removePasswordProviderDialog.close();
+        configurePasswordSection(updatedUser);
+
+        showProfilePageMessage(
+          "Password sign-in removed. You can continue signing in with Google.",
+          "success"
+        );
+      } catch (error) {
+        console.error(
+          "Failed to remove password sign-in:",
+          error
+        );
+
+        let message =
+          "Unable to remove password sign-in. Please try again.";
+
+        if (
+          error.code ===
+            "auth/popup-closed-by-user" ||
+          error.code ===
+            "auth/cancelled-popup-request"
+        ) {
+          message =
+            "Google confirmation was cancelled. Password sign-in was not removed.";
+        } else if (
+          error.code ===
+          "auth/popup-blocked"
+        ) {
+          message =
+            "The Google confirmation popup was blocked. Allow popups and try again.";
+        } else if (
+          error.code ===
+          "auth/user-mismatch"
+        ) {
+          message =
+            "Please confirm the same Google account used by this profile.";
+        } else if (
+          error.code ===
+            "auth/no-such-provider" ||
+          error.code ===
+            "auth/provider-not-linked"
+        ) {
+          message =
+            "Password sign-in is no longer connected to this account.";
+        } else if (
+          error.code ===
+          "auth/requires-recent-login"
+        ) {
+          message =
+            "Please sign out, sign in with Google again, and retry.";
+        }
+
+        showProfilePageMessage(
+          message
+        );
+      } finally {
+        confirmRemovePasswordProviderBtn.disabled =
+          false;
+        confirmRemovePasswordProviderBtn.textContent =
+          "Remove";
+      }
+    }
+  );
 
 
 openChangePasswordBtn?.addEventListener(
@@ -2312,14 +2512,53 @@ changePasswordForm
         }
 
         if (linkingPasswordProvider) {
+          showPasswordMessage(
+            "Confirm your Google account in the popup to continue.",
+            "info"
+          );
+
+          const reauthenticationResult =
+            await reauthenticateWithPopup(
+              user,
+              provider
+            );
+
+          if (
+            reauthenticationResult.user.uid !==
+            user.uid
+          ) {
+            const mismatchError =
+              new Error(
+                "The selected Google account does not match this profile."
+              );
+            mismatchError.code =
+              "auth/user-mismatch";
+            throw mismatchError;
+          }
+
+          await reauthenticationResult.user.reload();
+
+          if (
+            !reauthenticationResult.user
+              .emailVerified
+          ) {
+            const verificationError =
+              new Error(
+                "This Google email has not been verified."
+              );
+            verificationError.code =
+              "auth/unverified-email";
+            throw verificationError;
+          }
+
           const credential =
             EmailAuthProvider.credential(
-              user.email,
+              reauthenticationResult.user.email,
               newPassword
             );
 
           await linkWithCredential(
-            user,
+            reauthenticationResult.user,
             credential
           );
 
@@ -2345,13 +2584,17 @@ changePasswordForm
           openChangePasswordBtn.textContent =
             "🔒 Change Password";
 
+          removePasswordProviderBtn
+            ?.classList
+            .remove("hidden");
+
           if (passwordSecuritySubtitle) {
             passwordSecuritySubtitle.textContent =
               "Update the password used to sign in to your account.";
           }
 
           showPasswordMessage(
-            "Password sign-in added successfully. You can now use Google or your email and password with the same account.",
+            `Password sign-in added successfully. You can now use Google, or sign in with ${user.email} and your new password. Your display name cannot be used to sign in.`,
             "success"
           );
         } else {
@@ -2396,6 +2639,30 @@ changePasswordForm
         ) {
           message =
             "The current password is incorrect.";
+        } else if (
+          error.code ===
+            "auth/user-mismatch" ||
+          error.code ===
+            "auth/unverified-email"
+        ) {
+          message =
+            error.code === "auth/user-mismatch"
+              ? "Please confirm the same Google account used by this profile."
+              : "Your Google email must be verified before adding password sign-in.";
+        } else if (
+          error.code ===
+            "auth/popup-closed-by-user" ||
+          error.code ===
+            "auth/cancelled-popup-request"
+        ) {
+          message =
+            "Google confirmation was cancelled. No password sign-in was added.";
+        } else if (
+          error.code ===
+          "auth/popup-blocked"
+        ) {
+          message =
+            "The Google confirmation popup was blocked. Allow popups and try again.";
         } else if (
           error.code ===
           "auth/weak-password"
