@@ -3820,6 +3820,35 @@ function restoreSmartItineraryState() {
   }
 
 
+  const urlParams =
+    new URLSearchParams(
+      window.location.search
+    );
+
+
+  const hasExternalStart =
+    Boolean(
+      String(
+        urlParams.get(
+          "start"
+        ) ||
+        ""
+      )
+        .trim()
+    );
+
+
+  const protectedStartFields =
+    new Set(
+      [
+        "start",
+        "start_latitude",
+        "start_longitude",
+        "use_current_location"
+      ]
+    );
+
+
   Object.entries(
     state.form
   )
@@ -3827,6 +3856,16 @@ function restoreSmartItineraryState() {
       function (
         [id, value]
       ) {
+
+        if (
+          hasExternalStart &&
+          protectedStartFields.has(
+            id
+          )
+        ) {
+          return;
+        }
+
 
         if (
           id ===
@@ -3881,6 +3920,7 @@ function restoreSmartItineraryState() {
 
 
   if (
+    !hasExternalStart &&
     !hasServerPlan &&
     resultColumn &&
     state.resultHtml &&
