@@ -519,7 +519,7 @@ def smart_attraction_suggest():
 
 
 @app.route("/api/public-place-photo", methods=["GET"])
-@rate_limit(max_calls=10, window_seconds=60)
+@rate_limit(max_calls=20, window_seconds=60)
 def public_place_photo():
     place_name = request.args.get("name", "").strip()
 

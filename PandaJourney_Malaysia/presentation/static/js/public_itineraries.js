@@ -3,6 +3,7 @@ import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.1.0/fi
 import { collection, doc, getDocs, getDoc, setDoc, updateDoc, addDoc, deleteDoc, serverTimestamp, increment, query, where } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-firestore.js";
 
 let currentUser = null;
+const publicPhotoCache = new Map();
 onAuthStateChanged(auth, async (user) => {
   currentUser = user;
   window.currentPublicUserId = user?.uid || null;
@@ -421,6 +422,12 @@ async function loadCommunityPhoto(item) {
       ""
     ).trim();
 
+    const cacheKey = placeName.toLowerCase();
+
+    if (publicPhotoCache.has(cacheKey)) {
+      return publicPhotoCache.get(cacheKey);
+    }
+
     try {
       const response = await fetch(
         `/api/public-place-photo?name=${encodeURIComponent(placeName)}`
@@ -435,6 +442,7 @@ async function loadCommunityPhoto(item) {
 
       if (result.imageUrl) {
         photoCache[index] = result;
+        publicPhotoCache.set(cacheKey, result);
       }
 
       return result;
@@ -608,6 +616,11 @@ async function loadDetailPhotoCarousel(item) {
       stop.place ||
       ""
     ).trim();
+    
+    const cacheKey = placeName.toLowerCase();
+    if (publicPhotoCache.has(cacheKey)) {
+     return publicPhotoCache.get(cacheKey);
+    }
 
     try {
       const response = await fetch(
