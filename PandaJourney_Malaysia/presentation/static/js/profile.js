@@ -2535,21 +2535,6 @@ changePasswordForm
             throw mismatchError;
           }
 
-          await reauthenticationResult.user.reload();
-
-          if (
-            !reauthenticationResult.user
-              .emailVerified
-          ) {
-            const verificationError =
-              new Error(
-                "This Google email has not been verified."
-              );
-            verificationError.code =
-              "auth/unverified-email";
-            throw verificationError;
-          }
-
           const credential =
             EmailAuthProvider.credential(
               reauthenticationResult.user.email,
