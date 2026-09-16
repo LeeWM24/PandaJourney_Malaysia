@@ -34,10 +34,10 @@ const heroUserEmail =
   document.getElementById("heroUserEmail");
 
 const avatarImage =
-  document.getElementById("avatarImage");
+  document.getElementById("dashboardHeroAvatarImage");
 
 const avatarInitials =
-  document.getElementById("avatarInitials");
+  document.getElementById("dashboardHeroAvatarInitials");
 
 const savedCountElement =
   document.getElementById("dashboard-saved-count");
