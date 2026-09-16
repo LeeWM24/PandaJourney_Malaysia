@@ -51,6 +51,16 @@
 <body
   data-public-page="{{ 'true' if active_page == 'attractions' else 'false' }}">
 
+<div
+  id="session-expiry-warning"
+  class="session-expiry-warning"
+  role="status"
+  aria-live="polite"
+  hidden>
+  <span>Your session will expire in about 5 minutes due to inactivity.</span>
+  <button type="button" id="keep-session-active">Stay signed in</button>
+</div>
+
 <div class="modal-backdrop" id="logout-modal" role="dialog" aria-modal="true">
   <div class="modal-box">
     <div class="modal-icon">🚪</div>
