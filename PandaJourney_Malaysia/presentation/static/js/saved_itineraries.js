@@ -1102,8 +1102,19 @@ async function loadSavedItineraries(user) {
   if (pastPlans.length) {
     renderItineraries(pastPlans, pastListElement, "owned");
     pastPlanCount = pastPlans.length;
-    if (pastControl) pastControl.style.display = "block";
-    if (togglePastButton) togglePastButton.textContent = `View Past Plans (${pastPlanCount})`;
+
+    const shouldAutoExpandPast = upcomingPlans.length === 0;
+
+    if (shouldAutoExpandPast) {
+      pastVisible = true;
+      if (pastSection) pastSection.style.display = "block";
+      if (pastControl) pastControl.style.display = "none";
+    } else {
+      pastVisible = false;
+      if (pastSection) pastSection.style.display = "none";
+      if (pastControl) pastControl.style.display = "block";
+      if (togglePastButton) togglePastButton.textContent = `View Past Plans (${pastPlanCount})`;
+    }
   }
 
   if (upcomingShared.length) {

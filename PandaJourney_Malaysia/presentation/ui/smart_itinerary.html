@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 
 {% block title %}Itinerary Planner — PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 {% block page_title %}Smart Itinerary Planner{% endblock %}
 {% block page_subtitle %}Generate an optimised route and timetable for your Malaysia trip{% endblock %}
 
@@ -1053,6 +1056,20 @@
             name="start_longitude"
             id="start_longitude"
             value="{{ form.start_longitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="end_latitude"
+            id="end_latitude"
+            value="{{ form.end_latitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="end_longitude"
+            id="end_longitude"
+            value="{{ form.end_longitude | default('') }}"
           />
 
           <div class="form-group mb-3">

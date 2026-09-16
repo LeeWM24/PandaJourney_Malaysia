@@ -1,6 +1,9 @@
 ﻿{% extends "base.html" %}
 
 {% block title %}Saved Itineraries - PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 {% block page_title %}Saved Itineraries{% endblock %}
 {% block page_subtitle %}Manage saved, draft and published trip plans{% endblock %}
 
