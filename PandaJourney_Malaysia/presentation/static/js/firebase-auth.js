@@ -183,9 +183,27 @@ if (googleLogin) {
     googleLoginPending = true;
     googleLogin.disabled = true;
     googleLogin.setAttribute("aria-busy", "true");
+    const originalGoogleLoginText =
+      googleLogin.textContent;
+    googleLogin.textContent =
+      "Opening Google...";
     clearLoginError();
+    showLoginMessage(
+      "Waiting for Google confirmation...",
+      "info"
+    );
+
     try {
+      const popupTimer = setTimeout(
+        () => {
+          googleLogin.textContent =
+            "Waiting for Google...";
+        },
+        350
+      );
+
       const result = await signInWithPopup(auth, provider);
+      clearTimeout(popupTimer);
       const user = result.user;
 
       console.log("Google Login successful!");
@@ -239,12 +257,23 @@ if (googleLogin) {
         console.error("Failed to clear login session:", signOutError);
       }
 
-      showLoginError(
-        getAuthenticationErrorMessage(error)
-      );
+      if (
+        error.code === "auth/popup-closed-by-user" ||
+        error.code === "auth/cancelled-popup-request"
+      ) {
+        showLoginError(
+          "Google sign-in was cancelled."
+        );
+      } else {
+        showLoginError(
+          getAuthenticationErrorMessage(error)
+        );
+      }
     } finally {
       googleLoginPending = false;
       googleLogin.disabled = false;
+      googleLogin.textContent =
+        originalGoogleLoginText;
       googleLogin.removeAttribute("aria-busy");
     }
   });
@@ -277,14 +306,28 @@ if (googleSignup) {
     googleSignupPending = true;
     googleSignup.disabled = true;
     googleSignup.setAttribute("aria-busy", "true");
+    const originalGoogleSignupText =
+      googleSignup.textContent;
+    googleSignup.textContent =
+      "Opening Google...";
 
     if (registerError) {
-      registerError.textContent = "";
-      registerError.style.display = "none";
+      registerError.textContent =
+        "Waiting for Google confirmation...";
+      registerError.style.display = "block";
     }
 
     try {
+      const popupTimer = setTimeout(
+        () => {
+          googleSignup.textContent =
+            "Waiting for Google...";
+        },
+        350
+      );
+
       const result = await signInWithPopup(auth, provider);
+      clearTimeout(popupTimer);
       const user = result.user;
 
       console.log("Google Sign Up successful!");
@@ -333,15 +376,148 @@ if (googleSignup) {
 
       if (registerError) {
         registerError.textContent =
-          getAuthenticationErrorMessage(error);
+          (
+            error.code === "auth/popup-closed-by-user" ||
+            error.code === "auth/cancelled-popup-request"
+          )
+            ? "Google sign-in was cancelled."
+            : getAuthenticationErrorMessage(error);
         registerError.style.display = "block";
       }
     } finally {
       googleSignupPending = false;
       googleSignup.disabled = false;
+      googleSignup.textContent =
+        originalGoogleSignupText;
       googleSignup.removeAttribute("aria-busy");
     }
   });
+}
+
+// Email login lockout is client-side only.
+// It improves prototype UX, but production lockout should be enforced server-side.
+const LOGIN_LOCKOUT_PREFIX = "pandajourney-email-login-lockout:";
+const LOGIN_SHORT_LOCK_MS = 60 * 1000;
+const LOGIN_LONG_LOCK_MS = 5 * 60 * 1000;
+const LOGIN_FIRST_LOCK_ATTEMPTS = 3;
+const LOGIN_SECOND_LOCK_ATTEMPTS = 5;
+const LOGIN_RESET_REQUIRED_ATTEMPTS = 10;
+
+function normaliseLoginEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function loginLockoutKey(email) {
+  return `${LOGIN_LOCKOUT_PREFIX}${normaliseLoginEmail(email)}`;
+}
+
+function readLoginLockout(email) {
+  try {
+    const stored = localStorage.getItem(loginLockoutKey(email));
+    if (!stored) {
+      return {
+        attempts: 0,
+        lockUntil: 0,
+        resetRequired: false
+      };
+    }
+
+    const parsed = JSON.parse(stored);
+
+    return {
+      attempts: Number(parsed.attempts) || 0,
+      lockUntil: Number(parsed.lockUntil) || 0,
+      resetRequired: Boolean(parsed.resetRequired)
+    };
+  } catch (error) {
+    console.error("Failed to read login lockout state:", error);
+    return {
+      attempts: 0,
+      lockUntil: 0,
+      resetRequired: false
+    };
+  }
+}
+
+function writeLoginLockout(email, state) {
+  localStorage.setItem(
+    loginLockoutKey(email),
+    JSON.stringify(state)
+  );
+}
+
+function clearLoginLockout(email) {
+  localStorage.removeItem(loginLockoutKey(email));
+}
+
+function formatLockoutWait(milliseconds) {
+  const seconds = Math.max(1, Math.ceil(milliseconds / 1000));
+
+  if (seconds < 60) {
+    return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+}
+
+function getActiveLoginLockoutMessage(email) {
+  const state = readLoginLockout(email);
+
+  if (state.resetRequired) {
+    return "Too many failed attempts. Please reset your password.";
+  }
+
+  const remainingMs = state.lockUntil - Date.now();
+
+  if (remainingMs > 0) {
+    return `Too many failed attempts. Try again in ${formatLockoutWait(remainingMs)}.`;
+  }
+
+  return "";
+}
+
+function isPasswordCredentialError(error) {
+  return [
+    "auth/invalid-credential",
+    "auth/user-not-found",
+    "auth/wrong-password"
+  ].includes(error?.code);
+}
+
+function recordFailedEmailLogin(email) {
+  const state = readLoginLockout(email);
+  const attempts = state.attempts + 1;
+  const nextState = {
+    attempts,
+    lockUntil: 0,
+    resetRequired: false
+  };
+
+  if (attempts >= LOGIN_RESET_REQUIRED_ATTEMPTS) {
+    nextState.resetRequired = true;
+    writeLoginLockout(email, nextState);
+    return "Too many failed attempts. Please reset your password.";
+  }
+
+  if (attempts >= LOGIN_SECOND_LOCK_ATTEMPTS) {
+    nextState.lockUntil = Date.now() + LOGIN_LONG_LOCK_MS;
+    writeLoginLockout(email, nextState);
+    return "Too many failed attempts. Try again in 5 minutes.";
+  }
+
+  if (attempts >= LOGIN_FIRST_LOCK_ATTEMPTS) {
+    nextState.lockUntil = Date.now() + LOGIN_SHORT_LOCK_MS;
+    writeLoginLockout(email, nextState);
+    return "Too many failed attempts. Try again in 1 minute.";
+  }
+
+  writeLoginLockout(email, nextState);
+
+  const attemptsBeforeTemporaryLock =
+    LOGIN_FIRST_LOCK_ATTEMPTS - attempts;
+
+  return `Invalid email address or password. ${attemptsBeforeTemporaryLock} attempt${attemptsBeforeTemporaryLock === 1 ? "" : "s"} left before temporary lock.`;
 }
 
 // Forgot Password
@@ -387,6 +563,7 @@ if (forgotPasswordBtn) {
       auth.useDeviceLanguage();
 
       await sendPasswordResetEmail(auth, email);
+      clearLoginLockout(email);
 
       showForgotPasswordMessage(
         "If an account exists for this email, a password reset link has been sent. Please check your inbox and spam folder.",
@@ -464,6 +641,14 @@ if (loginForm && document.getElementById("email")) {
         return;
       }
 
+      const lockoutMessage =
+        getActiveLoginLockoutMessage(email);
+
+      if (lockoutMessage) {
+        showLoginError(lockoutMessage);
+        return;
+      }
+
       emailLoginPending = true;
 
       if (loginSubmitButton) {
@@ -501,6 +686,8 @@ if (loginForm && document.getElementById("email")) {
 
           return;
         }
+
+        clearLoginLockout(email);
 
         console.log("Email Login successful!");
         console.log("UID:", user.uid);
@@ -550,7 +737,9 @@ if (loginForm && document.getElementById("email")) {
         }
 
         showLoginError(
-          getAuthenticationErrorMessage(error)
+          isPasswordCredentialError(error)
+            ? recordFailedEmailLogin(email)
+            : getAuthenticationErrorMessage(error)
         );
       } finally {
         emailLoginPending = false;

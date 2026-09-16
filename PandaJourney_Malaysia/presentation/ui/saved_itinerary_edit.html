@@ -1299,7 +1299,16 @@
         </div>
         <div class="invite-search-wrap">
           <form id="invite-form" class="invite-row">
-            <input id="invite-email-input" class="invite-input" type="email" placeholder="Search by email" autocomplete="off">
+            <input
+              id="invite-email-input"
+              class="invite-input"
+              type="email"
+              placeholder="Enter full email address"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+            >
             <button type="submit" class="btn btn-primary btn-md">Invite</button>
           </form>
           <div id="invite-suggestions" class="invite-suggestions" role="listbox"></div>

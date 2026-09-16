@@ -9,11 +9,9 @@ import {
   getDocs,
   limit,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   setDoc,
-  startAt,
   updateDoc,
   where,
   writeBatch,
@@ -482,28 +480,10 @@ function renderInviteSuggestions(users) {
   inviteSuggestions.classList.add("show");
 }
 
-async function searchRegisteredUsers(searchTerm) {
-  const prefix = normaliseEmail(searchTerm);
-  if (!isOwner || prefix.length < 2) {
-    clearInviteSuggestions();
-    return;
-  }
-
-  try {
-    const usersQuery = query(
-      collection(db, USER_COLLECTION),
-      orderBy("email"),
-      startAt(prefix),
-      endAt(`${prefix}\uf8ff`),
-      limit(6)
-    );
-    const snapshot = await getDocs(usersQuery);
-    if (prefix !== normaliseEmail(inviteEmailInput?.value)) return;
-    renderInviteSuggestions(snapshot.docs.map(item => ({ id: item.id, ...item.data() })));
-  } catch (error) {
-    console.error("User search failed:", error);
-    clearInviteSuggestions();
-  }
+async function searchRegisteredUsers() {
+  // Do not search registered users by partial email/name.
+  // The owner must know and enter the full email address before invitation.
+  clearInviteSuggestions();
 }
 
 async function loadUserProfilesForIds(userIds) {
@@ -3537,10 +3517,7 @@ addStopButton?.addEventListener("click", function (event) {
 
 inviteEmailInput?.addEventListener("input", function () {
   clearTimeout(inviteSearchTimer);
-  const value = inviteEmailInput.value;
-  inviteSearchTimer = setTimeout(function () {
-    searchRegisteredUsers(value);
-  }, 250);
+  clearInviteSuggestions();
 });
 
 document.addEventListener("click", function (event) {
