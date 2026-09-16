@@ -2291,6 +2291,21 @@ confirmRemovePasswordProviderBtn
             "password"
           );
 
+        await setDoc(
+          doc(
+            db,
+            "users",
+            updatedUser.uid
+          ),
+          {
+            authProvider: "google",
+            updatedAt: serverTimestamp()
+          },
+          {
+            merge: true
+          }
+        );
+
         removePasswordProviderDialog.close();
         configurePasswordSection(updatedUser);
 
