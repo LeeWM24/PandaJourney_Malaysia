@@ -433,7 +433,7 @@ def user_management():
     return redirect(url_for("profile"))
 
 
-@app.route("/logout", methods=["GET", "POST"])
+@app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))
