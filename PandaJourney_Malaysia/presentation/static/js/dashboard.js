@@ -575,8 +575,15 @@ function updateRecentItineraries(itineraries) {
         </div>
 
         <div class="empty-sub">
-          No saved itineraries yet.
+          No saved itineraries yet. Start by planning your first day trip.
         </div>
+
+        <a
+          href="/smart-itinerary"
+          class="btn btn-primary btn-sm"
+          style="margin-top: 14px;">
+          Plan your first trip
+        </a>
       </div>
     `;
 
