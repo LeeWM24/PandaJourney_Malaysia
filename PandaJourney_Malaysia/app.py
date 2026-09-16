@@ -28,7 +28,8 @@ from services.itinerary_service import (
     get_default_itinerary_form,
     get_location_suggestions,
     search_named_poi_suggestions,
-    search_attractions_serpapi
+    search_attractions_serpapi,
+    rebuild_manual_route_plan,
 )
 
 from services.smart_attraction import (
@@ -767,6 +768,171 @@ def edit_stop_suggestions():
         "custom_location": custom_location,
         "suggestions": attraction_suggestions
     })
+
+
+# =========================
+# Smart Itinerary Manual Route Reorder API
+# =========================
+
+@app.route("/api/itinerary/reorder-route", methods=["POST"])
+@login_required
+@rate_limit(max_calls=20, window_seconds=60)
+def itinerary_reorder_route():
+    """Rebuild a generated itinerary using the user's manual route order.
+
+    Start remains the first route point. The final route point becomes the
+    current End Location. All points between them are itinerary stops.
+
+    This endpoint does not run attraction recommendation again. It reuses the
+    current itinerary-service route/timetable calculation so drag-and-drop
+    reordering can update OSRM travel time, visit duration, timetable and map.
+    """
+    payload = request.get_json(silent=True)
+
+    if not isinstance(payload, dict):
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": "A valid JSON request body is required."
+        }), 400
+
+    # Accept the current frontend names plus a few harmless aliases so an older
+    # browser/session does not fail simply because camelCase/snake_case differs.
+    current_plan = (
+        payload.get("current_plan")
+        or payload.get("currentPlan")
+        or payload.get("plan")
+        or {}
+    )
+
+    route_points = (
+        payload.get("route_points")
+        or payload.get("routePoints")
+        or payload.get("ordered_points")
+        or payload.get("orderedPoints")
+        or payload.get("manual_route_order")
+        or payload.get("manualRouteOrder")
+        or payload.get("points")
+        or []
+    )
+
+    if not isinstance(current_plan, dict):
+        current_plan = {}
+
+    if not isinstance(route_points, list) or len(route_points) < 2:
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": "At least a start and end route point are required."
+        }), 400
+
+    trip_date = str(
+        payload.get("trip_date")
+        or payload.get("tripDate")
+        or current_plan.get("trip_date")
+        or ""
+    ).strip()
+
+    start_time = str(
+        payload.get("start_time")
+        or payload.get("startTime")
+        or current_plan.get("start_time")
+        or "09:00"
+    ).strip()
+
+    available_hours_raw = (
+        payload.get("available_hours")
+        if payload.get("available_hours") is not None
+        else payload.get("availableHours")
+    )
+
+    if available_hours_raw is None:
+        available_hours_raw = current_plan.get("available_hours", 6)
+
+    # Support the planner's custom-hours payload if the frontend sends "other".
+    if str(available_hours_raw).strip().lower() == "other":
+        available_hours_raw = (
+            payload.get("custom_available_hours")
+            or payload.get("customAvailableHours")
+            or current_plan.get("custom_available_hours")
+            or ""
+        )
+
+    if not trip_date:
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": "Travel date is required for route reordering."
+        }), 400
+
+    try:
+        available_hours = int(str(available_hours_raw).strip())
+    except (TypeError, ValueError):
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": "Available hours must be a whole number."
+        }), 400
+
+    if available_hours < 4 or available_hours > 24:
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": "Available hours must be between 4 and 24 hours."
+        }), 400
+
+    try:
+        updated_plan = rebuild_manual_route_plan(
+            current_plan=current_plan,
+            route_points=route_points,
+            trip_date=trip_date,
+            start_time=start_time,
+            available_hours=available_hours,
+        )
+
+        updated_map_data = build_map_data(updated_plan)
+
+        if not updated_map_data:
+            raise ValueError("Unable to rebuild the route map.")
+
+        return jsonify({
+            "ok": True,
+            "success": True,
+            "plan": updated_plan,
+            "map_data": updated_map_data,
+            "timetable": updated_plan.get("timetable", []),
+            "route": updated_plan.get("route", {}),
+            "selected": updated_plan.get("selected", []),
+            "end": updated_plan.get("end", {}),
+            "end_text": updated_plan.get("end_text", ""),
+            "end_display_text": updated_plan.get("end_display_text", ""),
+            "travel_duration": updated_plan.get("travel_duration", ""),
+            "itinerary_duration": updated_plan.get("itinerary_duration", ""),
+            "total_duration": updated_plan.get("total_duration", ""),
+            "manual_route_order": updated_plan.get("manual_route_order", []),
+        })
+
+    except ValueError as error:
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": str(error)
+        }), 400
+
+    except Exception as error:
+        app.logger.exception(
+            "Unexpected Smart Itinerary reorder error: %s",
+            error
+        )
+
+        return jsonify({
+            "ok": False,
+            "success": False,
+            "error": (
+                "Unable to update the route right now. "
+                "Please try again."
+            )
+        }), 500
 
 
 # =========================
