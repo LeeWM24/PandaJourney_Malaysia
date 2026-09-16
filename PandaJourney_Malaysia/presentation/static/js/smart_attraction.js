@@ -917,9 +917,80 @@ function getSortedAttractions(list) {
   });
 }
 
+function getAttractionInterestTags(attraction) {
+  const rawTags = attraction.interests || attraction.interest_tags || attraction.tags || [];
+  return new Set((Array.isArray(rawTags) ? rawTags : [rawTags])
+    .map((tag) => String(tag).trim().toLowerCase())
+    .filter(Boolean));
+}
+
+function balanceInterestsAcrossPages(sortedAttractions) {
+  const selectedInterests = [...new Set(appliedFilters.interests
+    .map((interest) => String(interest).trim().toLowerCase())
+    .filter(Boolean))];
+
+  if (selectedInterests.length < 2) return sortedAttractions;
+
+  const queues = new Map(selectedInterests.map((interest) => [
+    interest,
+    sortedAttractions.filter((attraction) => getAttractionInterestTags(attraction).has(interest)),
+  ]));
+  const positions = new Map(selectedInterests.map((interest) => [interest, 0]));
+  const selected = new Set();
+  const result = [];
+  let sortedPosition = 0;
+  let pageIndex = 0;
+
+  const attractionKey = (attraction) => attractionIdentity(attraction);
+  const takeFromInterest = (interest) => {
+    const queue = queues.get(interest) || [];
+    let position = positions.get(interest) || 0;
+    while (position < queue.length && selected.has(attractionKey(queue[position]))) {
+      position += 1;
+    }
+    positions.set(interest, position);
+    if (position >= queue.length) return null;
+    const attraction = queue[position];
+    positions.set(interest, position + 1);
+    return attraction;
+  };
+
+  while (result.length < sortedAttractions.length) {
+    const page = [];
+    const rotation = pageIndex % selectedInterests.length;
+    const pageInterests = [
+      ...selectedInterests.slice(rotation),
+      ...selectedInterests.slice(0, rotation),
+    ];
+
+    // Reserve one slot per selected interest where that interest has a match.
+    for (const interest of pageInterests) {
+      if (page.length >= PAGE_SIZE) break;
+      const attraction = takeFromInterest(interest);
+      if (!attraction) continue;
+      selected.add(attractionKey(attraction));
+      page.push(attraction);
+    }
+
+    // Fill the rest of this page using the user's chosen sort order.
+    while (page.length < PAGE_SIZE && sortedPosition < sortedAttractions.length) {
+      const attraction = sortedAttractions[sortedPosition++];
+      if (selected.has(attractionKey(attraction))) continue;
+      selected.add(attractionKey(attraction));
+      page.push(attraction);
+    }
+
+    if (!page.length) break;
+    result.push(...page);
+    pageIndex += 1;
+  }
+
+  return result;
+}
+
 function renderCards() {
   const filtered = getFilteredAttractions();
-  const sorted = getSortedAttractions(filtered);
+  const sorted = balanceInterestsAcrossPages(getSortedAttractions(filtered));
   const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   currentPage = Math.min(Math.max(1, currentPage), totalPages);
   const startIndex = (currentPage - 1) * PAGE_SIZE;
