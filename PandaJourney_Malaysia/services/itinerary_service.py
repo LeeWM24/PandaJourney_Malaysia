@@ -43,6 +43,8 @@ print(
 
 GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
 LOCATION_SUGGESTION_CACHE: dict[str, list[dict[str, Any]]] = {}
+NAMED_POI_SUGGESTION_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+NAMED_POI_SUGGESTION_CACHE_TTL_SECONDS = 15 * 60
 REVERSE_GEOCODE_CACHE: dict[str, dict[str, Any] | None] = {}
 CURRENT_LOCATION_NEARBY_CACHE: dict[str, dict[str, Any] | None] = {}
 MALAYSIA_ONLY_MESSAGE = (
@@ -1661,7 +1663,7 @@ def score_named_poi_suggestion(query_text: str, suggestion: dict[str, Any]) -> i
 def search_named_poi_suggestions(query: str, limit: int = 5) -> list[dict[str, Any]]:
     search_text = str(query or "").strip()
 
-    if len(search_text) < 2:
+    if len(search_text) < 3:
         return []
 
     api_key = os.getenv("SERPAPI_KEY", "").strip()
@@ -1671,6 +1673,16 @@ def search_named_poi_suggestions(query: str, limit: int = 5) -> list[dict[str, A
         return []
 
     safe_limit = max(1, min(int(limit or 5), 5))
+    cache_key = f"{normalise_search_text(search_text)}:{safe_limit}"
+    cached = NAMED_POI_SUGGESTION_CACHE.get(cache_key)
+
+    if cached is not None:
+        cached_at, cached_suggestions = cached
+
+        if time.time() - cached_at < NAMED_POI_SUGGESTION_CACHE_TTL_SECONDS:
+            return cached_suggestions
+
+        NAMED_POI_SUGGESTION_CACHE.pop(cache_key, None)
 
     try:
         data = _request_json(
@@ -1750,7 +1762,15 @@ def search_named_poi_suggestions(query: str, limit: int = 5) -> list[dict[str, A
     for suggestion in suggestions:
         suggestion.pop("_relevance_score", None)
 
-    return suggestions[:safe_limit]
+    suggestions = suggestions[:safe_limit]
+
+    if suggestions:
+        NAMED_POI_SUGGESTION_CACHE[cache_key] = (
+            time.time(),
+            suggestions,
+        )
+
+    return suggestions
 
 
 def is_duplicate_location_suggestion(

@@ -673,11 +673,11 @@ def location_suggestions():
 
 @app.route("/api/itinerary-attraction-suggestions")
 @login_required
-@rate_limit(max_calls=10, window_seconds=60)
+@rate_limit(max_calls=30, window_seconds=60)
 def itinerary_attraction_suggestions():
     query = request.args.get("q", "").strip()
 
-    if len(query) < 2:
+    if len(query) < 3:
         return jsonify({
             "suggestions": []
         })

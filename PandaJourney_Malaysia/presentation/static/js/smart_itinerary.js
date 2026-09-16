@@ -31,7 +31,9 @@ const ITINERARY_STATE_KEY =
 const MAX_ITINERARY_TITLE_LENGTH = 50;
 const MAX_LOCATION_DISPLAY_LENGTH = 40;
 const CUSTOM_OPTION_VALUE = "other";
-const MANUAL_ATTRACTION_MIN_QUERY_LENGTH = 2;
+const MANUAL_ATTRACTION_MIN_QUERY_LENGTH = 3;
+const MANUAL_ATTRACTION_DEBOUNCE_MS = 700;
+const MANUAL_ATTRACTION_RATE_LIMIT_COOLDOWN_MS = 10000;
 
 const RUNTIME_BINDING_ATTRIBUTES = [
   "data-detail-bound",
@@ -165,6 +167,13 @@ let manualAttractions = [];
 let itineraryStateClearedForHandoff = false;
 
 let routeMapInstance = null;
+
+const attractionSuggestionCache = new Map();
+let lastAttractionQuery = "";
+let attractionSuggestionAbortController = null;
+let attractionSuggestionRequestSequence = 0;
+let attractionSuggestionRateLimitUntil = 0;
+let lastAttractionSuggestions = [];
 
 const detailPhotoCache = new Map();
 const DETAIL_PHOTO_RETRY_DELAY_MS = 700;
@@ -4135,7 +4144,6 @@ function setupManualAttractionSearch() {
   }
 
   let debounceTimer = null;
-  let latestQuery = "";
 
   inputElement.addEventListener(
     "input",
@@ -4144,8 +4152,10 @@ function setupManualAttractionSearch() {
         inputElement.value
           .trim();
 
-      latestQuery =
-        queryText;
+      const normalisedQuery =
+        normaliseAttractionSuggestionQuery(
+          queryText
+        );
 
       if (debounceTimer) {
         clearTimeout(
@@ -4154,11 +4164,66 @@ function setupManualAttractionSearch() {
       }
 
       if (
-        queryText.length <
+        normalisedQuery.length <
         MANUAL_ATTRACTION_MIN_QUERY_LENGTH
       ) {
+        if (attractionSuggestionAbortController) {
+          attractionSuggestionAbortController.abort();
+          attractionSuggestionAbortController =
+            null;
+        }
+
         hideLocationSuggestions(
           boxElement
+        );
+
+        return;
+      }
+
+      if (
+        attractionSuggestionCache.has(
+          normalisedQuery
+        )
+      ) {
+        lastAttractionQuery =
+          normalisedQuery;
+
+        const cachedSuggestions =
+          attractionSuggestionCache.get(
+            normalisedQuery
+          );
+
+        if (cachedSuggestions.length > 0) {
+          lastAttractionSuggestions =
+            cachedSuggestions;
+        }
+
+        renderManualAttractionSuggestions(
+          boxElement,
+          cachedSuggestions
+        );
+
+        return;
+      }
+
+      if (
+        normalisedQuery ===
+          lastAttractionQuery &&
+        boxElement.innerHTML.trim()
+      ) {
+        boxElement.hidden =
+          false;
+
+        return;
+      }
+
+      if (
+        Date.now() <
+        attractionSuggestionRateLimitUntil
+      ) {
+        showLocationSuggestionStatus(
+          boxElement,
+          "Search is temporarily busy. Please wait a moment."
         );
 
         return;
@@ -4172,10 +4237,91 @@ function setupManualAttractionSearch() {
       debounceTimer =
         setTimeout(
           async function () {
+            const requestQuery =
+              normaliseAttractionSuggestionQuery(
+                inputElement.value
+              );
+
+            if (
+              requestQuery.length <
+              MANUAL_ATTRACTION_MIN_QUERY_LENGTH
+            ) {
+              hideLocationSuggestions(
+                boxElement
+              );
+
+              return;
+            }
+
+            if (
+              attractionSuggestionCache.has(
+                requestQuery
+              )
+            ) {
+              lastAttractionQuery =
+                requestQuery;
+
+              const cachedSuggestions =
+                attractionSuggestionCache.get(
+                  requestQuery
+                );
+
+              if (cachedSuggestions.length > 0) {
+                lastAttractionSuggestions =
+                  cachedSuggestions;
+              }
+
+              renderManualAttractionSuggestions(
+                boxElement,
+                cachedSuggestions
+              );
+
+              return;
+            }
+
+            if (
+              requestQuery ===
+                lastAttractionQuery &&
+              boxElement.innerHTML.trim()
+            ) {
+              boxElement.hidden =
+                false;
+
+              return;
+            }
+
+            if (
+              Date.now() <
+              attractionSuggestionRateLimitUntil
+            ) {
+              showLocationSuggestionStatus(
+                boxElement,
+                "Search is temporarily busy. Please wait a moment."
+              );
+
+              return;
+            }
+
+            if (attractionSuggestionAbortController) {
+              attractionSuggestionAbortController.abort();
+            }
+
+            const requestSequence =
+              attractionSuggestionRequestSequence + 1;
+
+            attractionSuggestionRequestSequence =
+              requestSequence;
+
+            const abortController =
+              new AbortController();
+
+            attractionSuggestionAbortController =
+              abortController;
+
             try {
               const response =
                 await fetch(
-                  `/api/itinerary-attraction-suggestions?q=${encodeURIComponent(queryText)}`,
+                  `/api/itinerary-attraction-suggestions?q=${encodeURIComponent(requestQuery)}`,
                   {
                     method:
                       "GET",
@@ -4183,11 +4329,48 @@ function setupManualAttractionSearch() {
                     headers: {
                       Accept:
                         "application/json"
-                    }
+                    },
+
+                    signal:
+                      abortController.signal
                   }
                 );
 
-              if (!response.ok) {
+              if (response.status === 429) {
+                attractionSuggestionRateLimitUntil =
+                  Date.now() +
+                  MANUAL_ATTRACTION_RATE_LIMIT_COOLDOWN_MS;
+
+                if (
+                  requestSequence !==
+                    attractionSuggestionRequestSequence ||
+                  requestQuery !==
+                    normaliseAttractionSuggestionQuery(
+                      inputElement.value
+                    )
+                ) {
+                  return;
+                }
+
+                if (lastAttractionSuggestions.length > 0) {
+                  renderManualAttractionSuggestions(
+                    boxElement,
+                    lastAttractionSuggestions
+                  );
+                } else {
+                  showLocationSuggestionStatus(
+                    boxElement,
+                    "Search is temporarily busy. Please wait a moment."
+                  );
+                }
+
+                return;
+              }
+
+              if (
+                response.status >= 500 ||
+                !response.ok
+              ) {
                 throw new Error(
                   `Itinerary attraction request failed: ${response.status}`
                 );
@@ -4197,37 +4380,79 @@ function setupManualAttractionSearch() {
                 await response.json();
 
               if (
-                latestQuery !==
-                inputElement.value.trim()
+                requestSequence !==
+                  attractionSuggestionRequestSequence ||
+                requestQuery !==
+                  normaliseAttractionSuggestionQuery(
+                    inputElement.value
+                  )
               ) {
                 return;
               }
 
+              const suggestions =
+                Array.isArray(data.suggestions)
+                  ? data.suggestions
+                  : [];
+
+              attractionSuggestionCache.set(
+                requestQuery,
+                suggestions
+              );
+
+              if (suggestions.length > 0) {
+                lastAttractionSuggestions =
+                  suggestions;
+              }
+
+              lastAttractionQuery =
+                requestQuery;
+
               renderManualAttractionSuggestions(
                 boxElement,
-                data.suggestions || []
+                suggestions
               );
 
             } catch (error) {
+              if (
+                error &&
+                error.name ===
+                  "AbortError"
+              ) {
+                return;
+              }
+
               console.error(
                 "Manual attraction suggestion error:",
                 error
               );
 
               if (
-                latestQuery !==
-                inputElement.value.trim()
+                requestSequence !==
+                  attractionSuggestionRequestSequence ||
+                requestQuery !==
+                  normaliseAttractionSuggestionQuery(
+                    inputElement.value
+                  )
               ) {
                 return;
               }
 
               showLocationSuggestionStatus(
                 boxElement,
-                "Unable to load attractions. Please try again."
+                "Unable to load attractions right now. Please try again."
               );
+            } finally {
+              if (
+                attractionSuggestionAbortController ===
+                abortController
+              ) {
+                attractionSuggestionAbortController =
+                  null;
+              }
             }
           },
-          500
+          MANUAL_ATTRACTION_DEBOUNCE_MS
         );
     }
   );
@@ -4355,6 +4580,14 @@ function setRegenerateToken() {
         Date.now()
       );
   }
+}
+
+
+function normaliseAttractionSuggestionQuery(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 
