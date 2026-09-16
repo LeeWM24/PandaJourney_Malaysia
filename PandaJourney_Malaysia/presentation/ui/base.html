@@ -44,6 +44,14 @@
     html.likely-authenticated #profile-nav-link {
       display: flex !important;
     }
+
+    #mobile-profile-nav-link {
+      display: none !important;
+    }
+
+    html.likely-authenticated #mobile-profile-nav-link {
+      display: flex !important;
+    }
   </style>
 
   {% block extra_head %}{% endblock %}
@@ -102,6 +110,96 @@
 </div>
 
 <div class="app-shell">
+
+  <header class="mobile-topbar">
+    <a
+      href="{{ url_for('dashboard') }}"
+      class="mobile-brand"
+      aria-label="Go to Dashboard">
+      <img
+        src="{{ url_for('static', filename='images/logo.png') }}"
+        alt="PandaJourney Logo"
+        class="mobile-brand-logo"
+      />
+      <span>PandaJourney</span>
+    </a>
+
+    <button
+      type="button"
+      class="mobile-menu-toggle"
+      id="mobile-menu-toggle"
+      aria-label="Open navigation menu"
+      aria-expanded="false"
+      aria-controls="mobile-nav-drawer">
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+    </button>
+  </header>
+
+  <div class="mobile-nav-overlay" id="mobile-nav-overlay" hidden></div>
+
+  <nav
+    class="mobile-nav-drawer"
+    id="mobile-nav-drawer"
+    aria-label="Mobile navigation"
+    aria-hidden="true">
+    <div class="mobile-drawer-head">
+      <div>
+        <div class="mobile-drawer-title">PandaJourney</div>
+        <div class="mobile-drawer-subtitle">Malaysia Smart Tourism</div>
+      </div>
+      <button
+        type="button"
+        class="mobile-drawer-close"
+        id="mobile-drawer-close"
+        aria-label="Close navigation menu">
+        &times;
+      </button>
+    </div>
+
+    <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+      <span class="nav-icon">🏠</span>
+      <span>Dashboard</span>
+    </a>
+
+    <a href="{{ url_for('smart_attraction') }}" class="{% if active_page == 'attractions' %}active{% endif %}">
+      <span class="nav-icon">🌴</span>
+      <span>Attractions</span>
+    </a>
+
+    <a href="{{ url_for('smart_itinerary') }}" class="{% if active_page == 'itinerary' %}active{% endif %}">
+      <span class="nav-icon">📅</span>
+      <span>Itinerary Planner</span>
+    </a>
+
+    <a href="{{ url_for('saved_itineraries') }}" class="{% if active_page == 'saved' %}active{% endif %}">
+      <span class="nav-icon">💾</span>
+      <span>Saved Itineraries</span>
+    </a>
+
+    <a href="{{ url_for('public_itinerary') }}" class="{% if active_page == 'public' %}active{% endif %}">
+      <span class="nav-icon">🌐</span>
+      <span>Public Itineraries</span>
+    </a>
+
+    <a
+      id="mobile-profile-nav-link"
+      href="{{ url_for('profile') }}"
+      class="{% if active_page == 'profile' %}active{% endif %}">
+      <span class="nav-icon">👤</span>
+      <span>Profile</span>
+    </a>
+
+    <button
+      type="button"
+      id="mobile-auth-nav-button"
+      class="logout-btn js-open-logout"
+      aria-label="Account action">
+      <span class="nav-icon" id="mobile-auth-nav-icon"></span>
+      <span id="mobile-auth-nav-text"></span>
+    </button>
+  </nav>
 
   <aside class="sidebar">
     <a
@@ -186,6 +284,18 @@
       var profileLink =
         document.getElementById("profile-nav-link");
 
+      var mobileButton =
+        document.getElementById("mobile-auth-nav-button");
+
+      var mobileIcon =
+        document.getElementById("mobile-auth-nav-icon");
+
+      var mobileText =
+        document.getElementById("mobile-auth-nav-text");
+
+      var mobileProfileLink =
+        document.getElementById("mobile-profile-nav-link");
+
       var isLikelyLoggedIn =
         localStorage.getItem(
           "pandajourney-authenticated"
@@ -203,6 +313,13 @@
         );
       }
 
+      if (mobileProfileLink) {
+        mobileProfileLink.setAttribute(
+          "aria-hidden",
+          isLikelyLoggedIn ? "false" : "true"
+        );
+      }
+
       if (icon) {
         icon.textContent =
           isLikelyLoggedIn ? "🚪" : "🔐";
@@ -213,8 +330,27 @@
           isLikelyLoggedIn ? "Logout" : "Login";
       }
 
+      if (mobileIcon) {
+        mobileIcon.textContent =
+          isLikelyLoggedIn ? "🚪" : "🔐";
+      }
+
+      if (mobileText) {
+        mobileText.textContent =
+          isLikelyLoggedIn ? "Logout" : "Login";
+      }
+
       if (button) {
         button.setAttribute(
+          "aria-label",
+          isLikelyLoggedIn
+            ? "Logout"
+            : "Login"
+        );
+      }
+
+      if (mobileButton) {
+        mobileButton.setAttribute(
           "aria-label",
           isLikelyLoggedIn
             ? "Logout"
@@ -284,8 +420,44 @@
 (function () {
   var modal = document.getElementById("logout-modal");
   var cancelBtn = document.getElementById("logout-cancel");
+  var menuToggle = document.getElementById("mobile-menu-toggle");
+  var mobileDrawer = document.getElementById("mobile-nav-drawer");
+  var mobileOverlay = document.getElementById("mobile-nav-overlay");
+  var mobileClose = document.getElementById("mobile-drawer-close");
+  var previousFocus = null;
+
+  function openMobileNav() {
+    if (!menuToggle || !mobileDrawer || !mobileOverlay) {
+      return;
+    }
+
+    previousFocus = document.activeElement;
+    document.body.classList.add("mobile-nav-open");
+    mobileOverlay.hidden = false;
+    mobileDrawer.setAttribute("aria-hidden", "false");
+    menuToggle.setAttribute("aria-expanded", "true");
+    menuToggle.setAttribute("aria-label", "Close navigation menu");
+    mobileDrawer.querySelector("a, button").focus();
+  }
+
+  function closeMobileNav() {
+    if (!menuToggle || !mobileDrawer || !mobileOverlay) {
+      return;
+    }
+
+    document.body.classList.remove("mobile-nav-open");
+    mobileDrawer.setAttribute("aria-hidden", "true");
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.setAttribute("aria-label", "Open navigation menu");
+    mobileOverlay.hidden = true;
+
+    if (previousFocus && typeof previousFocus.focus === "function") {
+      previousFocus.focus();
+    }
+  }
 
   function openModal() {
+    closeMobileNav();
     modal.classList.add("active");
     cancelBtn.focus();
   }
@@ -297,6 +469,30 @@
   document.querySelectorAll(".js-open-logout").forEach(function (btn) {
     btn.addEventListener("click", openModal);
   });
+
+  if (menuToggle) {
+    menuToggle.addEventListener("click", function () {
+      if (document.body.classList.contains("mobile-nav-open")) {
+        closeMobileNav();
+      } else {
+        openMobileNav();
+      }
+    });
+  }
+
+  if (mobileClose) {
+    mobileClose.addEventListener("click", closeMobileNav);
+  }
+
+  if (mobileOverlay) {
+    mobileOverlay.addEventListener("click", closeMobileNav);
+  }
+
+  if (mobileDrawer) {
+    mobileDrawer.querySelectorAll("a").forEach(function (link) {
+      link.addEventListener("click", closeMobileNav);
+    });
+  }
 
   if (cancelBtn) {
     cancelBtn.addEventListener("click", closeModal);
@@ -311,6 +507,10 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && modal.classList.contains("active")) {
       closeModal();
+    }
+
+    if (e.key === "Escape" && document.body.classList.contains("mobile-nav-open")) {
+      closeMobileNav();
     }
   });
 
