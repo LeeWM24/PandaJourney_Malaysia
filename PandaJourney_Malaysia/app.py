@@ -353,9 +353,7 @@ def _verify_firebase_id_token(id_token: str) -> dict:
 
 @app.errorhandler(404)
 def page_not_found(error):
-    if session.get("user"):
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
+    return redirect(url_for("attraction"))
 
 @app.route("/session-login", methods=["POST"])
 def session_login():
