@@ -906,6 +906,42 @@ CURATED_DESTINATION_SUGGESTIONS = [
     },
 ]
 
+# Major venues are kept locally so incomplete final words (for example,
+# "lalapor") can still be completed even though Nominatim only matches the
+# full word "LaLaport".
+CURATED_VENUE_SUGGESTIONS = [
+    {
+        "name": "Bukit Bintang",
+        "display_name": "Bukit Bintang, Kuala Lumpur, Malaysia",
+        "latitude": 3.1467000,
+        "longitude": 101.7113000,
+    },
+    {
+        "name": "Mitsui Shopping Park LaLaport Bukit Bintang City Centre",
+        "display_name": "Mitsui Shopping Park LaLaport Bukit Bintang City Centre, Kuala Lumpur, Malaysia",
+        "latitude": 3.1406982,
+        "longitude": 101.7074113,
+    },
+    {
+        "name": "Pavilion Kuala Lumpur",
+        "display_name": "Pavilion Kuala Lumpur, Bukit Bintang, Kuala Lumpur, Malaysia",
+        "latitude": 3.1491540,
+        "longitude": 101.7129531,
+    },
+    {
+        "name": "Pavilion Bukit Jalil",
+        "display_name": "Pavilion Bukit Jalil, Kuala Lumpur, Malaysia",
+        "latitude": 3.0510630,
+        "longitude": 101.6705112,
+    },
+    {
+        "name": "Sunway Lagoon",
+        "display_name": "Sunway Lagoon, Petaling Jaya, Selangor, Malaysia",
+        "latitude": 3.0706506,
+        "longitude": 101.6107862,
+    },
+]
+
 DESTINATION_ALIASES = {
     "kl": "Kuala Lumpur",
     "k.l.": "Kuala Lumpur",
@@ -933,10 +969,14 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
     if len(key) < 1:
         return []
 
+    curated_suggestions = (
+        CURATED_DESTINATION_SUGGESTIONS + CURATED_VENUE_SUGGESTIONS
+    )
     curated = [
         dict(suggestion)
-        for suggestion in CURATED_DESTINATION_SUGGESTIONS
+        for suggestion in curated_suggestions
         if suggestion["name"].lower().startswith(key)
+        or any(word.startswith(key) for word in suggestion["name"].lower().split())
         or query.strip().lower() in DESTINATION_ALIASES
     ]
 
@@ -946,8 +986,9 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
     if len(key) == 1:
         return curated[:limit]
 
-    # Version the key so earlier venue-only suggestions are not reused.
-    cache_key = f"suggest:venues:v5:{key}:{limit}"
+    # Version the key so an earlier cached empty response cannot keep showing
+    # a false "not found" message after the provider has the venue available.
+    cache_key = f"suggest:venues:v8:{key}:{limit}"
     cached = cache_get(cache_key, max_age_seconds=24 * 3600)
     if cached is not None:
         cached_names = {item.get("name", "").lower() for item in curated}
@@ -1009,6 +1050,16 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         if len(short_name.strip()) < 2:
             continue
 
+        # Nominatim may match only the last token of a partial query, such as
+        # returning "Car Park B" for "bukit b". Match against the displayed
+        # venue name, not a coincidental phrase buried in its address.
+        short_name_text = " ".join(short_name.lower().split())
+        if len(key.split()) > 1:
+            if key not in short_name_text:
+                continue
+        elif not any(word.startswith(key) for word in short_name_text.split()):
+            continue
+
         latitude = float(item["lat"])
         longitude = float(item["lon"])
         location_key = (short_name.lower(), round(latitude, 3), round(longitude, 3))
@@ -1046,7 +1097,11 @@ def suggest_destinations(query: str, limit: int = 5) -> list[dict[str, Any]]:
         ]
 
     suggestions = suggestions[:limit]
-    cache_set(cache_key, suggestions)
+    # Nominatim can briefly return no matches while a user is typing or when
+    # the provider is under load. Do not turn that temporary miss into a
+    # 24-hour cached failure.
+    if suggestions:
+        cache_set(cache_key, suggestions)
     return suggestions
 
 
