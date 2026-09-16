@@ -2345,7 +2345,7 @@ confirmRemovePasswordProviderBtn
         confirmRemovePasswordProviderBtn.disabled =
           false;
         confirmRemovePasswordProviderBtn.textContent =
-          "Remove Password Sign-In";
+          "Remove";
       }
     }
   );
