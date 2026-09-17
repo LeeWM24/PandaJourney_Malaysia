@@ -1,0 +1,7 @@
+{
+    "python.testing.pytestArgs": [
+        "PandaJourney_Malaysia"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true
+}

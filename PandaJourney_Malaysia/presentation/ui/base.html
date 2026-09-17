@@ -2,12 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>{% block title %}PandaJourney Malaysia{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>
+    {% block title %}
+    PandaJourney Malaysia
+    {% endblock %}
+  </title>
+
+  {% block favicon %}{% endblock %}
+
+  <link
+    rel="stylesheet"
+    href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_version('css/app.css') }}"
+  />
+
+  <script>
+    (function () {
+      var isLikelyLoggedIn =
+        localStorage.getItem(
+          "pandajourney-authenticated"
+        ) === "true";
+
+      if (isLikelyLoggedIn) {
+        document.documentElement.classList.add(
+          "likely-authenticated"
+        );
+      }
+    })();
+  </script>
+
+  <style>
+    #profile-nav-link {
+      display: none !important;
+    }
+
+    html.likely-authenticated #profile-nav-link {
+      display: flex !important;
+    }
+
+    #mobile-profile-nav-link {
+      display: none !important;
+    }
+
+    html.likely-authenticated #mobile-profile-nav-link {
+      display: flex !important;
+    }
+  </style>
+
   {% block extra_head %}{% endblock %}
 </head>
-<body>
+<body
+  data-public-page="{{ 'true' if active_page == 'attractions' else 'false' }}">
+
+<div
+  id="session-expiry-warning"
+  class="session-expiry-warning"
+  role="status"
+  aria-live="polite"
+  hidden>
+  <span>Your session will expire in about 5 minutes due to inactivity.</span>
+  <button type="button" id="keep-session-active">Stay signed in</button>
+</div>
+
+<div class="modal-backdrop" id="session-expired-modal" role="dialog" aria-modal="true" aria-labelledby="session-expired-title">
+  <div class="modal-box">
+    <div class="modal-icon">🔒</div>
+    <div class="modal-title" id="session-expired-title">Session expired</div>
+    <div class="modal-desc">
+      Your sign-in session has expired for security. Please sign in again to continue.
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-primary btn-md btn-full" id="session-expired-login">
+        Go to Login
+      </button>
+    </div>
+  </div>
+</div>
 
 <div class="modal-backdrop" id="logout-modal" role="dialog" aria-modal="true">
   <div class="modal-box">
@@ -17,9 +92,17 @@
       You'll need to sign in again to access your itineraries,
       saved attractions, and collaboration features.
     </div>
+    <div
+    id="logout-error"
+    class="logout-error"
+    role="alert"
+    aria-live="assertive"
+    hidden
+  >
+  </div>
     <div class="modal-actions">
       <button class="btn btn-ghost btn-md" id="logout-cancel" type="button">Cancel</button>
-      <form action="{{ url_for('logout') }}" method="post" style="flex:1; margin:0;">
+      <form id="global-logout-form" action="{{ url_for('logout') }}" method="post" style="flex:1; margin:0;">
         <button type="submit" class="btn btn-danger btn-md btn-full">Sign out</button>
       </form>
     </div>
@@ -28,8 +111,101 @@
 
 <div class="app-shell">
 
+  <header class="mobile-topbar">
+    <a
+      href="{{ url_for('dashboard') }}"
+      class="mobile-brand"
+      aria-label="Go to Dashboard">
+      <img
+        src="{{ url_for('static', filename='images/logo.png') }}"
+        alt="PandaJourney Logo"
+        class="mobile-brand-logo"
+      />
+      <span>PandaJourney</span>
+    </a>
+
+    <button
+      type="button"
+      class="mobile-menu-toggle"
+      id="mobile-menu-toggle"
+      aria-label="Open navigation menu"
+      aria-expanded="false"
+      aria-controls="mobile-nav-drawer">
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+    </button>
+  </header>
+
+  <div class="mobile-nav-overlay" id="mobile-nav-overlay" hidden></div>
+
+  <nav
+    class="mobile-nav-drawer"
+    id="mobile-nav-drawer"
+    aria-label="Mobile navigation"
+    aria-hidden="true">
+    <div class="mobile-drawer-head">
+      <div>
+        <div class="mobile-drawer-title">PandaJourney</div>
+        <div class="mobile-drawer-subtitle">Malaysia Smart Tourism</div>
+      </div>
+      <button
+        type="button"
+        class="mobile-drawer-close"
+        id="mobile-drawer-close"
+        aria-label="Close navigation menu">
+        &times;
+      </button>
+    </div>
+
+    <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
+      <span class="nav-icon">🏠</span>
+      <span>Dashboard</span>
+    </a>
+
+    <a href="{{ url_for('smart_attraction') }}" class="{% if active_page == 'attractions' %}active{% endif %}">
+      <span class="nav-icon">🌴</span>
+      <span>Attractions</span>
+    </a>
+
+    <a href="{{ url_for('smart_itinerary') }}" class="{% if active_page == 'itinerary' %}active{% endif %}">
+      <span class="nav-icon">📅</span>
+      <span>Itinerary Planner</span>
+    </a>
+
+    <a href="{{ url_for('saved_itineraries') }}" class="{% if active_page == 'saved' %}active{% endif %}">
+      <span class="nav-icon">💾</span>
+      <span>Saved Itineraries</span>
+    </a>
+
+    <a href="{{ url_for('public_itinerary') }}" class="{% if active_page == 'public' %}active{% endif %}">
+      <span class="nav-icon">🌐</span>
+      <span>Public Itineraries</span>
+    </a>
+
+    <a
+      id="mobile-profile-nav-link"
+      href="{{ url_for('profile') }}"
+      class="{% if active_page == 'profile' %}active{% endif %}">
+      <span class="nav-icon">👤</span>
+      <span>Profile</span>
+    </a>
+
+    <button
+      type="button"
+      id="mobile-auth-nav-button"
+      class="logout-btn js-open-logout"
+      aria-label="Account action">
+      <span class="nav-icon" id="mobile-auth-nav-icon"></span>
+      <span id="mobile-auth-nav-text"></span>
+    </button>
+  </nav>
+
   <aside class="sidebar">
-    <div class="sidebar-logo">
+    <a
+      href="{{ url_for('dashboard') }}"
+      class="sidebar-logo"
+      aria-label="Go to Dashboard">
       <div class="sidebar-brand">
         <img
           src="{{ url_for('static', filename='images/logo.png') }}"
@@ -40,7 +216,7 @@
         <span class="sidebar-brand-name">PandaJourney</span>
       </div>
       <div class="sidebar-brand-sub">Malaysia Smart Tourism</div>
-    </div>
+    </a>
 
     <nav class="sidebar-nav">
       <a href="{{ url_for('dashboard') }}" class="{% if active_page == 'dashboard' %}active{% endif %}">
@@ -63,11 +239,6 @@
         <span>Saved Itineraries</span>
       </a>
 
-      <a href="{{ url_for('collaboration') }}" class="{% if active_page == 'collaboration' %}active{% endif %}">
-        <span class="nav-icon">👥</span>
-        <span>Collaboration</span>
-      </a>
-
       <a href="{{ url_for('public_itinerary') }}" class="{% if active_page == 'public' %}active{% endif %}">
         <span class="nav-icon">🌐</span>
         <span>Public Itineraries</span>
@@ -75,15 +246,119 @@
     </nav>
 
     <div class="sidebar-footer">
-      <a href="{{ url_for('profile') }}" class="{% if active_page == 'profile' %}active{% endif %}">
+      <a
+        id="profile-nav-link"
+        href="{{ url_for('profile') }}"
+        class="{% if active_page == 'profile' %}active{% endif %}"
+      >
         <span class="nav-icon">👤</span>
         <span>Profile</span>
       </a>
 
-      <button type="button" class="logout-btn js-open-logout">
-        <span class="nav-icon">🚪</span>
-        <span>Logout</span>
+      <button
+        type="button"
+        id="auth-nav-button"
+        class="logout-btn js-open-logout"
+        aria-label="Account action">
+
+        <span
+          class="nav-icon"
+          id="auth-nav-icon">
+        </span>
+
+        <span id="auth-nav-text">
+        </span>
       </button>
+
+    <script>
+    (function () {
+      var button =
+        document.getElementById("auth-nav-button");
+
+      var icon =
+        document.getElementById("auth-nav-icon");
+
+      var text =
+        document.getElementById("auth-nav-text");
+
+      var profileLink =
+        document.getElementById("profile-nav-link");
+
+      var mobileButton =
+        document.getElementById("mobile-auth-nav-button");
+
+      var mobileIcon =
+        document.getElementById("mobile-auth-nav-icon");
+
+      var mobileText =
+        document.getElementById("mobile-auth-nav-text");
+
+      var mobileProfileLink =
+        document.getElementById("mobile-profile-nav-link");
+
+      var isLikelyLoggedIn =
+        localStorage.getItem(
+          "pandajourney-authenticated"
+        ) === "true";
+
+      document.documentElement.classList.toggle(
+        "likely-authenticated",
+        isLikelyLoggedIn
+      );
+
+      if (profileLink) {
+        profileLink.setAttribute(
+          "aria-hidden",
+          isLikelyLoggedIn ? "false" : "true"
+        );
+      }
+
+      if (mobileProfileLink) {
+        mobileProfileLink.setAttribute(
+          "aria-hidden",
+          isLikelyLoggedIn ? "false" : "true"
+        );
+      }
+
+      if (icon) {
+        icon.textContent =
+          isLikelyLoggedIn ? "🚪" : "🔐";
+      }
+
+      if (text) {
+        text.textContent =
+          isLikelyLoggedIn ? "Logout" : "Login";
+      }
+
+      if (mobileIcon) {
+        mobileIcon.textContent =
+          isLikelyLoggedIn ? "🚪" : "🔐";
+      }
+
+      if (mobileText) {
+        mobileText.textContent =
+          isLikelyLoggedIn ? "Logout" : "Login";
+      }
+
+      if (button) {
+        button.setAttribute(
+          "aria-label",
+          isLikelyLoggedIn
+            ? "Logout"
+            : "Login"
+        );
+      }
+
+      if (mobileButton) {
+        mobileButton.setAttribute(
+          "aria-label",
+          isLikelyLoggedIn
+            ? "Logout"
+            : "Login"
+        );
+      }
+    })();
+    </script>
     </div>
   </aside>
 
@@ -96,6 +371,25 @@
 
       <div class="topbar-actions">
         {% block topbar_actions %}{% endblock %}
+        {% if active_page != 'profile' %}
+          <a
+            href="{{ url_for('profile') }}"
+            class="topbar-profile-action"
+            id="dashboardAvatar"
+            aria-label="Open profile"
+            hidden
+            style="text-decoration: none; overflow: hidden;">
+            <span id="topbarUserName" class="topbar-user-name"></span>
+            <span class="avatar avatar-lg">
+              <span id="avatarInitials"></span>
+              <img
+                id="avatarImage"
+                src=""
+                alt="Profile picture"
+                style="width: 100%; height: 100%; display: none; object-fit: cover;">
+            </span>
+          </a>
+        {% endif %}
       </div>
     </header>
 
@@ -126,8 +420,44 @@
 (function () {
   var modal = document.getElementById("logout-modal");
   var cancelBtn = document.getElementById("logout-cancel");
+  var menuToggle = document.getElementById("mobile-menu-toggle");
+  var mobileDrawer = document.getElementById("mobile-nav-drawer");
+  var mobileOverlay = document.getElementById("mobile-nav-overlay");
+  var mobileClose = document.getElementById("mobile-drawer-close");
+  var previousFocus = null;
+
+  function openMobileNav() {
+    if (!menuToggle || !mobileDrawer || !mobileOverlay) {
+      return;
+    }
+
+    previousFocus = document.activeElement;
+    document.body.classList.add("mobile-nav-open");
+    mobileOverlay.hidden = false;
+    mobileDrawer.setAttribute("aria-hidden", "false");
+    menuToggle.setAttribute("aria-expanded", "true");
+    menuToggle.setAttribute("aria-label", "Close navigation menu");
+    mobileDrawer.querySelector("a, button").focus();
+  }
+
+  function closeMobileNav() {
+    if (!menuToggle || !mobileDrawer || !mobileOverlay) {
+      return;
+    }
+
+    document.body.classList.remove("mobile-nav-open");
+    mobileDrawer.setAttribute("aria-hidden", "true");
+    menuToggle.setAttribute("aria-expanded", "false");
+    menuToggle.setAttribute("aria-label", "Open navigation menu");
+    mobileOverlay.hidden = true;
+
+    if (previousFocus && typeof previousFocus.focus === "function") {
+      previousFocus.focus();
+    }
+  }
 
   function openModal() {
+    closeMobileNav();
     modal.classList.add("active");
     cancelBtn.focus();
   }
@@ -139,6 +469,30 @@
   document.querySelectorAll(".js-open-logout").forEach(function (btn) {
     btn.addEventListener("click", openModal);
   });
+
+  if (menuToggle) {
+    menuToggle.addEventListener("click", function () {
+      if (document.body.classList.contains("mobile-nav-open")) {
+        closeMobileNav();
+      } else {
+        openMobileNav();
+      }
+    });
+  }
+
+  if (mobileClose) {
+    mobileClose.addEventListener("click", closeMobileNav);
+  }
+
+  if (mobileOverlay) {
+    mobileOverlay.addEventListener("click", closeMobileNav);
+  }
+
+  if (mobileDrawer) {
+    mobileDrawer.querySelectorAll("a").forEach(function (link) {
+      link.addEventListener("click", closeMobileNav);
+    });
+  }
 
   if (cancelBtn) {
     cancelBtn.addEventListener("click", closeModal);
@@ -154,6 +508,10 @@
     if (e.key === "Escape" && modal.classList.contains("active")) {
       closeModal();
     }
+
+    if (e.key === "Escape" && document.body.classList.contains("mobile-nav-open")) {
+      closeMobileNav();
+    }
   });
 
   document.querySelectorAll(".chip[data-chip]").forEach(function (chip) {
@@ -168,7 +526,19 @@
 })();
 </script>
 
+<script
+  type="module"
+  src="{{ url_for('static', filename='js/auth-guard.js') }}?v={{ asset_version('js/auth-guard.js') }}">
+</script>
+{% if active_page != 'profile' %}
+<script
+  type="module"
+  src="{{ url_for('static', filename='js/topbar-avatar.js') }}?v={{ asset_version('js/topbar-avatar.js') }}">
+</script>
+{% endif %}
 {% block extra_scripts %}{% endblock %}
 
 </body>
 </html>
+
+

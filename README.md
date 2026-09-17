@@ -127,6 +127,8 @@ SMTP_PASSWORD=your-gmail-app-password
 SMTP_USE_TLS=true
 MAIL_FROM=your-email@gmail.com
 ```
+
+Do not commit or share the real Firebase service account JSON file. Each teammate should keep their own key file outside Git and point `FIREBASE_SERVICE_ACCOUNT_PATH` to their local file path.
 ## 5. Run the Flask Application
 
 Make sure the virtual environment is activated.

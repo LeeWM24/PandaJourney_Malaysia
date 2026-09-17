@@ -1,0 +1,222 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsUserDocument(userId) {
+      return signedIn() && userId == request.auth.uid;
+    }
+
+    function ownsNewUserId() {
+      return signedIn() &&
+        request.resource.data.user_id == request.auth.uid;
+    }
+
+    function ownsExistingUserId() {
+      return signedIn() &&
+        resource.data.user_id == request.auth.uid;
+    }
+
+    function itineraryExists(itineraryId) {
+      return exists(
+        /databases/$(database)/documents/Itinerary/$(itineraryId)
+      );
+    }
+
+    function itineraryData(itineraryId) {
+      return get(
+        /databases/$(database)/documents/Itinerary/$(itineraryId)
+      ).data;
+    }
+
+    function isPublished(data) {
+      return data.status == "Published" ||
+        data.is_public == true;
+    }
+
+    function isItineraryOwner(itineraryId) {
+      return signedIn() &&
+        itineraryExists(itineraryId) &&
+        itineraryData(itineraryId).user_id == request.auth.uid;
+    }
+
+    function collaboratorDocumentId(itineraryId) {
+      return itineraryId + "_" + request.auth.uid;
+    }
+
+    function pendingInviteDocumentId(itineraryId) {
+      return itineraryId + "_invite_" + request.auth.token.email;
+    }
+
+    function hasPendingInvitation(itineraryId) {
+      let invitationId = pendingInviteDocumentId(itineraryId);
+      let invitationPath =
+        /databases/$(database)/documents/collaborators/$(invitationId);
+
+      return signedIn() &&
+        request.auth.token.email is string &&
+        exists(invitationPath) &&
+        get(invitationPath).data.email == request.auth.token.email &&
+        get(invitationPath).data.status == "pending_registration";
+    }
+
+    function isAcceptedEditor(itineraryId) {
+      let collaboratorId = collaboratorDocumentId(itineraryId);
+      let collaboratorPath =
+        /databases/$(database)/documents/collaborators/$(collaboratorId);
+
+      return signedIn() &&
+        exists(collaboratorPath) &&
+        get(collaboratorPath).data.user_id == request.auth.uid &&
+        get(collaboratorPath).data.status == "accepted" &&
+        get(collaboratorPath).data.role in ["owner", "editor"];
+    }
+
+    function canReadItinerary(itineraryId) {
+      return itineraryExists(itineraryId) &&
+        (
+          isPublished(itineraryData(itineraryId)) ||
+          isItineraryOwner(itineraryId) ||
+          isAcceptedEditor(itineraryId)
+        );
+    }
+
+    function canEditItinerary(itineraryId) {
+      return isItineraryOwner(itineraryId) ||
+        isAcceptedEditor(itineraryId);
+    }
+
+    function ownsItinerary(itineraryDocumentId) {
+      return signedIn() && get(/databases/$(database)/documents/Itinerary/$(itineraryDocumentId)).data.user_id == request.auth.uid;
+    }
+
+    function collaboratorPath(itineraryId) {
+      return /databases/$(database)/documents/collaborators/$(itineraryId + "_" + request.auth.uid);
+    }
+
+    function isAcceptedCollaborator(itineraryId) {
+      return signedIn() && exists(collaboratorPath(itineraryId)) && get(collaboratorPath(itineraryId)).data.status == "accepted";
+    }
+
+    function isEditorCollaborator(itineraryId) {
+      return isAcceptedCollaborator(itineraryId) && get(collaboratorPath(itineraryId)).data.role == "editor";
+    }
+
+    function isCollaboratorOwner(itineraryId) {
+      return signedIn() && get(/databases/$(database)/documents/Itinerary/$(itineraryId)).data.user_id == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      // Signed-in users need public profile fields for itinerary authors
+      // and collaborator lookup. Private user fields should be moved to a
+      // separate collection if they are introduced later.
+      allow read: if signedIn();
+
+      allow create: if ownsUserDocument(userId) &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.email == request.auth.token.email &&
+        (
+          !("displayName" in request.resource.data) ||
+          (
+            request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() <= 100
+          )
+        );
+
+      allow update: if ownsUserDocument(userId) &&
+        request.resource.data.uid == resource.data.uid &&
+        request.resource.data.email == resource.data.email &&
+        (
+          !("displayName" in request.resource.data) ||
+          (
+            request.resource.data.displayName is string &&
+            request.resource.data.displayName.size() <= 100
+          )
+        ) &&
+        (
+          !("avatarUrl" in request.resource.data) ||
+          (
+            request.resource.data.avatarUrl is string &&
+            request.resource.data.avatarUrl.size() < 150000
+          )
+        );
+
+      allow delete: if ownsUserDocument(userId);
+    }
+
+    match /Favourites/{favouriteId} {
+      allow create: if ownsNewUserId();
+
+      allow read, delete: if ownsExistingUserId();
+
+      allow update: if ownsExistingUserId() &&
+        request.resource.data.user_id == resource.data.user_id;
+    }
+
+    match /Itinerary/{itineraryId} {
+      allow create: if ownsNewUserId();
+      allow read: if ownsExistingUserId() || resource.data.is_public == true || isAcceptedCollaborator(itineraryId);
+      allow update: if ownsExistingUserId() || (isEditorCollaborator(itineraryId) && request.resource.data.user_id == resource.data.user_id && request.resource.data.status == resource.data.status && request.resource.data.is_public == resource.data.is_public);
+      allow delete: if ownsExistingUserId();
+    }
+
+    match /itinerary_stops/{stopId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && (ownsItinerary(request.resource.data.itinerary_document_id) || isEditorCollaborator(request.resource.data.itinerary_document_id));
+      allow update, delete: if signedIn() && (ownsItinerary(resource.data.itinerary_document_id) || isEditorCollaborator(resource.data.itinerary_document_id));
+    }
+
+    match /collaborators/{collaboratorId} {
+      allow read: if signedIn() && ( resource.data.user_id == request.auth.uid || isCollaboratorOwner(resource.data.itinerary_document_id));
+      allow create: if signedIn() && isCollaboratorOwner(request.resource.data.itinerary_document_id);
+      allow update: if signedIn() && ( isCollaboratorOwner(resource.data.itinerary_document_id) || (resource.data.user_id == request.auth.uid
+            && request.resource.data.user_id == resource.data.user_id
+            && request.resource.data.itinerary_document_id == resource.data.itinerary_document_id
+            && request.resource.data.role == resource.data.role));
+      allow delete: if signedIn() && isCollaboratorOwner(resource.data.itinerary_document_id);
+    }
+
+    match /comments/{commentId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.author_id == request.auth.uid;
+      allow update, delete: if signedIn() && resource.data.author_id == request.auth.uid;
+    }
+
+    match /notifications/{notificationId} {
+      allow create: if signedIn() && request.resource.data.actor_id == request.auth.uid;
+      allow read: if signedIn();
+      allow update, delete: if signedIn() && resource.data.actor_id == request.auth.uid;
+    }
+
+    match /itinerary_likes/{likeId} {
+      allow read: if true;
+
+      allow create: if ownsNewUserId() &&
+        likeId ==
+          request.resource.data.itinerary_id + "_" + request.auth.uid;
+
+      allow delete: if ownsExistingUserId() &&
+        likeId ==
+          resource.data.itinerary_id + "_" + request.auth.uid;
+
+      allow update: if false;
+    }
+
+    // Server-only operational collections. Firebase Admin bypasses
+    // client security rules after verifying server credentials.
+    match /api_cache/{cacheId} {
+      allow read, write: if false;
+    }
+
+    match /api_usage_limits/{usageId} {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

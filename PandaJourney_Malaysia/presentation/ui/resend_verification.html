@@ -6,7 +6,7 @@
     name="viewport"
     content="width=device-width, initial-scale=1.0"
   />
-  <title>Sign In — PandaJourney Malaysia</title>
+  <title>Resend Verification Email — PandaJourney Malaysia</title>
 
   <link
     rel="stylesheet"
@@ -25,20 +25,13 @@
         />
 
         <h1 class="login-hero-title">
-          Discover Malaysia
+          Verify your account
         </h1>
 
         <p class="login-hero-subtitle">
-          From the Petronas Towers to the rainforests of Borneo —
-          explore Malaysia's wonders, intelligently planned just for you.
+          Confirm your email to protect your account and access your saved
+          itineraries, favourites and collaboration features.
         </p>
-
-        <div class="login-tags">
-          <span class="login-tag">🌆 Kuala Lumpur</span>
-          <span class="login-tag">🌿 Langkawi</span>
-          <span class="login-tag">🏛️ Melaka</span>
-          <span class="login-tag">🏝️ Sabah</span>
-        </div>
       </div>
     </section>
 
@@ -58,51 +51,30 @@
         </div>
 
         <p class="login-panel-subtitle">
-          Plan smarter trips across Malaysia
+          Enter the email and password used to create your account.
         </p>
 
-        <button
-          type="button"
-          class="login-google"
-          id="googleLogin"
-        >
-          <span style="font-weight: 800; color: #4285f4;">
-            G
-          </span>
-          Sign in with Google
-        </button>
-
-        <div class="login-divider">
-          or sign in with email
-        </div>
-
-        <!-- M1–M5 Login message -->
         <div
-          class="login-message error"
-          id="loginError"
-          role="alert"
-          aria-live="assertive"
-          style="display: none;"
+          class="login-message"
+          id="resend-verification-message"
+          role="status"
+          aria-live="polite"
         ></div>
 
         <form
-          action="{{ url_for('login') }}"
-          method="post"
           class="login-form"
-          novalidate
-        >
+          id="resend-verification-form"
+          novalidate>
           <div class="form-group">
-            <label class="form-label" for="email">
+            <label class="form-label" for="resend-email">
               Email
             </label>
 
             <div class="form-input-icon">
               <span class="icon">✉️</span>
-
               <input
                 class="form-input"
-                id="email"
-                name="email"
+                id="resend-email"
                 type="email"
                 placeholder="you@example.com"
                 autocomplete="email"
@@ -112,17 +84,15 @@
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="password">
+            <label class="form-label" for="resend-password">
               Password
             </label>
 
             <div class="form-input-icon auth-password-wrap">
               <span class="icon">🔒</span>
-
               <input
                 class="form-input"
-                id="password"
-                name="password"
+                id="resend-password"
                 type="password"
                 placeholder="••••••••"
                 autocomplete="current-password"
@@ -131,71 +101,41 @@
               <button
                 type="button"
                 class="auth-password-toggle"
-                data-password-target="password"
+                id="resend-password-toggle"
                 aria-label="Show password">
                 Show
               </button>
             </div>
           </div>
 
-          <div class="forgot-password-row">
-            <button
-              type="button"
-              class="forgot-password-btn"
-              id="forgotPasswordBtn"
-            >
-              Forgot password?
-            </button>
-          </div>
-
-          <div
-            class="login-message"
-            id="forgotPasswordMessage"
-            role="status"
-            aria-live="polite"
-          ></div>
-
-          <div
-            class="login-link-row"
-            id="verification-resend-row"
-            style="margin-bottom: 14px;"
-            hidden>
-            Didn't receive your verification email?
-            <a href="{{ url_for('resend_verification') }}">
-              Resend verification email
-            </a>
-          </div>
-
           <button
             type="submit"
             class="login-submit"
-          >
-            Sign in
+            id="resend-verification-submit">
+            Resend verification email
           </button>
         </form>
 
         <div class="login-security">
-          <span>🔐</span>
+          <span>ℹ️</span>
           <span>
-            Secured with OAuth 2.0. PandaJourney never stores
-            your Google password.
+            For your security, PandaJourney verifies your password before
+            sending another email. Check your spam or junk folder too.
           </span>
         </div>
 
         <div class="login-link-row">
-          Don't have an account?
-          <a href="{{ url_for('create_account') }}">
-            Create one free
+          <a href="{{ url_for('login') }}">
+            Back to sign in
           </a>
         </div>
       </div>
     </section>
   </main>
 
-  <script src="{{ url_for('static', filename='js/ui-status.js') }}"></script>
   <script
     type="module"
-    src="{{ url_for('static', filename='js/firebase-auth.js') }}?v={{ asset_version('js/firebase-auth.js') }}"
-  ></script>
+    src="{{ url_for('static', filename='js/resend-verification.js') }}?v={{ asset_version('js/resend-verification.js') }}">
+  </script>
 </body>
 </html>

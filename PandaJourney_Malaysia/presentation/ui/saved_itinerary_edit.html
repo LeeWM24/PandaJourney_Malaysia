@@ -1,0 +1,1356 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Itinerary - PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
+{% block page_title %}Edit Itinerary{% endblock %}
+{% block page_subtitle %}Edit stops, comments, collaborators and activity{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
+<style>
+  .edit-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .edit-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .edit-card {
+    border: 1px solid #d7e9df;
+    box-shadow: 0 16px 42px rgba(18, 43, 32, .08);
+  }
+
+  .edit-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .edit-section-title {
+    font-size: 16px;
+    font-weight: 900;
+    color: var(--fg);
+  }
+
+  .edit-section-subtitle {
+    color: var(--fg-2);
+    font-size: 13px;
+    margin-top: 3px;
+  }
+
+  .edit-header-row,
+  .edit-stop-row,
+  .collaborator-row,
+  .activity-row,
+  .comment-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .edit-hero {
+    background:
+      linear-gradient(135deg, rgba(15, 122, 90, .10), rgba(255, 255, 255, .92)),
+      #ffffff;
+  }
+
+  .edit-trip-photo {
+    position: relative;
+    height: 220px;
+    margin-bottom: 16px;
+    border-radius: 18px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: linear-gradient(135deg, #edf8f3, #dff3ec);
+  }
+
+  .edit-trip-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .edit-trip-photo-label {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    background: rgba(0, 0, 0, .42);
+    color: #fff;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .edit-route-map {
+    position: relative;
+    z-index: 0;
+    width: 100%;
+    height: 320px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    background: #eef8f3;
+  }
+
+  .edit-map-marker {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 3px solid #15956f;
+    color: #075c49;
+    font-size: 12px;
+    font-weight: 900;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, .18);
+  }
+
+  .edit-map-marker.start,
+  .edit-map-marker.end {
+    background: #15956f;
+    color: #ffffff;
+  }
+
+  .edit-title-input {
+    width: 100%;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--fg);
+    font-size: 20px;
+    font-weight: 900;
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .edit-date-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+
+  .edit-trip-days-input {
+    width: 86px;
+    min-height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--fg);
+    font-weight: 700;
+  }
+
+  .day-start-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+
+  .day-start-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .74);
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .day-start-control input {
+    width: 104px;
+    min-height: 30px;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    padding: 0 8px;
+    background: var(--primary-soft);
+    color: var(--fg);
+    font-weight: 900;
+    cursor: text;
+    outline: none;
+  }
+
+  .day-start-control input:focus {
+    border-color: var(--primary);
+    background: #ffffff;
+    box-shadow: 0 0 0 3px rgba(15, 138, 103, .12);
+  }
+
+  .day-divider {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 100%;
+    margin: 2px 0 2px 46px;
+    color: var(--primary-dark);
+    font-weight: 900;
+  }
+
+  .day-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--border);
+  }
+
+  .day-divider span {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+  }
+
+  .route-fields {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+    gap: 12px;
+    margin-top: 14px;
+  }
+
+  .route-fields.compact {
+    grid-template-columns: 150px minmax(140px, 1fr) auto;
+    align-items: end;
+  }
+
+  .unlimited-hours-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--fg-2);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .unlimited-hours-toggle input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--primary);
+  }
+
+  .edit-date-input {
+    min-height: 34px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--fg);
+    font-weight: 700;
+  }
+
+  .edit-title-input:hover {
+    border-color: var(--border);
+    background: rgba(255, 255, 255, .7);
+  }
+
+  .edit-title-input:focus,
+  .stop-input:focus,
+  .comment-input:focus,
+  .invite-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(15, 138, 103, .10);
+    background: #fff;
+  }
+
+  .edit-meta {
+    color: var(--fg-2);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .people-count {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 12px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-weight: 800;
+    font-size: 12px;
+  }
+
+  .edit-pills {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .stop-list {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .edit-stop-row {
+    padding: 0 0 16px;
+    position: relative;
+    flex-wrap: wrap;
+  }
+
+  .stop-day-select {
+    min-height: 38px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 0 12px;
+    background: #fff;
+    color: var(--fg);
+    font-weight: 800;
+  }
+
+  .edit-stop-row.route-marker-row .stop-number {
+    background: #dff3ec;
+    color: var(--primary-dark);
+    cursor: default;
+  }
+
+  .edit-stop-row.route-marker-row .stop-title {
+    color: var(--primary-dark);
+  }
+
+  .route-marker-label {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    padding: 0 8px;
+    margin-bottom: 5px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .edit-stop-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .edit-stop-row::before {
+    content: "";
+    position: absolute;
+    left: 17px;
+    top: 40px;
+    bottom: 0;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .edit-stop-row:last-child::before {
+    display: none;
+  }
+
+  .stop-number {
+    width: 36px;
+    height: 36px;
+    border-radius: 12px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    flex-shrink: 0;
+    cursor: grab;
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 2px 8px rgba(18, 43, 32, .06);
+  }
+
+  .stop-main {
+    flex: 1;
+    min-width: 0;
+    padding: 2px 0 0;
+  }
+
+  .stop-display {
+    display: grid;
+    grid-template-columns: 74px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: flex-start;
+  }
+
+  .stop-text {
+    min-width: 0;
+  }
+
+  .stop-title {
+    font-weight: 900;
+    color: var(--fg);
+    margin-bottom: 3px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stop-subtitle {
+    color: var(--fg-2);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+  }
+
+  .stop-actions-inline {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+    opacity: .7;
+    transition: opacity .15s ease;
+  }
+
+  .edit-stop-row:hover .stop-actions-inline {
+    opacity: 1;
+  }
+
+  .stop-edit-panel {
+    display: none;
+    margin-top: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #fbfefd;
+  }
+
+  .edit-stop-row.is-editing .stop-edit-panel {
+    display: block;
+  }
+
+  .edit-stop-row.dragging {
+    opacity: .55;
+  }
+
+  .stop-fields {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) 132px 132px;
+    gap: 12px;
+    align-items: end;
+  }
+
+  .stop-place-picker,
+  .route-place-picker {
+    position: relative;
+  }
+
+  .stop-suggestions,
+  .route-suggestions {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 10020;
+    max-height: 240px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, .18);
+  }
+
+  .stop-suggestion-item,
+  .route-suggestion-item {
+    width: 100%;
+    border: 0;
+    background: #ffffff;
+    padding: 11px 13px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    border-bottom: 1px solid #edf5ef;
+  }
+
+  .stop-suggestion-item:last-child,
+  .route-suggestion-item:last-child {
+    border-bottom: 0;
+  }
+
+  .stop-suggestion-item:hover,
+  .route-suggestion-item:hover {
+    background: #e8f7ef;
+  }
+
+  .stop-photo {
+    width: 74px;
+    height: 64px;
+    border-radius: 14px;
+    overflow: hidden;
+    flex: 0 0 74px;
+    background: linear-gradient(135deg, #edf8f3, #dff3ec);
+    border: 1px solid #d7e9df;
+    cursor: pointer;
+    padding: 0;
+    box-shadow: 0 3px 10px rgba(15, 61, 42, .06);
+    transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+  }
+
+  .stop-photo:hover,
+  .stop-photo:focus-visible,
+  .stop-photo.is-selected {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(15, 138, 103, .12);
+  }
+
+  .stop-photo:hover {
+    transform: translateY(-1px);
+  }
+
+  .stop-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .stop-photo-placeholder {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    color: var(--muted-fg);
+    font-size: 11px;
+    font-weight: 800;
+    text-align: center;
+    padding: 6px;
+  }
+
+  .stop-route-action {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 9px;
+  }
+
+  .stop-route-action .btn {
+    max-width: min(100%, 440px);
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .stop-suggestion-custom {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .stop-suggestion-kicker {
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+
+  .stop-suggestion-name,
+  .route-suggestion-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--fg);
+    line-height: 1.4;
+  }
+
+  .stop-suggestion-sub,
+  .route-suggestion-sub {
+    font-size: 11px;
+    color: var(--fg-2);
+  }
+
+  .stop-suggestion-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    color: #08745c;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .stop-suggestion-meta span {
+    border-radius: 999px;
+    background: #e8f7ef;
+    padding: 3px 8px;
+  }
+
+  .stop-field label,
+  .route-field label {
+    display: block;
+    color: var(--fg-2);
+    font-size: 11px;
+    font-weight: 800;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+  }
+
+  .stop-input,
+  .route-input,
+  .comment-input,
+  .invite-input {
+    min-height: 40px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0 12px;
+    color: var(--fg);
+    background: #fcfffd;
+    width: 100%;
+  }
+
+  .stop-row-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+  }
+
+  .stop-warning {
+    display: none;
+    margin-top: 10px;
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.45;
+  }
+
+  .stop-warning.show {
+    display: block;
+  }
+
+  .comment-input {
+    flex: 1;
+  }
+
+  .route-input {
+    min-height: 42px;
+  }
+
+  .route-save-message {
+    min-height: 18px;
+    margin-top: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--fg-2);
+  }
+
+  .interest-choice-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-height: 42px;
+    align-items: center;
+  }
+
+  .interest-choice {
+    position: relative;
+  }
+
+  .interest-choice input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .interest-choice span {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0 15px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--fg-2);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .interest-choice input:checked + span {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+  }
+
+  .interest-choice input:focus + span {
+    box-shadow: 0 0 0 4px rgba(15, 138, 103, .10);
+  }
+
+  .comment-message {
+    color: #dc2626;
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 8px;
+    min-height: 18px;
+  }
+
+  .invite-row,
+  .comment-form {
+    display: flex;
+    gap: 8px;
+  }
+
+  .invite-search-wrap {
+    position: relative;
+  }
+
+  .invite-suggestions {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    display: none;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 10px 24px rgba(15, 69, 52, .14);
+  }
+
+  .invite-suggestions.show {
+    display: block;
+  }
+
+  .invite-suggestion {
+    width: 100%;
+    min-height: 58px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: 0;
+    border-bottom: 1px solid var(--border);
+    background: #fff;
+    color: var(--fg);
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .invite-suggestion:last-child {
+    border-bottom: 0;
+  }
+
+  .invite-suggestion:hover,
+  .invite-suggestion:focus-visible {
+    background: #eefaf6;
+    outline: none;
+  }
+
+  .invite-suggestion-avatar {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: var(--primary);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .invite-suggestion-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .invite-suggestion-details {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .invite-suggestion-name,
+  .invite-suggestion-email {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .invite-suggestion-name { font-size: 13px; font-weight: 800; }
+  .invite-suggestion-email { color: var(--fg-2); font-size: 12px; }
+
+  .collaborator-list,
+  .activity-list,
+  .comments-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .comments-list.is-scrollable {
+    max-height: 456px;
+    overflow-y: auto;
+    padding-right: 8px;
+  }
+
+  .comments-list.is-scrollable::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .comments-list.is-scrollable::-webkit-scrollbar-track {
+    background: #eef8f2;
+    border-radius: 999px;
+  }
+
+  .comments-list.is-scrollable::-webkit-scrollbar-thumb {
+    background: #b9ddcd;
+    border-radius: 999px;
+  }
+
+  .comment-row {
+    padding: 12px;
+    border-radius: 14px;
+    background: #fbfefd;
+    border: 1px solid #edf6f1;
+    align-items: flex-start;
+  }
+
+  .collaborator-row {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    gap: 12px;
+    align-items: center;
+    padding: 3px 0;
+  }
+
+  .collaborator-avatar,
+  .comment-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    font-size: 14px;
+    line-height: 1;
+    flex-shrink: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .collaborator-avatar span,
+  .comment-avatar span {
+    position: relative;
+    z-index: 1;
+  }
+
+  .collaborator-avatar img,
+  .comment-avatar img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+  }
+
+  .collaborator-info,
+  .comment-body,
+  .activity-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .collaborator-info {
+    overflow: hidden;
+  }
+
+  .collaborator-name,
+  .comment-name,
+  .activity-text {
+    font-weight: 800;
+  }
+
+  .collaborator-name {
+    line-height: 1.15;
+  }
+
+  .collaborator-email,
+  .comment-time,
+  .activity-time {
+    color: var(--fg-2);
+    font-size: 12px;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  .role-select,
+  .authority-pill {
+    border: 0;
+    border-radius: 999px;
+    width: 92px;
+    min-height: 28px;
+    padding: 0 10px;
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  .role-select {
+    background: #e8efff;
+    color: #1d4ed8;
+  }
+
+  .authority-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    text-transform: capitalize;
+  }
+
+  .pending-pill {
+    background: #fff7ed;
+    color: #c2410c;
+  }
+
+  .collaborator-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    justify-content: flex-end;
+    flex-shrink: 0;
+  }
+
+  .collaborator-remove-btn.icon-trash-btn {
+    display: none;
+  }
+
+  .icon-trash-btn {
+    display: inline-flex;
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #dc2626;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
+
+  .stop-trash-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .collaborator-row:hover .collaborator-remove-btn,
+  .collaborator-remove-btn:focus {
+    display: inline-flex;
+  }
+
+  .icon-trash-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .comment-actions {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    flex-shrink: 0;
+    align-items: flex-start;
+  }
+
+  .comment-text {
+    margin-top: 4px;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+  }
+
+  .comment-edit-input {
+    width: 100%;
+    min-height: 82px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 10px 12px;
+    resize: vertical;
+    color: var(--fg);
+    background: #fff;
+  }
+
+  .activity-row {
+    padding: 12px;
+    border-radius: 14px;
+    background: #f7faf8;
+    border: 1px solid transparent;
+  }
+
+  .activity-row.is-new {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+  }
+
+  .comment-row.is-new {
+    background: #fff1f2;
+    border-color: #fecdd3;
+  }
+
+  .activity-number {
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 900;
+    flex-shrink: 0;
+  }
+
+  .empty-soft {
+    padding: 18px;
+    border-radius: 14px;
+    background: #fbfefd;
+    border: 1px dashed var(--border);
+    color: var(--fg-2);
+    text-align: center;
+  }
+
+  .invite-options {
+    display: none;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: #fcfffd;
+  }
+
+  .invite-options.show {
+    display: block;
+  }
+
+  .confirm-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(11, 27, 21, .58);
+    z-index: 10001;
+  }
+
+  .confirm-modal-backdrop.show {
+    display: flex;
+  }
+
+  .confirm-modal {
+    width: min(420px, 94vw);
+    border: 1px solid #d7e9df;
+    border-radius: 20px;
+    background: #fff;
+    color: var(--fg);
+    box-shadow: 0 24px 70px rgba(18, 43, 32, .24);
+    padding: 24px;
+  }
+
+  .confirm-modal-title {
+    font-size: 21px;
+    font-weight: 900;
+    margin-bottom: 8px;
+  }
+
+  .confirm-modal-message {
+    color: var(--fg-2);
+    line-height: 1.55;
+    margin-bottom: 20px;
+  }
+
+  .confirm-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+  }
+
+  @media (max-width: 1000px) {
+    .edit-layout {
+      grid-template-columns: 1fr;
+    }
+
+    .stop-fields {
+      grid-template-columns: 1fr;
+    }
+
+    .route-fields,
+    .route-fields.compact {
+      grid-template-columns: 1fr;
+    }
+
+    .edit-header-row {
+      flex-direction: column;
+    }
+
+    .stop-display {
+      grid-template-columns: 74px minmax(0, 1fr);
+    }
+
+    .stop-actions-inline {
+      grid-column: 2;
+    }
+
+    .edit-pills {
+      justify-content: flex-start;
+    }
+
+    .collaborator-row {
+      grid-template-columns: 38px minmax(0, 1fr);
+      align-items: flex-start;
+    }
+
+    .collaborator-actions {
+      grid-column: 2;
+      flex-direction: row;
+      justify-content: flex-start;
+      align-items: center;
+      flex-wrap: wrap;
+      width: 100%;
+    }
+
+    .role-select {
+      width: auto;
+    }
+
+    .collaborator-remove-btn {
+      display: inline-flex;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{{ url_for('saved_itineraries') }}" class="btn btn-secondary btn-md">
+    &larr; Back
+  </a>
+{% endblock %}
+
+{% block content %}
+<div class="page-inner" id="edit-page" data-itinerary-id="{{ itinerary_id }}" style="padding-top:24px;">
+  <div id="edit-loading" class="card" style="padding:24px;">Loading itinerary editor...</div>
+
+  <div id="edit-error" class="card" style="padding:24px; display:none;">
+    <div class="empty-state">
+      <div class="empty-title">Itinerary not found</div>
+      <div class="empty-sub">This itinerary may have been deleted or you may not have permission to edit it.</div>
+      <a href="{{ url_for('saved_itineraries') }}" class="btn btn-primary btn-md" style="margin-top:16px;">Back to Saved Itineraries</a>
+    </div>
+  </div>
+
+  <div id="edit-content" class="edit-layout" style="display:none;">
+    <div class="edit-stack">
+      <section class="card card-p edit-card edit-hero">
+        <div id="edit-trip-photo" class="edit-trip-photo">
+          <div class="stop-photo-placeholder">Loading photo...</div>
+        </div>
+
+        <div class="edit-header-row">
+          <div style="flex:1;">
+            <input id="itinerary-title-input" class="edit-title-input" type="text" maxlength="120" aria-label="Itinerary title">
+            <div class="edit-meta">
+              <span>Travel date</span>
+              <input id="itinerary-date-input" class="edit-date-input" type="date" aria-label="Travel date">
+              <span>Days</span>
+              <input id="itinerary-days-input" class="edit-trip-days-input" type="number" min="1" max="30" step="1" aria-label="Trip days">
+              <span>-</span>
+              <span id="itinerary-date-range">1 day</span>
+              <span>-</span>
+              <span id="itinerary-stop-count">0 stops</span>
+              <span>-</span>
+              <span id="itinerary-hours-text">Estimated</span>
+            </div>
+            <div id="day-start-grid" class="day-start-grid"></div>
+          </div>
+          <div class="edit-pills">
+            <span id="editor-role-badge" class="people-count">Viewer</span>
+            <span id="people-count" class="people-count">1 person</span>
+          </div>
+        </div>
+
+        <div class="route-fields">
+          <div class="route-field">
+            <label>Start location</label>
+            <div class="route-place-picker">
+              <input id="route-start-input" class="route-input" type="text" autocomplete="off" aria-label="Start location">
+              <div id="route-start-suggestions" class="route-suggestions" hidden></div>
+            </div>
+          </div>
+          <div class="route-field">
+            <label>End location</label>
+            <div class="route-place-picker">
+              <input id="route-end-input" class="route-input" type="text" autocomplete="off" aria-label="End location">
+              <div id="route-end-suggestions" class="route-suggestions" hidden></div>
+            </div>
+          </div>
+        </div>
+        <div class="route-fields compact">
+          <div class="route-field">
+            <label>Available hours</label>
+            <input id="route-hours-input" class="route-input" type="number" min="1" step="1" aria-label="Available hours">
+            <label class="unlimited-hours-toggle">
+              <input id="route-hours-unlimited-input" type="checkbox">
+              No time limit
+            </label>
+          </div>
+          <div class="route-field">
+            <label>Interests</label>
+            <div id="route-interest-input" class="interest-choice-grid" aria-label="Interests">
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="culture">
+                <span>Culture</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="nature">
+                <span>Nature</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="museum">
+                <span>Museum</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="shopping">
+                <span>Shopping</span>
+              </label>
+              <label class="interest-choice">
+                <input type="checkbox" name="route_interests" value="food">
+                <span>Food</span>
+              </label>
+            </div>
+          </div>
+          <button type="button" id="save-route-details-btn" class="btn btn-primary btn-md">Save trip details</button>
+        </div>
+        <div id="route-save-message" class="route-save-message" aria-live="polite"></div>
+      </section>
+
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Stops</div>
+            <div class="edit-section-subtitle">Adjust stop order, assign days and open each route leg in Google Maps.</div>
+          </div>
+        </div>
+        <div id="stop-list" class="stop-list" style="margin-top:16px;"></div>
+        <button type="button" id="add-stop-btn" class="btn btn-secondary btn-md" style="width:100%; margin-top:12px;">+ Add a stop</button>
+        <div class="edit-meta" style="margin-top:12px;">Synced live. Everyone with access sees saved changes.</div>
+      </section>
+
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Comments</div>
+            <div class="edit-section-subtitle">Discuss changes with everyone on this itinerary.</div>
+          </div>
+        </div>
+        <div id="comments-list" class="comments-list"></div>
+        <form id="comment-form" class="comment-form" style="margin-top:14px;">
+          <input id="comment-input" class="comment-input" type="text" maxlength="500" placeholder="Write a comment for the group">
+          <button type="submit" class="btn btn-primary btn-md">Send</button>
+        </form>
+        <div id="comment-message" class="comment-message" aria-live="polite"></div>
+      </section>
+    </div>
+
+    <div class="edit-stack">
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Route Map</div>
+          </div>
+        </div>
+        <div id="editRouteMap" class="edit-route-map"></div>
+      </section>
+
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Collaborators</div>
+            <div class="edit-section-subtitle">Invite people and manage their authority.</div>
+          </div>
+        </div>
+        <div class="invite-search-wrap">
+          <form id="invite-form" class="invite-row">
+            <input
+              id="invite-email-input"
+              class="invite-input"
+              type="email"
+              placeholder="Enter full email address"
+              autocomplete="off"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+            >
+            <button type="submit" class="btn btn-primary btn-md">Invite</button>
+          </form>
+          <div id="invite-suggestions" class="invite-suggestions" role="listbox"></div>
+        </div>
+        <div id="invite-message" class="edit-meta" style="margin-top:8px;"></div>
+        <div id="invite-options" class="invite-options">
+          <div class="edit-meta" style="margin-bottom:10px;">This email is not registered yet.</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap;">
+            <button type="button" id="send-join-email-btn" class="btn btn-secondary btn-sm">Send email joining link</button>
+            <button type="button" id="copy-join-link-btn" class="btn btn-secondary btn-sm">Copy link</button>
+          </div>
+        </div>
+        <div id="collaborator-list" class="collaborator-list" style="margin-top:16px;"></div>
+      </section>
+
+      <section class="card card-p edit-card">
+        <div class="edit-section-header">
+          <div>
+            <div class="edit-section-title">Recent Updates</div>
+            <div class="edit-section-subtitle">Newest 5 activities are shown first.</div>
+          </div>
+        </div>
+        <div id="activity-list" class="activity-list"></div>
+        <button type="button" id="view-all-activity-btn" class="btn btn-ghost btn-sm" style="margin-top:12px;">View all activity</button>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="edit-confirm-modal" class="confirm-modal-backdrop" aria-hidden="true">
+  <div class="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="edit-confirm-title">
+    <div id="edit-confirm-title" class="confirm-modal-title">Remove item?</div>
+    <div id="edit-confirm-message" class="confirm-modal-message">This action cannot be undone.</div>
+    <div class="confirm-modal-actions">
+      <button type="button" id="edit-confirm-cancel" class="btn btn-secondary btn-md">Cancel</button>
+      <button type="button" id="edit-confirm-delete" class="btn btn-danger btn-md">Delete</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/saved_itinerary_edit.js') }}?v={{ asset_version('js/saved_itinerary_edit.js') }}"></script>
+{% endblock %}

@@ -1,129 +1,772 @@
-{% extends "base.html" %}
+﻿{% extends "base.html" %}
 
-{% block title %}Saved Itineraries — PandaJourney Malaysia{% endblock %}
+{% block title %}Saved Itineraries - PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 {% block page_title %}Saved Itineraries{% endblock %}
 {% block page_subtitle %}Manage saved, draft and published trip plans{% endblock %}
 
+{% block extra_head %}
+<style>
+  .custom-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    padding: 18px;
+  }
+
+  .custom-modal-backdrop.show {
+    display: flex;
+  }
+
+  .custom-modal-box {
+    width: min(430px, 92%);
+    background: #ffffff;
+    color: #16352b;
+    border-radius: 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    padding: 28px 24px 22px;
+    border: 2px solid #d7e9df;
+    text-align: center;
+  }
+
+  .custom-modal-icon {
+    width: 58px;
+    height: 58px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    margin: 0 auto 14px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 28px;
+    font-weight: 900;
+  }
+
+  .custom-modal-title {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: #16352b;
+  }
+
+  .custom-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #4b6358;
+    margin-bottom: 22px;
+  }
+
+  .custom-modal-actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .custom-modal-danger {
+    background: #dc2626 !important;
+    color: #ffffff !important;
+    border-color: #dc2626 !important;
+  }
+
+  .custom-modal-danger:hover {
+    background: #b91c1c !important;
+    border-color: #b91c1c !important;
+  }
+
+  .saved-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .saved-bulk-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: #fbfffd;
+  }
+
+  .saved-bulk-actions[hidden] {
+    display: none !important;
+  }
+
+  .saved-bulk-left,
+  .saved-bulk-buttons {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .saved-bulk-select {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--fg);
+    font-weight: 800;
+  }
+
+  .saved-bulk-count {
+    color: var(--fg-2);
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .saved-row-select {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-right: 2px;
+  }
+
+  .saved-row-select input,
+  .saved-bulk-select input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary);
+  }
+
+  .saved-status-badge {
+    vertical-align: middle;
+  }
+
+  .saved-topbar-actions {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .request-bell-btn {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .activity-bell-btn {
+    position: relative;
+    width: 42px;
+    height: 42px;
+    border-radius: 999px;
+    border: 1px solid #fde68a;
+    background: #fff7df;
+    color: #8a4a00;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .request-count-badge,
+  .activity-count-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    min-width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5px;
+  }
+
+  .request-panel,
+  .activity-panel {
+    position: absolute;
+    top: 50px;
+    right: 0;
+    width: min(360px, 90vw);
+    display: none;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 18px 45px rgba(18, 43, 32, .16);
+    padding: 14px;
+    z-index: 10020;
+  }
+
+  .request-panel.show {
+    display: block;
+  }
+
+  .activity-panel.show {
+    display: block;
+  }
+
+  .saved-row {
+    position: relative;
+    min-width: 0;
+  }
+
+  .saved-row.is-selectable {
+    grid-template-columns: 24px 44px minmax(0, 1fr) auto;
+  }
+
+  .saved-info {
+    min-width: 0;
+  }
+
+  .saved-title {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .saved-title > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .row-activity-wrap {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .row-activity-wrap .activity-panel {
+    top: 40px;
+    right: 0;
+  }
+
+  .row-activity-wrap .activity-panel.is-floating {
+    position: fixed;
+    top: auto;
+    right: auto;
+    max-height: min(360px, calc(100vh - 24px));
+    overflow-y: auto;
+  }
+
+  .request-panel-title,
+  .activity-panel-title {
+    font-weight: 900;
+    margin-bottom: 10px;
+  }
+
+  .request-item {
+    padding: 12px 0;
+    border-top: 1px solid #eaf3ee;
+  }
+
+  .request-item:first-child {
+    border-top: 0;
+  }
+
+  .request-title {
+    font-weight: 800;
+    color: var(--fg);
+  }
+
+  .request-meta,
+  .request-empty {
+    color: var(--fg-2);
+    font-size: 13px;
+    margin-top: 4px;
+  }
+
+  .request-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .activity-item {
+    padding: 12px 0;
+    border-top: 1px solid #eaf3ee;
+  }
+
+  .activity-item:first-child {
+    border-top: 0;
+  }
+
+  .activity-title {
+    color: var(--fg);
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .activity-title.is-unread {
+    color: #8a4a00;
+  }
+
+  .saved-invite-form {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+  }
+
+  .saved-invite-field {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .saved-invite-input {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 0 14px;
+    color: var(--fg);
+  }
+
+  .saved-invite-input:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 4px rgba(15, 138, 103, .10);
+  }
+
+  .saved-invite-message {
+    min-height: 20px;
+    margin-top: 10px;
+    color: var(--fg-2);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .saved-invite-message.error {
+    color: var(--danger);
+  }
+
+  .saved-invite-options {
+    display: none;
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #fcfffd;
+  }
+
+  .saved-invite-options.show {
+    display: block;
+  }
+
+  .saved-invite-suggestions {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    right: 0;
+    z-index: 10005;
+    display: none;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: #ffffff;
+    box-shadow: 0 14px 34px rgba(18, 43, 32, .18);
+    text-align: left;
+  }
+
+  .saved-invite-suggestions.show {
+    display: block;
+  }
+
+  .saved-invite-suggestion {
+    width: 100%;
+    border: 0;
+    border-bottom: 1px solid #edf5ef;
+    background: #ffffff;
+    color: var(--fg);
+    cursor: pointer;
+    padding: 11px 13px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .saved-invite-suggestion:last-child {
+    border-bottom: 0;
+  }
+
+  .saved-invite-suggestion:hover,
+  .saved-invite-suggestion:focus-visible {
+    background: #eefaf6;
+    outline: none;
+  }
+
+  .saved-invite-suggestion-name {
+    font-weight: 900;
+  }
+
+  .saved-invite-suggestion-email {
+    color: var(--fg-2);
+    font-size: 12px;
+  }
+
+  .people-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 14px;
+    text-align: left;
+  }
+
+  .people-row {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px;
+    border: 1px solid #edf5ef;
+    border-radius: 14px;
+    background: #fbfefd;
+  }
+
+  .people-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: var(--primary);
+    color: #ffffff;
+    font-weight: 900;
+  }
+
+  .people-info {
+    min-width: 0;
+  }
+
+  .people-name {
+    font-weight: 900;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .people-email {
+    color: var(--fg-2);
+    font-size: 12px;
+    margin-top: 2px;
+    overflow-wrap: anywhere;
+  }
+
+  .people-tags {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  @media (max-width: 768px) {
+    .saved-bulk-actions {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+
+    .saved-row.is-selectable {
+      grid-template-columns: 24px 44px minmax(0, 1fr);
+    }
+
+    .saved-actions {
+      justify-content: flex-start;
+      margin-top: 12px;
+    }
+
+    .saved-title {
+      max-width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block topbar_actions %}
-  <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">
-    + New Itinerary
-  </a>
+  <div class="saved-topbar-actions">
+    <button type="button" id="request-bell-btn" class="request-bell-btn" aria-label="Collaboration requests">
+      !
+      <span id="request-count-badge" class="request-count-badge">0</span>
+    </button>
+
+    <div id="request-panel" class="request-panel" aria-label="Pending collaboration requests">
+      <div class="request-panel-title">Collaboration Requests</div>
+      <div id="request-list" class="request-list">
+        <div class="request-empty">Loading requests...</div>
+      </div>
+    </div>
+
+    <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">
+      + New Itinerary
+    </a>
+  </div>
 {% endblock %}
 
 {% block content %}
 <div class="page-inner" style="padding-top:24px;">
 
-  {% if itineraries %}
-    <div class="card" style="overflow:hidden;">
-      {% for it in itineraries %}
-        <div class="saved-row">
-          <div class="saved-icon">📅</div>
+  <div id="saved-loading" class="card" style="padding:24px;">
+    Loading saved itineraries...
+  </div>
 
-          <div class="saved-info">
-            <div class="saved-title">
-              {{ it.title }}
-
-              <span class="badge
-                {% if it.status == 'Upcoming' %}badge-info
-                {% elif it.status == 'Draft' %}badge-warning
-                {% elif it.status == 'Published' %}badge-success
-                {% else %}badge-muted{% endif %}
-              ">
-                {{ it.status }}
-              </span>
-            </div>
-
-            <div class="saved-meta">
-              📍 {{ it.destination }}
-              &nbsp;·&nbsp;
-              📆 {{ it.date }}
-              &nbsp;·&nbsp;
-              ⏱ {{ it.duration }}
-              &nbsp;·&nbsp;
-              🚩 {{ it.stop_count }} stops
-            </div>
-          </div>
-
-          <div class="saved-actions">
-            <a href="{{ url_for('smart_itinerary') }}?id={{ it.id }}" class="btn btn-secondary btn-sm">
-              View
-            </a>
-
-            <a href="{{ url_for('smart_itinerary') }}?id={{ it.id }}&edit=1" class="btn btn-ghost btn-sm">
-              Edit
-            </a>
-
-            <form action="{{ url_for('saved_itineraries') }}" method="post" style="display:inline; margin:0;">
-              <input type="hidden" name="_action" value="toggle_publish">
-              <input type="hidden" name="itinerary_id" value="{{ it.id }}">
-
-              <button type="submit" class="btn btn-warning btn-sm">
-                {% if it.status == 'Published' %}
-                  Unpublish
-                {% else %}
-                  Publish
-                {% endif %}
-              </button>
-            </form>
-
-            <form
-              action="{{ url_for('saved_itineraries') }}"
-              method="post"
-              style="display:inline; margin:0;"
-              onsubmit="return confirm('Delete this itinerary?');"
-            >
-              <input type="hidden" name="_action" value="delete">
-              <input type="hidden" name="itinerary_id" value="{{ it.id }}">
-
-              <button type="submit" class="btn btn-danger btn-sm">
-                Delete
-              </button>
-            </form>
-          </div>
-        </div>
-      {% endfor %}
+  <div id="saved-bulk-actions" class="saved-bulk-actions" hidden>
+    <div class="saved-bulk-left">
+      <label class="saved-bulk-select">
+        <input type="checkbox" id="saved-select-all">
+        Select All
+      </label>
+      <span id="saved-selected-count" class="saved-bulk-count">0 selected</span>
     </div>
 
-  {% else %}
-    <div class="card" style="margin-top:8px;">
+    <div class="saved-bulk-buttons">
+      <button type="button" id="bulk-delete-btn" class="btn btn-danger btn-sm" disabled>
+        Delete Selected
+      </button>
+    </div>
+  </div>
+
+  <div id="upcoming-section" style="display:none;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div>
+        <h3 style="margin:0;">Upcoming Plans</h3>
+        <div style="color:var(--text-muted); font-size:14px;">
+          Showing today's and future itinerary plans
+        </div>
+      </div>
+    </div>
+
+    <div id="saved-list" class="card" style="overflow:hidden;"></div>
+  </div>
+
+  <div id="saved-empty" class="card" style="margin-top:8px; display:none;">
+    <div
+      class="empty-state"
+      style="
+        padding:56px 24px 48px;
+        min-height:260px;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        overflow:visible;
+      "
+    >
       <div
-        class="empty-state"
+        class="empty-icon"
         style="
-          padding:56px 24px 48px;
-          min-height:260px;
-          display:flex;
-          flex-direction:column;
-          align-items:center;
-          justify-content:center;
+          font-size:44px;
+          line-height:1.3;
+          margin-bottom:14px;
           overflow:visible;
         "
       >
-        <div
-          class="empty-icon"
-          style="
-            font-size:44px;
-            line-height:1.3;
-            margin-bottom:14px;
-            overflow:visible;
-          "
-        >
-          💾
-        </div>
+        💾
+      </div>
 
-        <div class="empty-title" style="margin-bottom:8px;">
-          No saved itinerary available
-        </div>
+      <div class="empty-title" style="margin-bottom:8px;">
+        No upcoming itinerary available
+      </div>
 
-        <div class="empty-sub" style="margin-bottom:18px;">
-          Plan your first trip and save it here.
-        </div>
+      <div class="empty-sub" style="margin-bottom:18px;">
+        Plan your next trip and save it here.
+      </div>
 
-        <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">
-          Plan a Trip
-        </a>
+      <a href="{{ url_for('smart_itinerary') }}" class="btn btn-primary btn-md">
+        Plan a Trip
+      </a>
+    </div>
+  </div>
+
+  <div id="past-control" style="display:none; margin-top:18px;">
+    <button type="button" id="toggle-past-btn" class="btn btn-secondary btn-md">
+      View Past Plans
+    </button>
+  </div>
+
+  <div id="past-section" style="display:none; margin-top:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div>
+        <h3 style="margin:0;">Past Plans</h3>
+        <div style="color:var(--text-muted); font-size:14px;">
+          Itinerary plans before today
+        </div>
       </div>
     </div>
-  {% endif %}
+
+    <div id="past-list" class="card" style="overflow:hidden;"></div>
+  </div>
+
+  <div id="shared-control" style="display:none; margin-top:24px;">
+    <button type="button" id="toggle-shared-btn" class="btn btn-secondary btn-md">
+      Shared Plans
+    </button>
+  </div>
+
+  <div id="shared-section" style="display:none; margin-top:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div>
+        <h3 style="margin:0;">Shared Plans</h3>
+        <div style="color:var(--text-muted); font-size:14px;">
+          Showing today's and future shared itinerary plans
+        </div>
+      </div>
+    </div>
+
+    <div id="shared-list" class="card" style="overflow:hidden;"></div>
+  </div>
+
+  <div id="shared-past-control" style="display:none; margin-top:18px;">
+    <button type="button" id="toggle-shared-past-btn" class="btn btn-secondary btn-md">
+      View Past Shared Plans
+    </button>
+  </div>
+
+  <div id="shared-past-section" style="display:none; margin-top:16px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
+      <div>
+        <h3 style="margin:0;">Past Shared Plans</h3>
+        <div style="color:var(--text-muted); font-size:14px;">
+          Shared itinerary plans before today
+        </div>
+      </div>
+    </div>
+
+    <div id="shared-past-list" class="card" style="overflow:hidden;"></div>
+  </div>
+
+  <div id="status-success-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="status-success-title">
+      <div class="custom-modal-icon" id="status-success-icon">✅</div>
+
+      <div class="custom-modal-title" id="status-success-title">
+        Status Updated
+      </div>
+
+      <div class="custom-modal-message" id="status-success-message">
+        Publish status updated successfully.
+      </div>
+
+      <div class="custom-modal-actions">
+        <button type="button" id="status-success-ok" class="btn btn-primary btn-md">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="delete-confirm-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+      <div class="custom-modal-icon">🗑️</div>
+
+      <div class="custom-modal-title" id="delete-confirm-title">
+        Delete Itinerary?
+      </div>
+
+      <div class="custom-modal-message" id="delete-confirm-message">
+        Are you sure you want to delete this itinerary? This action cannot be undone.
+      </div>
+
+      <div class="custom-modal-actions">
+        <button type="button" id="cancel-delete-btn" class="btn btn-secondary btn-md">
+          Cancel
+        </button>
+
+        <button type="button" id="confirm-delete-btn" class="btn btn-danger btn-md custom-modal-danger">
+          Delete
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="invite-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+      <div class="custom-modal-icon">+</div>
+
+      <div class="custom-modal-title" id="invite-title">
+        Invite people
+      </div>
+
+      <div class="custom-modal-message">
+        Add a collaborator by email. They will receive a request in PandaJourney if registered.
+      </div>
+
+      <form id="saved-invite-form" class="saved-invite-form">
+        <div class="saved-invite-field">
+          <input
+            id="saved-invite-email"
+            class="saved-invite-input"
+            type="email"
+            placeholder="friend@example.com"
+            autocomplete="off"
+            required
+          >
+          <div id="saved-invite-suggestions" class="saved-invite-suggestions" role="listbox"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-md">Invite</button>
+      </form>
+
+      <div id="saved-invite-message" class="saved-invite-message" aria-live="polite"></div>
+
+      <div id="saved-invite-options" class="saved-invite-options">
+        <div class="request-meta" style="margin-bottom:10px;">
+          This email is not registered yet.
+        </div>
+        <div class="custom-modal-actions">
+          <button type="button" id="saved-send-invite-email" class="btn btn-secondary btn-sm">
+            Send email joining link
+          </button>
+          <button type="button" id="saved-copy-invite-link" class="btn btn-secondary btn-sm">
+            Copy link
+          </button>
+        </div>
+      </div>
+
+      <div class="custom-modal-actions" style="margin-top:16px;">
+        <button type="button" id="close-invite-btn" class="btn btn-secondary btn-md">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="people-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="people-title">
+      <div class="custom-modal-icon">i</div>
+
+      <div class="custom-modal-title" id="people-title">
+        People
+      </div>
+
+      <div class="custom-modal-message">
+        Joined collaborators and pending invite requests for this itinerary.
+      </div>
+
+      <div id="people-list" class="people-list"></div>
+
+      <div class="custom-modal-actions" style="margin-top:16px;">
+        <button type="button" id="close-people-btn" class="btn btn-secondary btn-md">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
 
 </div>
 {% endblock %}
+
+{% block extra_scripts %}
+<script type="module" src="{{ url_for('static', filename='js/saved_itineraries.js') }}"></script>
+{% endblock %}
+

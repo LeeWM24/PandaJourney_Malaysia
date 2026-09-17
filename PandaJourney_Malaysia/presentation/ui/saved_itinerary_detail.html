@@ -1,0 +1,657 @@
+{% extends "base.html" %}
+
+{% block title %}Saved Itinerary Details — PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
+{% block page_title %}Saved Itinerary Details{% endblock %}
+{% block page_subtitle %}View your saved trip plan, stops and route map{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
+<style>
+  #detailRouteMap {
+    width: 100%;
+    height: 320px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+
+  .detail-item {
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+  }
+
+  .end-location-card {
+    position: relative;
+  }
+
+  .end-location-card .detail-location-value {
+    box-sizing: border-box;
+    padding-right: 96px;
+  }
+
+  .end-location-action {
+    position: absolute;
+    right: 12px;
+    top: 34px;
+    max-width: 88px;
+  }
+
+  .end-route-btn {
+    min-height: 0;
+    padding: 4px 8px;
+    font-size: 10px;
+    line-height: 1.1;
+    white-space: nowrap;
+  }
+
+  .detail-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .detail-value {
+    font-weight: 700;
+    color: var(--text);
+    overflow-wrap: anywhere;
+  }
+
+  #detail-title,
+  .detail-location-value {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-stop-row {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 14px;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border);
+    align-items: flex-start;
+  }
+
+  .detail-stop-row:last-child {
+    border-bottom: none;
+  }
+
+  .detail-stop-number {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+
+  .detail-stop-content {
+    min-width: 0;
+  }
+
+  .detail-stop-title {
+    font-weight: 800;
+    margin-bottom: 6px;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-stop-title-button {
+    width: 100%;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-weight: 800;
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-stop-title-button:hover,
+  .detail-stop-title-button:focus-visible {
+    color: var(--primary);
+    outline: none;
+    text-decoration: underline;
+  }
+
+  .detail-stop-meta {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .detail-stop-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .detail-stop-actions .btn {
+    max-width: min(100%, 260px);
+    justify-content: flex-start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .detail-stop-action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .detail-route-marker-row .detail-stop-number {
+    background: #dff3ec;
+    color: var(--primary-dark);
+  }
+
+  .detail-route-marker-label {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .detail-day-row {
+    display: block;
+    padding: 8px 0 2px;
+    border-bottom: none;
+  }
+
+  .detail-day-divider {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin-left: 48px;
+    color: var(--primary-dark);
+    font-weight: 900;
+  }
+
+  .detail-day-divider::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    background: var(--border);
+  }
+
+  .detail-day-divider span {
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+  }
+
+  .saved-detail-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 420px);
+    gap: 18px;
+    align-items: stretch;
+  }
+
+  .saved-detail-summary {
+    min-width: 0;
+  }
+
+  .saved-detail-photo-carousel {
+    position: relative;
+    min-height: 260px;
+    border-radius: 18px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #edf8f3, #dff3ec);
+    border: 1px solid var(--border);
+  }
+
+  .saved-detail-photo {
+    width: 100%;
+    height: 100%;
+    min-height: 260px;
+    object-fit: cover;
+  }
+
+  .saved-detail-photo-label,
+  .saved-detail-photo-count {
+    position: absolute;
+    z-index: 2;
+    color: #fff;
+    background: rgba(0, 0, 0, .42);
+    font-weight: 700;
+  }
+
+  .saved-detail-photo-label {
+    left: 14px;
+    right: 14px;
+    bottom: 14px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .saved-detail-photo-count {
+    top: 14px;
+    right: 14px;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+
+  .saved-detail-carousel-btn {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 38px;
+    height: 38px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, .86);
+    color: var(--fg);
+    cursor: pointer;
+    z-index: 3;
+    font-size: 24px;
+    line-height: 1;
+  }
+
+  .saved-detail-carousel-prev {
+    left: 12px;
+  }
+
+  .saved-detail-carousel-next {
+    right: 12px;
+  }
+
+  .saved-place-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 10002;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    background: rgba(0, 0, 0, .55);
+  }
+
+  .saved-place-modal-backdrop.show {
+    display: flex;
+  }
+
+  .saved-place-modal {
+    width: min(620px, 94%);
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 22px;
+    background: #fff;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, .22);
+  }
+
+  .saved-place-summary {
+    flex: 0 0 auto;
+    padding: 20px 22px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .saved-place-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    margin-bottom: 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .saved-place-role[hidden],
+  .saved-place-location[hidden],
+  .saved-place-facts[hidden],
+  .saved-place-cell[hidden],
+  .saved-place-section[hidden] {
+    display: none !important;
+  }
+
+  .saved-place-title {
+    margin: 0;
+    color: var(--text);
+    font-size: 24px;
+    line-height: 1.3;
+    font-weight: 900;
+  }
+
+  .saved-place-location {
+    margin-top: 8px;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+
+  .saved-place-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 14px 20px 20px;
+    overscroll-behavior: contain;
+  }
+
+  .saved-place-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0 18px;
+  }
+
+  .saved-place-cell {
+    flex: 1 1 140px;
+    min-width: 130px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--muted-bg);
+    text-align: center;
+  }
+
+  .saved-place-cell strong {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .saved-place-cell span {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .saved-place-section {
+    margin-bottom: 18px;
+  }
+
+  .saved-place-section h3 {
+    margin: 0 0 9px;
+    font-size: 14px;
+  }
+
+  .saved-place-section p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .saved-place-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .saved-place-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--primary-soft);
+    color: var(--primary-dark);
+    font-size: 12px;
+  }
+
+  .saved-place-footer {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 12px 16px 14px;
+    border-top: 1px solid var(--border);
+    background: #fbfffd;
+  }
+
+  .saved-place-footer .btn {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  @media (max-width: 768px) {
+    .detail-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .detail-stop-row {
+      grid-template-columns: 34px minmax(0, 1fr);
+    }
+
+    .saved-detail-hero {
+      grid-template-columns: 1fr;
+    }
+
+    .saved-place-modal {
+      width: 96%;
+    }
+  }
+
+  @media (max-width: 420px) {
+    .end-location-card .detail-location-value {
+      padding-right: 0;
+    }
+
+    .end-location-action {
+      position: static;
+      max-width: none;
+      margin-top: 8px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block topbar_actions %}
+  <a href="{{ url_for('saved_itineraries') }}" class="btn btn-secondary btn-md">
+    ← Back
+  </a>
+{% endblock %}
+
+{% block content %}
+<div
+  class="page-inner"
+  id="saved-detail-page"
+  data-itinerary-id="{{ itinerary_id }}"
+  style="padding-top:24px;"
+>
+
+  <div id="detail-loading" class="card" style="padding:24px;">
+    Loading itinerary details...
+  </div>
+
+  <div id="detail-error" class="card" style="padding:24px; display:none;">
+    <div class="empty-state">
+      <div class="empty-icon">⚠️</div>
+
+      <div class="empty-title">
+        Itinerary not found
+      </div>
+
+      <div class="empty-sub">
+        This itinerary may have been deleted or you may not have permission to view it.
+      </div>
+
+      <a href="{{ url_for('saved_itineraries') }}" class="btn btn-primary btn-md" style="margin-top:16px;">
+        Back to Saved Itineraries
+      </a>
+    </div>
+  </div>
+
+  <div id="detail-content" style="display:none;">
+
+    <div class="card card-p" style="margin-bottom:16px;">
+      <div class="saved-detail-hero">
+        <div class="saved-detail-summary">
+      <div class="card-header">
+        <div>
+          <div class="card-title" id="detail-title">
+            Trip Title
+          </div>
+
+          <div style="margin-top:8px;">
+            <span class="badge badge-warning" id="detail-status">
+              Draft
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="detail-label">Route</div>
+          <div class="detail-value detail-location-value" id="detail-destination">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Travel Date</div>
+          <div class="detail-value" id="detail-date">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Start Location</div>
+          <div class="detail-value detail-location-value" id="detail-start">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">End Location</div>
+          <div class="detail-value detail-location-value" id="detail-end">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Available Hours</div>
+          <div class="detail-value" id="detail-hours">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Interest</div>
+          <div class="detail-value" id="detail-interest">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Stop Count</div>
+          <div class="detail-value" id="detail-stop-count">-</div>
+        </div>
+
+        <div class="detail-item">
+          <div class="detail-label">Estimated Travel Time</div>
+          <div class="detail-value" id="detail-travel-duration">-</div>
+        </div>
+      </div>
+        </div>
+
+        <div id="saved-detail-photo-carousel" class="saved-detail-photo-carousel">
+          <div class="community-photo-placeholder">Loading photo...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-p" style="margin-bottom:16px;">
+      <div class="card-title mb-4">
+        Saved Stops
+      </div>
+
+      <div id="detail-stop-list"></div>
+    </div>
+
+    <div class="card card-p">
+      <div class="card-title mb-4">
+        Route Map
+      </div>
+
+      <div id="detailRouteMap"></div>
+    </div>
+
+  </div>
+
+  <div id="saved-place-detail-modal" class="saved-place-modal-backdrop" aria-hidden="true">
+    <div class="saved-place-modal" role="dialog" aria-modal="true" aria-labelledby="saved-place-detail-title">
+      <div class="saved-place-summary">
+        <span id="saved-place-detail-role" class="saved-place-role" hidden></span>
+        <h2 id="saved-place-detail-title" class="saved-place-title">Place</h2>
+        <div id="saved-place-detail-location" class="saved-place-location"></div>
+      </div>
+
+      <div class="saved-place-body">
+        <div id="saved-place-detail-facts" class="saved-place-facts" hidden>
+          <div id="saved-place-duration-cell" class="saved-place-cell" hidden>
+            <strong>Planned Visit</strong>
+            <span id="saved-place-duration"></span>
+          </div>
+          <div id="saved-place-category-cell" class="saved-place-cell" hidden>
+            <strong>Category</strong>
+            <span id="saved-place-category"></span>
+          </div>
+          <div id="saved-place-rating-cell" class="saved-place-cell" hidden>
+            <strong>Rating</strong>
+            <span id="saved-place-rating"></span>
+          </div>
+        </div>
+
+        <div id="saved-place-about-section" class="saved-place-section" hidden>
+          <h3>About</h3>
+          <p id="saved-place-about"></p>
+        </div>
+
+        <div id="saved-place-interests-section" class="saved-place-section" hidden>
+          <h3>Travel interests</h3>
+          <div id="saved-place-interests" class="saved-place-pills"></div>
+        </div>
+
+        <div id="saved-place-reasons-section" class="saved-place-section" hidden>
+          <h3>Why recommended</h3>
+          <div id="saved-place-reasons" class="saved-place-pills"></div>
+        </div>
+      </div>
+
+      <div class="saved-place-footer">
+        <button type="button" id="saved-place-detail-close" class="btn btn-primary btn-md">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script type="module" src="{{ url_for('static', filename='js/saved_itinerary_detail.js') }}"></script>
+{% endblock %}

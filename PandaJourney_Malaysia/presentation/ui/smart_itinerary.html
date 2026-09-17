@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 
 {% block title %}Itinerary Planner — PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
 {% block page_title %}Smart Itinerary Planner{% endblock %}
 {% block page_subtitle %}Generate an optimised route and timetable for your Malaysia trip{% endblock %}
+
 {% block extra_head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
+
 <style>
   #routeMap {
     width: 100%;
@@ -13,18 +18,1090 @@
     border: 1px solid var(--border);
     overflow: hidden;
   }
+
+  .favourite-picker {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: var(--surface);
+  }
+
+  .favourite-picker-title {
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .favourite-picker-sub {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
+  .favourite-place-option {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 9px 0;
+    border-top: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .favourite-place-option:first-of-type {
+    border-top: none;
+  }
+
+  .favourite-place-name {
+    font-size: 13px;
+    font-weight: 800;
+  }
+
+  .favourite-place-meta {
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .favourites-search {
+    margin-bottom: 10px;
+  }
+
+  .manual-attraction-picker {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    background: var(--surface);
+  }
+
+  .manual-attraction-title {
+    display: block;
+    font-size: 13px;
+    font-weight: 800;
+    margin-bottom: 8px;
+  }
+
+  .manual-attraction-selected {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  .manual-attraction-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: #eef8f4;
+    color: var(--fg);
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .manual-attraction-chip span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .manual-attraction-remove {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #047857;
+    cursor: pointer;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .custom-number-field {
+    margin-top: 8px;
+  }
+
+  .custom-number-field[hidden] {
+    display: none !important;
+  }
+
+  .favourites-scroll {
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+
+  .favourites-scroll::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .favourites-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 999px;
+  }
+
+  .gps-location-row {
+    margin-top: 8px;
+  }
+
+  .gps-location-status {
+    margin-top: 6px;
+    color: var(--text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  #start-location-field {
+    position: relative;
+  }
+
+  #start-location-field.current-location-active .form-input {
+    padding-right: 48px;
+    border-radius: 999px;
+    border-color: #9ddfc0;
+    background: #effbf5;
+    color: #047857;
+    font-weight: 800;
+    cursor: default;
+  }
+
+  .current-location-clear {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    z-index: 3;
+    width: 28px;
+    height: 28px;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: #d9f3e5;
+    color: #047857;
+    font-size: 20px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, transform .15s ease;
+  }
+
+  .current-location-clear:hover,
+  .current-location-clear:focus-visible {
+    background: #bfe7cf;
+    outline: none;
+  }
+
+  .current-location-clear[hidden] {
+    display: none !important;
+  }
+
+  .planner-loading-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.35);
+    backdrop-filter: blur(2px);
+  }
+
+  .planner-loading-card {
+    min-width: 230px;
+    border-radius: 18px;
+    padding: 22px 24px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    text-align: center;
+  }
+
+  .planner-spinner {
+    width: 36px;
+    height: 36px;
+    margin: 0 auto 12px;
+    border-radius: 999px;
+    border: 4px solid var(--border);
+    border-top-color: var(--primary, #059669);
+    animation: planner-spin 0.9s linear infinite;
+  }
+
+  @keyframes planner-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .planner-loading-title {
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .planner-loading-sub {
+    margin-top: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+  }
+
+  .route-action-bar,
+  .timetable-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .route-action-bar {
+    margin-bottom: 14px;
+  }
+
+  .timetable-actions {
+    margin-top: 10px;
+    min-width: 0;
+  }
+
+  .timetable-actions .btn {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .timetable-content {
+    min-width: 0;
+  }
+
+  .timetable-row.is-route-draggable {
+    cursor: grab;
+  }
+
+  .timetable-row.is-route-dragging {
+    opacity: .55;
+    cursor: grabbing;
+  }
+
+  .timetable-row.is-route-drop-target .timetable-content {
+    box-shadow: inset 0 2px 0 #2563eb;
+  }
+
+  .route-drag-handle {
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    cursor: grab;
+    font-size: 18px;
+    line-height: 1;
+    padding: 2px 4px;
+  }
+
+  .route-drag-handle:active {
+    cursor: grabbing;
+  }
+
+  .save-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+    padding: 18px;
+  }
+
+  .save-modal-card {
+    width: min(460px, 100%);
+    border-radius: 22px;
+    padding: 24px;
+    background: #ffffff;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  }
+
+  .save-modal-title {
+    font-size: 20px;
+    font-weight: 900;
+    margin-bottom: 6px;
+  }
+
+  .save-modal-sub {
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.5;
+    margin-bottom: 16px;
+  }
+
+  .save-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 16px;
+  }
+
+  .save-modal-error {
+    display: none;
+    margin-top: 8px;
+    color: #dc2626;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .custom-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10001;
+    padding: 18px;
+  }
+
+  .custom-modal-backdrop.show {
+    display: flex;
+  }
+
+  .custom-modal-box {
+    width: min(420px, 92%);
+    background: #ffffff;
+    color: #16352b;
+    border-radius: 22px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
+    padding: 28px 24px 22px;
+    border: 2px solid #d7e9df;
+    text-align: center;
+  }
+
+  .custom-modal-icon {
+    font-size: 42px;
+    margin-bottom: 12px;
+  }
+
+  .custom-modal-title {
+    font-size: 22px;
+    font-weight: 900;
+    margin-bottom: 10px;
+    color: #16352b;
+  }
+
+  .custom-modal-message {
+    font-size: 14px;
+    line-height: 1.6;
+    color: #4b6358;
+    margin-bottom: 22px;
+  }
+
+  .custom-modal-actions {
+    display: flex;
+    justify-content: center;
+  }
+
+  .interest-chip-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .interest-chip {
+    cursor: pointer;
+  }
+
+  .interest-chip input {
+    display: none;
+  }
+
+  .interest-chip.active {
+    background: var(--primary);
+    color: #ffffff;
+    border-color: var(--primary);
+  }
+
+.location-autocomplete {
+  position: relative;
+  z-index: 1;
+}
+
+.location-autocomplete:focus-within {
+  z-index: 1000;
+}
+
+.location-suggestions {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+
+  z-index: 1001;
+
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.18);
+
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.location-suggestions[hidden] {
+  display: none !important;
+}
+
+  .itinerary-form-col,
+  .itinerary-form-col .card,
+  .itinerary-form-col form,
+  .itinerary-form-col .form-group {
+    overflow: visible;
+  }
+
+  .location-suggestions {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    right: 0;
+    z-index: 10020;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+    max-height: 260px;
+    overflow-y: auto;
+  }
+
+  .location-suggestions[hidden] {
+    display: none !important;
+  }
+
+  .location-suggestion-item {
+    width: 100%;
+    border: 0;
+    background: #ffffff;
+    padding: 11px 13px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border-bottom: 1px solid #edf5ef;
+  }
+
+  .location-suggestion-item:last-child {
+    border-bottom: 0;
+  }
+
+  .location-suggestion-item:hover {
+    background: #e8f7ef;
+  }
+
+  .location-suggestion-icon {
+    flex: 0 0 auto;
+    font-size: 15px;
+    margin-top: 1px;
+  }
+
+  .location-suggestion-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .location-suggestion-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--fg);
+    line-height: 1.4;
+  }
+
+  .location-suggestion-sub {
+    font-size: 11px;
+    color: var(--fg-2);
+    line-height: 1.4;
+  }
+
+  .location-suggestion-status {
+    padding: 12px 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-2);
+    background: #ffffff;
+  }
+
+  .timetable-name-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    min-width: 0;
+  }
+
+.timetable-name-button {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  width: 100%;
+  max-width: 100%;
+
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+
+  border: 0;
+  background: transparent;
+
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+
+  padding: 0;
+
+  text-align: left;
+
+  cursor: pointer;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
+}
+
+.timetable-name-button:hover,
+.timetable-name-button:focus {
+  color: var(--primary);
+  text-decoration: underline;
+  outline: none;
+}
+
+.timetable-location-note {
+  margin-top: 4px;
+  color: var(--fg-2);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+  .timetable-stop-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin-left: auto;
+    max-width: 100%;
+    white-space: nowrap;
+  }
+
+  .stop-inline-tag {
+    display: inline-block;
+    max-width: 180px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #e8f7ef;
+    color: #047857;
+    font-size: 12px;
+    font-weight: 800;
+    border: 1px solid #bfe7cf;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .stop-rating {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 800;
+    color: #b77900;
+    flex-shrink: 0;
+  }
+
+  .generated-route-btn {
+    width: fit-content;
+    max-width: 100%;
+    min-height: 0;
+    padding: 5px 10px;
+    font-size: 11px;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .timetable-remove {
+    width: 36px;
+    height: 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    padding: 0;
+    border-radius: 999px;
+    border: 2px solid #fca5a5;
+    background: #fff1f2;
+    color: #dc2626;
+    font-size: 25px;
+    font-weight: 900;
+    line-height: 1;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .15s ease;
+  }
+
+  .timetable-remove:hover,
+  .timetable-remove:focus-visible {
+    background: #fee2e2;
+    border-color: #ef4444;
+    transform: scale(1.08);
+    outline: none;
+  }
+
+  .detail-panel-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10002;
+    padding: 18px;
+  }
+
+  .detail-panel-backdrop.show {
+    display: flex;
+  }
+
+  .detail-panel {
+    width: min(620px, 94%);
+    max-height: 88vh;
+    background: #ffffff;
+    display: flex;
+    flex-direction: column;
+    border-radius: 22px;
+    overflow: hidden;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.22);
+  }
+
+  .detail-header {
+    position: relative;
+    flex: 0 0 280px;
+    width: 100%;
+    height: 280px !important;
+    min-height: 280px;
+    max-height: 280px;
+    overflow: hidden;
+    background: #e8f7ef;
+    line-height: 0;
+  }
+
+  .detail-header[hidden] {
+    display: none !important;
+  }
+
+  .detail-hero {
+    width: 100% !important;
+    height: 280px !important;
+    min-height: 280px;
+    max-height: none !important;
+    object-fit: cover !important;
+    object-position: center center;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: #e8f7ef;
+  }
+
+  .itinerary-place-summary {
+    flex: 0 0 auto;
+    padding: 20px 22px 16px;
+    background: #ffffff;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .itinerary-route-role {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    margin-bottom: 10px;
+    border-radius: 999px;
+    background: #e8f7ef;
+    color: #047857;
+    border: 1px solid #bfe7cf;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .itinerary-route-role[hidden] {
+    display: none !important;
+  }
+
+  .itinerary-detail-place-name {
+    margin: 0;
+    color: var(--fg);
+    font-size: 24px;
+    line-height: 1.3;
+    font-weight: 900;
+  }
+
+  .itinerary-detail-main-location {
+    margin-top: 8px;
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.55;
+    word-break: break-word;
+  }
+
+  .itinerary-detail-main-location[hidden] {
+    display: none !important;
+  }
+
+  .detail-body {
+    padding: 14px 20px 20px;
+    overflow-y: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    overscroll-behavior: contain;
+  }
+
+  .detail-favourite-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    margin-bottom: 12px;
+    border-radius: 999px;
+    background: #fff7d6;
+    color: #7c5800;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .detail-favourite-badge[hidden] {
+    display: none !important;
+  }
+
+  .detail-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 8px 0 18px;
+  }
+
+  .detail-row[hidden] {
+    display: none !important;
+  }
+
+  .detail-cell {
+    flex: 1 1 140px;
+    min-width: 130px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    background: var(--muted-bg);
+    text-align: center;
+  }
+
+  .detail-cell strong {
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .detail-cell span {
+    color: var(--fg);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .detail-section {
+    margin-bottom: 18px;
+  }
+
+  .detail-section[hidden] {
+    display: none !important;
+  }
+
+  .detail-section h3 {
+    margin-bottom: 9px;
+    font-size: 14px;
+  }
+
+  .detail-section p {
+    margin: 0;
+    color: var(--fg-2);
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .detail-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .detail-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--teal-soft);
+    color: #065f52;
+    font-size: 12px;
+  }
+
+  .detail-footer {
+    flex: 0 0 auto;
+    padding: 12px 16px 14px;
+    border-top: 1px solid var(--border);
+    background: #fbfffd;
+    display: flex;
+  }
+
+  .detail-footer .btn {
+    width: 100%;
+    min-height: 46px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  @media (max-width: 760px) {
+    .detail-panel {
+      width: 96%;
+    }
+
+    .detail-header {
+      flex-basis: 220px;
+      height: 220px !important;
+      min-height: 220px;
+      max-height: 220px;
+    }
+
+    .detail-hero {
+      height: 220px !important;
+      min-height: 220px;
+    }
+
+    .timetable-name-row {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .timetable-name-button {
+      white-space: normal;
+    }
+
+    .timetable-stop-actions {
+      margin-left: 0;
+      align-self: stretch;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+
+    .stop-inline-tag {
+      max-width: 150px;
+    }
+  }
+
+  @media (max-height: 700px) {
+    .detail-panel-backdrop {
+      padding: 8px;
+    }
+
+    .detail-panel {
+      max-height: calc(100dvh - 16px);
+    }
+
+    .detail-header {
+      flex: 0 0 160px;
+      height: 160px !important;
+      min-height: 160px;
+      max-height: 160px;
+    }
+
+    .detail-hero {
+      height: 160px !important;
+      min-height: 160px;
+    }
+
+    .itinerary-place-summary {
+      padding: 14px 16px 10px;
+    }
+
+    .itinerary-detail-place-name {
+      font-size: 20px;
+    }
+
+    .detail-body {
+      padding: 10px 16px 14px;
+      min-height: 0;
+    }
+
+    .detail-footer {
+      padding: 9px 12px 10px;
+    }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-inner">
 
+  <!-- Loading -->
+  <div
+    id="planner-loading-overlay"
+    class="planner-loading-overlay"
+    aria-live="polite"
+    aria-hidden="true"
+  >
+    <div class="planner-loading-card">
+      <div class="planner-spinner"></div>
+      <div id="planner-loading-text" class="planner-loading-title">
+        Generating itinerary...
+      </div>
+      <div class="planner-loading-sub">
+        Please wait while we calculate your route.
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Success -->
+  <div id="save-success-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="save-success-title">
+      <div class="custom-modal-icon">✓</div>
+      <div class="custom-modal-title" id="save-success-title">Itinerary Saved</div>
+      <div class="custom-modal-message">Your itinerary has been saved successfully.</div>
+      <div class="custom-modal-actions">
+        <button type="button" id="save-success-ok" class="btn btn-primary btn-md">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Title -->
+  <div id="save-title-modal" class="save-modal-overlay" aria-hidden="true">
+    <div class="save-modal-card" role="dialog" aria-modal="true" aria-labelledby="save-title-modal-title">
+      <div id="save-title-modal-title" class="save-modal-title">Save Itinerary</div>
+      <div class="save-modal-sub">Enter a clear title so you can find this trip easily later.</div>
+
+      <label class="form-label" for="save-itinerary-title-input">Itinerary Title</label>
+      <input
+        type="text"
+        id="save-itinerary-title-input"
+        class="form-input"
+        placeholder="e.g. Kuala Lumpur Culture Trip"
+        maxlength="50"
+      />
+
+      <div id="save-title-error" class="save-modal-error">
+        Please enter an itinerary title.
+      </div>
+
+      <div class="save-modal-actions">
+        <button type="button" class="btn btn-secondary btn-md" id="cancel-save-title-btn">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary btn-md" id="confirm-save-title-btn">
+          Save Itinerary
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Alert -->
+  <div id="planner-alert-modal" class="custom-modal-backdrop" aria-hidden="true">
+    <div class="custom-modal-box" role="dialog" aria-modal="true" aria-labelledby="planner-alert-title">
+      <div class="custom-modal-icon" id="planner-alert-icon">!</div>
+      <div class="custom-modal-title" id="planner-alert-title">Notice</div>
+      <div class="custom-modal-message" id="planner-alert-message">Please check your input.</div>
+      <div class="custom-modal-actions">
+        <button type="button" id="planner-alert-ok" class="btn btn-primary btn-md">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Place Detail -->
+  <div id="itinerary-attraction-modal" class="detail-panel-backdrop" aria-hidden="true">
+    <div class="detail-panel" role="dialog" aria-modal="true" aria-labelledby="itinerary-detail-title">
+
+      <!-- Attraction only. Start/End hide this whole header. -->
+      <div class="detail-header">
+        <img
+          id="itinerary-detail-image"
+          class="detail-hero"
+          src=""
+          alt="Place photo"
+        />
+      </div>
+
+      <!-- All text below image -->
+      <div class="itinerary-place-summary">
+        <span id="itinerary-route-role" class="itinerary-route-role" hidden></span>
+
+        <h2 id="itinerary-detail-title" class="itinerary-detail-place-name">
+          Place
+        </h2>
+
+        <div id="itinerary-detail-location-main" class="itinerary-detail-main-location"></div>
+
+      </div>
+
+      <div class="detail-body">
+        <div id="itinerary-detail-favourite-badge" class="detail-favourite-badge" hidden>
+          From your favourites
+        </div>
+
+        <div id="itinerary-detail-facts" class="detail-row" hidden>
+          <div id="itinerary-detail-duration-cell" class="detail-cell" hidden>
+            <strong>Planned Visit</strong>
+            <span id="itinerary-detail-duration"></span>
+          </div>
+          <div id="itinerary-detail-category-cell" class="detail-cell" hidden>
+            <strong>Category</strong>
+            <span id="itinerary-detail-category"></span>
+          </div>
+          <div id="itinerary-detail-rating-cell" class="detail-cell" hidden>
+            <strong>Rating</strong>
+            <span id="itinerary-detail-rating"></span>
+          </div>
+        </div>
+
+        <div id="itinerary-detail-about-section" class="detail-section" hidden>
+          <h3>About</h3>
+          <p id="itinerary-detail-description"></p>
+        </div>
+
+        <div id="itinerary-detail-interests-section" class="detail-section" hidden>
+          <h3>Travel interests</h3>
+          <div id="itinerary-detail-interests" class="detail-pills"></div>
+        </div>
+
+        <div id="itinerary-detail-reasons-section" class="detail-section" hidden>
+          <h3>Why recommended</h3>
+          <div id="itinerary-detail-reasons" class="detail-pills"></div>
+        </div>
+      </div>
+
+      <div class="detail-footer">
+        <button type="button" id="itinerary-detail-close" class="btn btn-primary">
+          Close
+        </button>
+      </div>
+    </div>
+  </div>
+
   {% if error %}
-    <div class="alert alert-error mb-4" role="alert">⛔ {{ error }}</div>
+    <div class="alert alert-error mb-4" role="alert">
+      {{ error }}
+    </div>
   {% endif %}
 
   <div class="itinerary-layout">
 
+    <!-- Trip Setup -->
     <aside class="itinerary-form-col">
       <div class="card card-p">
         <div class="card-title mb-4">Trip Setup</div>
@@ -32,80 +1109,344 @@
         <form action="{{ url_for('smart_itinerary') }}" method="post" id="itinerary-form">
           <input type="hidden" name="_action" value="generate" />
 
+          <input
+            type="hidden"
+            name="selected_favourites_json"
+            id="selected_favourites_json"
+            value="{{ form.selected_favourites_json | default('[]') | e }}"
+          />
+
+          <input
+            type="hidden"
+            name="selected_manual_attractions_json"
+            id="selected_manual_attractions_json"
+            value="{{ form.selected_manual_attractions_json | default('[]') | e }}"
+          />
+
+          <input
+            type="hidden"
+            name="excluded_stop_names"
+            id="excluded_stop_names"
+            value="{{ form.excluded_stop_names | default('[]') | e }}"
+          />
+
+          <input type="hidden" name="regenerate_token" id="regenerate_token" value="" />
+
+          <input type="hidden" name="manual_route_order_json" id="manual_route_order_json" value="[]" />
+
+          <input
+            type="hidden"
+            name="use_current_location"
+            id="use_current_location"
+            value="{{ form.use_current_location | default('0') }}"
+          />
+
+          <input
+            type="hidden"
+            name="start_latitude"
+            id="start_latitude"
+            value="{{ form.start_latitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="start_longitude"
+            id="start_longitude"
+            value="{{ form.start_longitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="end_latitude"
+            id="end_latitude"
+            value="{{ form.end_latitude | default('') }}"
+          />
+
+          <input
+            type="hidden"
+            name="end_longitude"
+            id="end_longitude"
+            value="{{ form.end_longitude | default('') }}"
+          />
+
           <div class="form-group mb-3">
             <label class="form-label" for="start">Start Location</label>
-            <div class="form-input-icon">
-              <span class="icon">🟢</span>
-              <input class="form-input" id="start" name="start" type="text"
-                     placeholder="e.g. KL Sentral"
-                     value="{{ form.start | default('') }}" required />
+
+            <div class="location-autocomplete">
+              <div class="form-input-icon" id="start-location-field">
+                <span class="icon">🟢</span>
+                <input
+                  class="form-input"
+                  id="start"
+                  name="start"
+                  type="text"
+                  placeholder="e.g. KL Sentral"
+                  value="{{ form.start | default('') }}"
+                  autocomplete="off"
+                  required
+                />
+
+                <button
+                  type="button"
+                  id="clear-current-location-btn"
+                  class="current-location-clear"
+                  aria-label="Clear Current Location"
+                  title="Clear Current Location"
+                  hidden
+                >
+                  &times;
+                </button>
+              </div>
+
+              <div id="start-suggestions" class="location-suggestions" hidden></div>
+            </div>
+
+            <div class="gps-location-row">
+              <button type="button" class="btn btn-secondary btn-sm" id="use-current-location-btn">
+                Use Current Location
+              </button>
+              <div id="gps-location-status" class="gps-location-status"></div>
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
+            <div class="manual-attraction-picker">
+              <label class="manual-attraction-title" for="manual-attraction-search">
+                Add Attraction (Optional)
+              </label>
+
+              <div class="location-autocomplete">
+                <input
+                  class="form-input"
+                  id="manual-attraction-search"
+                  type="text"
+                  placeholder="Search attraction..."
+                  autocomplete="off"
+                />
+
+                <div id="manual-attraction-suggestions" class="location-suggestions" hidden></div>
+              </div>
+
+              <div class="favourite-picker-sub">
+                Selected attractions use the same maximum stop slots.
+              </div>
+
+              <div
+                id="selected-manual-attractions"
+                class="manual-attraction-selected"
+                aria-live="polite"
+              ></div>
             </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="end">End Location</label>
-            <div class="form-input-icon">
-              <span class="icon">🔴</span>
-              <input class="form-input" id="end" name="end" type="text"
-                     placeholder="e.g. Petronas Twin Towers"
-                     value="{{ form.end | default('') }}" required />
+
+            <div class="location-autocomplete">
+              <div class="form-input-icon">
+                <span class="icon">🔴</span>
+                <input
+                  class="form-input"
+                  id="end"
+                  name="end"
+                  type="text"
+                  placeholder="e.g. Petronas Twin Towers"
+                  value="{{ form.end | default('') }}"
+                  autocomplete="off"
+                  required
+                />
+              </div>
+
+              <div id="end-suggestions" class="location-suggestions" hidden></div>
             </div>
           </div>
 
           <div class="form-row-2 mb-3">
             <div class="form-group">
               <label class="form-label" for="trip_date">Travel Date</label>
-              <input class="form-input" id="trip_date" name="trip_date" type="date"
-                     value="{{ form.trip_date | default('') }}" required />
+              <input
+                class="form-input"
+                id="trip_date"
+                name="trip_date"
+                type="date"
+                value="{{ form.trip_date | default('') }}"
+                required
+              />
             </div>
+
             <div class="form-group">
               <label class="form-label" for="start_time">Start Time</label>
-              <input class="form-input" id="start_time" name="start_time" type="time"
-                     value="{{ form.start_time | default('09:00') }}" required />
+              <input
+                class="form-input"
+                id="start_time"
+                name="start_time"
+                type="time"
+                value="{{ form.start_time | default('09:00') }}"
+                required
+              />
             </div>
           </div>
 
           <div class="form-group mb-3">
-            <label class="form-label" for="available_hours">Available Hours</label>
+            <label class="form-label" for="available_hours">Time Available</label>
+            {% set available_hour_presets = ["4", "5", "6", "7", "8", "9", "10"] %}
+            {% set available_hours_value = form.get("available_hours", 6) | string %}
+            {% set custom_available_hours = form.get("custom_available_hours", "") %}
+            {% if not custom_available_hours and available_hours_value not in available_hour_presets and available_hours_value != "other" %}
+              {% set custom_available_hours = available_hours_value %}
+              {% set available_hours_value = "other" %}
+            {% endif %}
+
             <select class="form-select" id="available_hours" name="available_hours">
               {% for h in [4, 5, 6, 7, 8, 9, 10] %}
-                <option value="{{ h }}" {% if form.available_hours | default(6) | int == h %}selected{% endif %}>
+                <option value="{{ h }}" {% if available_hours_value == h|string %}selected{% endif %}>
                   {{ h }} hours
                 </option>
               {% endfor %}
+              <option value="other" {% if available_hours_value == "other" %}selected{% endif %}>
+                Other...
+              </option>
             </select>
+
+            <div
+              id="custom-available-hours-field"
+              class="custom-number-field"
+              {% if available_hours_value != "other" %}hidden{% endif %}
+            >
+              <input
+                class="form-input"
+                id="custom_available_hours"
+                name="custom_available_hours"
+                type="number"
+                min="4"
+                max="24"
+                step="1"
+                inputmode="numeric"
+                placeholder="Custom available hours"
+                value="{{ custom_available_hours }}"
+              />
+            </div>
+          </div>
+
+          <div class="form-group mb-3">
+            <label class="form-label" for="max_stops">Maximum Stops</label>
+            {% set max_stop_presets = ["1", "2", "3", "4", "5", "6"] %}
+            {% set max_stops_value = form.get("max_stops", 3) | string %}
+            {% set custom_max_stops = form.get("custom_max_stops", "") %}
+            {% if not custom_max_stops and max_stops_value not in max_stop_presets and max_stops_value != "other" %}
+              {% set custom_max_stops = max_stops_value %}
+              {% set max_stops_value = "other" %}
+            {% endif %}
+
+            <select class="form-select" id="max_stops" name="max_stops" data-selected="{{ max_stops_value }}">
+              {% for n in [1, 2, 3, 4, 5, 6] %}
+                <option value="{{ n }}" {% if max_stops_value == n|string %}selected{% endif %}>
+                  {{ n }} stop{% if n > 1 %}s{% endif %}
+                </option>
+              {% endfor %}
+              <option value="other" {% if max_stops_value == "other" %}selected{% endif %}>
+                Other...
+              </option>
+            </select>
+
+            <div
+              id="custom-max-stops-field"
+              class="custom-number-field"
+              {% if max_stops_value != "other" %}hidden{% endif %}
+            >
+              <input
+                class="form-input"
+                id="custom_max_stops"
+                name="custom_max_stops"
+                type="number"
+                min="1"
+                max="6"
+                step="1"
+                inputmode="numeric"
+                placeholder="Custom maximum stops"
+                value="{{ custom_max_stops }}"
+              />
+            </div>
           </div>
 
           <div class="form-group mb-3">
             <label class="form-label" for="minimum_rating">Minimum Rating</label>
+            {% set minimum_rating = form.get("minimum_rating", "4.0") %}
+
             <select class="form-select" id="minimum_rating" name="minimum_rating">
-              <option value="3.0">⭐ 3.0+</option>
-              <option value="3.5">⭐ 3.5+</option>
-              <option value="4.0" selected>⭐ 4.0+</option>
-              <option value="4.5">⭐ 4.5+</option>
+              <option value="3.0" {% if minimum_rating == "3.0" %}selected{% endif %}>★ 3.0+</option>
+              <option value="3.5" {% if minimum_rating == "3.5" %}selected{% endif %}>★ 3.5+</option>
+              <option value="4.0" {% if minimum_rating == "4.0" %}selected{% endif %}>★ 4.0+</option>
+              <option value="4.5" {% if minimum_rating == "4.5" %}selected{% endif %}>★ 4.5+</option>
             </select>
           </div>
 
           <div class="form-group mb-4">
-            <label class="form-label" for="interests">Travel Interest</label>
-            <select class="form-select" id="interests" name="interests">
-              <option value="culture">Culture</option>
-              <option value="museum">Museum</option>
-              <option value="nature">Nature</option>
-              <option value="shopping">Shopping</option>
-              <option value="food">Food</option>
-            </select>
+            <label class="form-label">Travel Interests</label>
+
+            {% set selected_interests = form.getlist("interests") if form.getlist is defined else form.interests | default(["culture"]) %}
+            {% if selected_interests is string %}
+              {% set selected_interests = [selected_interests] %}
+            {% endif %}
+
+            <div class="interest-chip-group">
+              {% set interest_options = [
+                ("culture", "Culture"),
+                ("museum", "Museum"),
+                ("nature", "Nature"),
+                ("shopping", "Shopping"),
+                ("food", "Food")
+              ] %}
+
+              {% for value, label in interest_options %}
+                <label class="chip interest-chip {% if value in selected_interests %}active{% endif %}">
+                  {{ label }}
+                  <input
+                    type="checkbox"
+                    name="interests"
+                    value="{{ value }}"
+                    {% if value in selected_interests %}checked{% endif %}
+                  />
+                </label>
+              {% endfor %}
+            </div>
+
+            <div class="text-xs text-muted mt-2">
+              You can select more than one interest for a more diverse itinerary.
+            </div>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-lg btn-full">
-            ⚡ Generate Itinerary
+          <div class="form-group mb-4" id="favourite-section">
+            <div class="favourite-picker">
+              <div class="favourite-picker-title">Favourite Places</div>
+              <div class="favourite-picker-sub" id="favourite-helper-text">
+                Select favourite places to include as itinerary stops. Selected favourites will use the available stop slots.
+              </div>
+
+              <input
+                type="text"
+                id="favourites-search"
+                class="form-input favourites-search"
+                placeholder="Search favourite place..."
+              />
+
+              <div id="favourites-loading" class="favourite-place-meta">
+                Loading favourite places...
+              </div>
+
+              <div id="favourites-list" class="favourites-scroll"></div>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-lg btn-full" id="generate-itinerary-btn">
+            Generate Itinerary
           </button>
         </form>
       </div>
     </aside>
 
+    <!-- Result -->
     <section class="itinerary-result-col">
-
       {% if not plan %}
         <div class="card">
           <div class="empty-state">
@@ -120,63 +1461,71 @@
 
         <div class="trip-summary-grid">
           <div class="card trip-summary-card">
-            <div class="trip-summary-label">Total Duration</div>
-            <div class="trip-summary-value">{{ plan.total_duration | default('Estimated') }}</div>
+            <div class="trip-summary-label">Travel Duration</div>
+            <div class="trip-summary-value">
+              {{ plan.travel_duration | default(plan.total_duration | default('Estimated')) }}
+            </div>
           </div>
+
           <div class="card trip-summary-card">
             <div class="trip-summary-label">Weather</div>
             <div class="trip-summary-value">
-              {{ plan.weather_icon | default('☀️') }} {{ plan.weather_temp | default('—') }}
-            </div>
-          </div>
-          <div class="card trip-summary-card">
-            <div class="trip-summary-label">Transport</div>
-            <div class="trip-summary-value">
-              {{ plan.transport_icon | default('🚗') }} {{ plan.transport_mode | default('Driving') }}
+              {{ plan.weather_icon | default('') }} {{ plan.weather_temp | default('-') }}
             </div>
           </div>
         </div>
 
         {% if plan.exceeds_hours %}
           <div class="alert alert-warning">
-            ⚠️ This itinerary exceeds your available hours. Consider removing a stop.
+            This itinerary exceeds your available time. Consider removing a stop.
           </div>
         {% endif %}
-
-        <div class="alert alert-info">
-          ℹ️ Distances and durations are estimates based on routing API data.
-        </div>
 
         <div class="card card-p">
           <div class="card-header">
             <span class="card-title">Timetable</span>
+
             <div style="display:flex; gap:8px;">
-              <a href="{{ url_for('smart_itinerary') }}?regenerate=1&id={{ plan.id | default(1) }}"
-                 class="btn btn-secondary btn-sm">🔄 Regenerate</a>
-              <form action="{{ url_for('saved_itineraries') }}" method="post" style="display:inline; margin:0;">
-                <input type="hidden" name="_action" value="save" />
-                <input type="hidden" name="plan_id" value="{{ plan.id | default(1) }}" />
-                <button type="submit" class="btn btn-primary btn-sm">💾 Save</button>
-              </form>
+              <button type="button" class="btn btn-primary btn-sm" id="save-itinerary-btn">
+                Save
+              </button>
+              <button type="button" class="btn btn-secondary btn-sm" id="edit-itinerary-btn">
+                Edit
+              </button>
             </div>
           </div>
 
-          <div class="stop-list mb-4">
-            {% for attraction in plan["selected"] %}
-              <div class="stop-item">
-                <span class="stop-handle">⠿</span>
-                <span class="stop-name">{{ loop.index }}. {{ attraction.name }}</span>
-                <a href="{{ url_for('smart_itinerary') }}?remove={{ attraction.id }}" class="stop-remove">✕</a>
-              </div>
-            {% endfor %}
-          </div>
+          {% if plan.google_maps_full_route_url %}
+            <div class="route-action-bar">
+              <a
+                href="{{ plan.google_maps_full_route_url }}"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn btn-secondary btn-sm"
+              >
+                View Full Route in Google Maps
+              </a>
+            </div>
+          {% endif %}
 
           <div class="timetable">
             {% for item in plan["timetable"] %}
+              {% set is_start_row = loop.first %}
+              {% set is_end_row = loop.last %}
+              {% set display_name = item.name | default(item.activity) %}
+              {% set stop_match = namespace(attraction=None, index=-1) %}
+
+              {% for attraction in plan["selected"] %}
+                {% if item.name == attraction.name or item.activity == attraction.name %}
+                  {% set stop_match.attraction = attraction %}
+                  {% set stop_match.index = loop.index0 %}
+                {% endif %}
+              {% endfor %}
+
               <div class="timetable-row">
                 <div class="timeline-col">
-                  <div class="timeline-dot {% if loop.first %}start{% elif loop.last %}end{% endif %}"></div>
-                  {% if not loop.last %}
+                  <div class="timeline-dot {% if is_start_row %}start{% elif is_end_row %}end{% endif %}"></div>
+                  {% if not is_end_row %}
                     <div class="timeline-line"></div>
                   {% endif %}
                 </div>
@@ -184,16 +1533,91 @@
                 <div class="timetable-content">
                   <div class="timetable-time">
                     {{ item.arrival_time | default(item.time | default('')) }}
-                    {% if item.departure_time %} – {{ item.departure_time }}{% endif %}
+                    {% if item.departure_time %}
+                      &ndash; {{ item.departure_time }}
+                    {% endif %}
                   </div>
-                  <div class="timetable-name">{{ item.name | default(item.activity) }}</div>
+
+                  <div class="timetable-name-row">
+                    <button
+                      type="button"
+                      class="timetable-name timetable-name-button js-open-place-detail"
+                      data-place-kind="{% if is_start_row %}start{% elif is_end_row %}end{% else %}attraction{% endif %}"
+                      data-attraction-index="{{ stop_match.index }}"
+                      title="{{ display_name | e }}"
+                    >
+                      {{ display_name }}
+                    </button>
+
+                    {% if stop_match.attraction %}
+                      {% set raw_category = stop_match.attraction.get("category") or stop_match.attraction.get("type") or "" %}
+                      {% set matched_interests = stop_match.attraction.get("matched_interests", []) %}
+                      {% set category_label = namespace(text="Attraction") %}
+
+                      {% if raw_category | lower in ["", "attraction", "tourist attraction", "tourist attractions", "point of interest"] and matched_interests %}
+                        {% set category_label.text = matched_interests[0] | title %}
+                      {% elif raw_category %}
+                        {% set category_label.text = raw_category %}
+                      {% endif %}
+
+                      <div class="timetable-stop-actions">
+                        <span class="stop-inline-tag" title="{{ category_label.text | e }}">
+                          {{ category_label.text }}
+                        </span>
+
+                        {% if stop_match.attraction.get("rating") %}
+                          <span class="stop-rating">
+                            <span aria-hidden="true">&#9733;</span>
+                            {{ "%.1f"|format(stop_match.attraction.get("rating") | float) }}
+                          </span>
+                        {% endif %}
+
+                        <button
+                          type="button"
+                          class="timetable-remove js-remove-stop"
+                          data-stop-name="{{ stop_match.attraction.name | e }}"
+                          aria-label="Remove {{ stop_match.attraction.name | e }}"
+                          title="Remove stop"
+                        >
+                          &times;
+                        </button>
+                      </div>
+                    {% endif %}
+                  </div>
+
+                  {% if item.location_note %}
+                    <div class="timetable-location-note">
+                      {{ item.location_note }}
+                    </div>
+                  {% endif %}
+
                   <div class="timetable-meta">
-                    <span class="badge badge-muted">{{ item.duration | default('Estimated') }}</span>
-                    <span class="badge badge-teal">🚗 {{ item.transport | default('Driving') }}</span>
+                    <span class="badge badge-muted">
+                      {% if is_start_row %}
+                        Start point
+                      {% elif is_end_row %}
+                        End point
+                      {% else %}
+                        {{ item.duration | default('Estimated') }}
+                      {% endif %}
+                    </span>
                   </div>
-                  {% if item.waze_url %}
+
+                  {% if item.google_maps_url %}
+                    {% set marker_index = loop.index0 %}
+                    {% set route_from_marker = "S" if marker_index <= 1 else marker_index - 1 %}
+                    {% set route_to_marker = "E" if is_end_row else marker_index %}
+
                     <div class="timetable-actions">
-                      <a href="{{ item.waze_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-accent btn-sm">Waze</a>
+                      <a
+                        href="{{ item.google_maps_url }}"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn btn-secondary btn-sm generated-route-btn"
+                        title="{{ item.google_maps_label | default('Google Maps') | e }}"
+                      >
+                        Google Maps {{ route_from_marker }} &rarr; {{ route_to_marker }}
+                      </a>
                     </div>
                   {% endif %}
                 </div>
@@ -203,81 +1627,49 @@
         </div>
 
         <div class="card card-p">
-                    {% if map_data %}
+          {% if map_data %}
             <div id="routeMap"></div>
-            {% else %}
+          {% else %}
             <div class="map-placeholder" style="min-height:280px;">
-                <div class="map-inner">
-                <div class="map-icon">🗺️</div>
+              <div class="map-inner">
+                <div class="map-icon">Map</div>
                 <div class="map-label">Route Map</div>
                 <div class="map-sub">Map will appear after route is generated</div>
-                </div>
+              </div>
             </div>
-            {% endif %}
+          {% endif %}
         </div>
-
       {% endif %}
     </section>
-
   </div>
 </div>
 {% endblock %}
 
-
 {% block extra_scripts %}
-{% if map_data %}
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  {% if map_data %}
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<script id="map-data" type="application/json">
-{{ map_data | tojson }}
-</script>
+    <script id="map-data" type="application/json">
+      {{ map_data | tojson }}
+    </script>
+  {% endif %}
 
-<script>
-  const mapData = JSON.parse(document.getElementById("map-data").textContent);
+  {% if plan %}
+    <script id="plan-data" type="application/json">
+      {{ plan | tojson }}
+    </script>
+  {% endif %}
 
-  const startPoint = mapData.start;
-  const endPoint = mapData.end;
-  const attractions = mapData.attractions || [];
-  const routeGeometry = mapData.routeGeometry;
+  <script id="planner-post-render-data" type="application/json">
+    {{ {
+      "generated_from_post": generated_from_post,
+      "has_server_error": error is not none,
+      "planner_url": url_for("smart_itinerary")
+    } | tojson }}
+  </script>
 
-  const map = L.map("routeMap").setView(
-    [startPoint.latitude, startPoint.longitude],
-    13
-  );
-
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors"
-  }).addTo(map);
-
-  const markerGroup = L.featureGroup();
-
-  const startMarker = L.marker([startPoint.latitude, startPoint.longitude])
-    .bindPopup("Start: " + mapData.startText)
-    .addTo(map);
-
-  markerGroup.addLayer(startMarker);
-
-  attractions.forEach((place, index) => {
-    const marker = L.marker([place.latitude, place.longitude])
-      .bindPopup((index + 1) + ". " + place.name)
-      .addTo(map);
-
-    markerGroup.addLayer(marker);
-  });
-
-  const endMarker = L.marker([endPoint.latitude, endPoint.longitude])
-    .bindPopup("End: " + mapData.endText)
-    .addTo(map);
-
-  markerGroup.addLayer(endMarker);
-
-  if (routeGeometry) {
-    const routeLayer = L.geoJSON(routeGeometry).addTo(map);
-    map.fitBounds(routeLayer.getBounds(), { padding: [24, 24] });
-  } else {
-    map.fitBounds(markerGroup.getBounds(), { padding: [24, 24] });
-  }
-</script>
-{% endif %}
-{% endblock %}x
+  <script
+    type="module"
+    src="{{ url_for('static', filename='js/smart_itinerary.js') }}?v={{ asset_version('js/smart_itinerary.js') }}"
+  ></script>
+{% endblock %}

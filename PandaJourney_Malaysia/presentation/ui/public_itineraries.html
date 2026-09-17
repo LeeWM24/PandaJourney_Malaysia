@@ -1,0 +1,1143 @@
+{% extends "base.html" %}
+{% set active_page = "public" %}
+
+{% block title %}Public Itineraries | PandaJourney Malaysia{% endblock %}
+{% block favicon %}
+<link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='images/logo.png') }}?v={{ asset_version('images/logo.png') }}" />
+{% endblock %}
+
+{% block page_title %}Public Itineraries{% endblock %}
+
+{% block page_subtitle %}
+Explore community favorites, search destinations, and save routes in a tap.
+{% endblock %}
+
+  {% block content %}
+
+  <div class="page-inner">
+    <div class="page-shell">
+      <!-- Search and Filter -->
+          <section class="card search-card">
+            <div class="search-row">
+              <div class="search-input-wrap">
+                <input id="searchInput" type="text" placeholder="Search itinerary title, city, stop, or vibe" />
+                <button id="clearSearch" class="clear-btn" type="button" aria-label="Clear search">✕</button>
+              </div>
+              <div style="position: relative;">
+                <button id="filterToggle" class="filter-btn" type="button">Filters ▾</button>
+                <div id="filterPopover" class="filter-popover" role="dialog" aria-label="Filter itineraries">
+                  <div class="popover-section">
+                    <div class="popover-title">Interest</div>
+                    <div class="chip-row" data-group="interest">
+                      <button class="chip" type="button" data-value="Culture">Culture</button>
+                      <button class="chip" type="button" data-value="Museum">Museum</button>
+                      <button class="chip" type="button" data-value="Nature">Nature</button>
+                      <button class="chip" type="button" data-value="Shopping">Shopping</button>
+                      <button class="chip" type="button" data-value="Food">Food</button>
+                    </div>
+                  </div>
+                  <div class="popover-section">
+                    <div class="popover-title">Travel duration</div>
+                    <div class="chip-row" data-group="duration">
+                      <button class="chip" type="button" data-value="below 4 hours">Under 4 hours</button>
+                      <button class="chip" type="button" data-value="4-8 hours">4–8 hours</button>
+                      <button class="chip" type="button" data-value="8+ hours">8+ hours</button>
+                    </div>
+                  </div>
+                  <div class="popover-section">
+                    <div class="popover-title">Number of stops</div>
+                    <div class="chip-row" data-group="stops">
+                      <button class="chip" type="button" data-value="1-3 stops">1–3 stops</button>
+                      <button class="chip" type="button" data-value="4-5 stops">4–5 stops</button>
+                      <button class="chip" type="button" data-value="6+ stops">6+ stops</button>
+                    </div>
+                  </div>
+                  <div class="popover-actions">
+                    <button id="resetFilters" class="btn btn-ghost" type="button">Reset</button>
+                    <button id="applyFilters" class="btn btn-primary" type="button">Apply</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div id="activeFilters" class="pill-row"></div>
+            <div id="resultSummary" class="results-bar" style="margin-top: 14px;"></div>
+          </section>
+
+          <section id="contentArea"></section>
+        </div>
+      </div>
+
+   <!-- Open Itinerary Detail Drawer: Display Overlay -->
+  <div id="detailOverlay" class="detail-overlay"></div>
+
+  <!-- Side Drawer: Display Itinerary Details -->
+  <aside
+    id="detailDrawer"
+    class="detail-drawer"
+    aria-label="Itinerary details">
+  </aside>
+
+  <div id="copyToast" class="toast">
+    Itinerary copied to your saved list
+  </div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script type="module" src="{{ url_for('static', filename='js/firebase-config.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/public_itineraries.js') }}"></script>
+  
+  <!-- Initial Itinerary Data (Supplied by Flask) - Firestore Data Replaces After Load -->
+  <script id="itinerary-data" type="application/json"> {{ itineraries | tojson }}</script>
+  <script> let itineraries = JSON.parse(document.getElementById('itinerary-data').textContent);
+    // Stores Current UI Status
+    const state = {
+      search: '',
+      filters: { interest: [], duration: [], stops: [] },
+      mode: 'browse',
+      sort: 'popular',
+      selectedId: null,
+      popoverOpen: false,
+
+      likedIds: new Set(
+        itineraries
+        .filter((item) => item.isLiked)
+        .map((item) => item.id)
+      ),
+
+      savedIds: new Set(
+        itineraries
+        .filter((item) => item.isSaved)
+        .map((item) => item.id)
+      )
+    };
+
+    const searchInput = document.getElementById('searchInput');
+    const clearSearch = document.getElementById('clearSearch');
+    const filterToggle = document.getElementById('filterToggle');
+    const filterPopover = document.getElementById('filterPopover');
+    const activeFilters = document.getElementById('activeFilters');
+    const resultSummary = document.getElementById('resultSummary');
+    const contentArea = document.getElementById('contentArea');
+    const detailOverlay = document.getElementById('detailOverlay');
+    const detailDrawer = document.getElementById('detailDrawer');
+    const copyToast = document.getElementById('copyToast');
+
+    // Receive Latest Published Itineraries (Loaded from Firestore)
+    window.addEventListener("publicItinerariesLoaded", () => {
+      itineraries = window.publicItineraries || [];
+
+      state.savedIds = new Set(
+        itineraries
+          .filter((item) => item.isSaved)
+          .map((item) => item.id)
+      );
+
+      state.likedIds = new Set(
+        itineraries
+          .filter((item) => item.isLiked)
+          .map((item) => item.id)
+      );
+
+      render();
+    });
+
+    // Initialisation for Search, Filter, Overlay and page-event Listeners
+    function init() {
+      searchInput.addEventListener('input', (event) => {
+        state.search = event.target.value.trim().toLowerCase();
+        updateMode();
+        render();
+      });
+
+      clearSearch.addEventListener('click', () => {
+        searchInput.value = '';
+        state.search = '';
+        updateMode();
+        render();
+      });
+
+      filterToggle.addEventListener('click', (event) => {
+        event.stopPropagation();
+        state.popoverOpen = !state.popoverOpen;
+        filterPopover.classList.toggle('open', state.popoverOpen);
+        filterToggle.classList.toggle('active', state.popoverOpen);
+      });
+
+      document.addEventListener('click', (event) => {
+        if (!filterPopover.contains(event.target) && !filterToggle.contains(event.target)) {
+          state.popoverOpen = false;
+          filterPopover.classList.remove('open');
+          filterToggle.classList.remove('active');
+        }
+      });
+
+      document.querySelectorAll('[data-group]').forEach((group) => {
+        group.querySelectorAll('.chip').forEach((chip) => {
+          chip.addEventListener('click', () => {
+            const groupName = group.dataset.group;
+            const value = chip.dataset.value;
+            const list = state.filters[groupName];
+            const index = list.indexOf(value);
+            if (index >= 0) list.splice(index, 1);
+            else list.push(value);
+            chip.classList.toggle('active');
+          });
+        });
+      });
+
+      document.getElementById('applyFilters').addEventListener('click', () => {
+        state.popoverOpen = false;
+        filterPopover.classList.remove('open');
+        filterToggle.classList.remove('active');
+        updateMode();
+        render();
+      });
+
+      document.getElementById('resetFilters').addEventListener('click', () => {
+        state.filters = { interest: [], duration: [], stops: [] };
+        updateMode();
+        render();
+      });
+
+      detailOverlay.addEventListener('click', closeDetail);
+      render();
+    }
+
+    // Switch: Default Browse Mode <=> Filtered Result Mode
+    function updateMode() {
+      const hasQuery = state.search.length > 0;
+      const hasFilters = Object.values(state.filters).some((items) => items.length > 0);
+      state.mode = hasQuery || hasFilters ? 'results' : 'browse';
+    }
+
+    // Filter Itineraries
+    function getFilteredItineraries() {
+      return itineraries.filter((item) => {
+
+        const matchesSearch =
+          !state.search ||
+          [
+            item.title,
+            item.destination,
+            item.author,
+            item.interest,
+            item.stopList.map((s) => s.place).join(' ')
+          ]
+            .join(' ')
+            .toLowerCase()
+            .includes(state.search);
+
+        const durationMinutes = Number(item.total_duration_minutes ?? 0);
+        const matchesDuration =
+          state.filters.duration.length === 0 ||
+          state.filters.duration.some((range) => {
+            if (range === 'below 4 hours') {
+              return durationMinutes < 240;
+            } else if (range === '4-8 hours') {
+              return durationMinutes >= 240 && durationMinutes < 480;
+            } else if (range === '8+ hours') {
+              return durationMinutes >= 480;
+            }else {
+              return false;
+            }
+          });
+
+        const stopCount = Number(item.stops ?? 0);
+        const matchesStops =
+          state.filters.stops.length === 0 ||
+          state.filters.stops.some((range) => {
+            if (range === '1-3 stops') {
+              return stopCount >= 1 && stopCount <= 3;
+            } else if (range === '4-5 stops') {
+              return stopCount >= 4 && stopCount <= 5;
+            } else if (range === '6+ stops') {
+              return stopCount >= 6;
+            } else {
+            return false;
+            }
+          });
+
+        const itemInterest = String(item.interest ?? '').toLowerCase();
+        const matchesInterest = state.filters.interest.length === 0 || state.filters.interest.some(
+          (interest) => itemInterest === interest.toLowerCase()
+          );
+
+        return (matchesSearch && matchesDuration && matchesStops && matchesInterest);
+      });
+    }
+
+    // Sort Itineraries
+    function getSortedItineraries(list) {
+      const clone = [...list];
+
+      if (state.sort === 'popular') {
+        return clone.sort((a, b) => b.views - a.views);
+      }
+
+      if (state.sort === 'newest') {
+        return clone.sort((a, b) => {
+          const aDate = getPublishedDate(
+            a.published_at ||
+            a.updated_at ||
+            a.created_at
+          );
+
+          const bDate = getPublishedDate(
+            b.published_at ||
+            b.updated_at ||
+            b.created_at
+          );
+
+          return (bDate?.getTime() || 0) - (aDate?.getTime() || 0);
+        });
+      }
+
+      return clone.sort((a, b) => b.likes - a.likes);
+    }
+
+    // Rendering Current View
+    function render() {
+      const visible = getFilteredItineraries();
+      const sorted = getSortedItineraries(visible);
+      renderFilters();
+      renderSummary(sorted.length);
+      if (state.mode === 'browse') {
+        contentArea.innerHTML = renderBrowse(sorted);
+      } else {
+        contentArea.innerHTML = renderResults(sorted);
+      }
+      bindCards();
+
+      if (window.loadCommunityPhoto) {
+        sorted.forEach((item) => {
+          window.loadCommunityPhoto(item);
+        });
+      }
+    }
+
+    // Display Active Filtering
+    function renderFilters() {
+      syncFilterChips();
+      const counts = [];
+      const addFilter = (label, values) => values.forEach((value) => counts.push({ label, value }));
+      addFilter('Interest', state.filters.interest);
+      addFilter('Duration', state.filters.duration);
+      addFilter('Stops', state.filters.stops);
+
+      if (counts.length === 0) {
+        activeFilters.innerHTML = '';
+        return;
+      }
+
+      activeFilters.innerHTML = counts.map((item) => `
+        <span class="filter-pill">
+          <span>${escapeHtml(item.label)}: ${escapeHtml(item.value)}</span>
+          <button type="button" data-remove="${item.label}:${item.value}">×</button>
+        </span>
+      `).join('');
+
+      activeFilters.querySelectorAll('button[data-remove]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const [label, value] = btn.dataset.remove.split(':');
+          if (label === 'Interest') state.filters.interest = state.filters.interest.filter((item) => item !== value);
+          if (label === 'Duration') state.filters.duration = state.filters.duration.filter((item) => item !== value);
+          if (label === 'Stops') state.filters.stops = state.filters.stops.filter((item) => item !== value);
+          updateMode();
+          render();
+        });
+      });
+    }
+
+    // Keep Filter Button Appearance (Synchronised with Selected State)
+    function syncFilterChips() {
+      document.querySelectorAll('[data-group]').forEach((group) => {
+        const selectedValues = state.filters[group.dataset.group];
+        group.querySelectorAll('.chip').forEach((chip) => {
+          chip.classList.toggle('active', selectedValues.includes(chip.dataset.value));
+        });
+      });
+    }
+
+    // Show Number of Itineraries Matching Current Criteria
+    function renderSummary(count) {
+      const total = itineraries.length;
+      const hasAny = state.search || Object.values(state.filters).some((items) => items.length > 0); 
+      resultSummary.innerHTML = `
+        <div><strong>${count}</strong> of <strong>${total}</strong> itineraries</div>
+        <div style="color: var(--muted-fg); font-size: 13px;">${hasAny ? 'Filtered to your vibe.' : 'Browse the community favorites.'}</div>
+      `;
+    }
+
+    function getPublishedDate(value) {
+      if (!value) return null;
+
+      // Firestore Timestamp
+      if (typeof value.toDate === 'function') {
+        return value.toDate();
+      }
+
+      // Firestore Timestamp converted to plain object
+      if (typeof value === 'object' && value.seconds) {
+        return new Date(value.seconds * 1000);
+      }
+
+      const date = new Date(value);
+
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatPublishedAgo(value) {
+      const publishedDate = getPublishedDate(value);
+
+      if (!publishedDate) {
+        return 'Published recently';
+      }
+
+      const diffMs = Math.max(0, Date.now() - publishedDate.getTime());
+      const diffMinutes = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMinutes / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMinutes < 1) {
+        return 'Published just now';
+      }
+
+      if (diffMinutes < 60) {
+        return `Published ${diffMinutes} min${diffMinutes === 1 ? '' : 's'} ago`;
+      }
+
+      if (diffHours < 24) {
+        return `Published ${diffHours} hr${diffHours === 1 ? '' : 's'} ago`;
+      }
+
+      if (diffDays < 7) {
+        return `Published ${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+      }
+
+      const months = [
+        'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      ];
+
+      return `Published in ${String(publishedDate.getDate()).padStart(2, '0')} ${
+        months[publishedDate.getMonth()]
+      } ${publishedDate.getFullYear()}`;
+    }
+
+    function formatPublicDate(value) {
+      if (!value) return 'No date';
+      const date = new Date(`${value}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleDateString('en-MY', { year: 'numeric', month: 'short', day: '2-digit' });
+    }
+
+    function getTripDays(item) {
+      const days = Math.round(Number(item.trip_days || item.day_count || 1));
+      return Math.min(30, Math.max(1, Number.isFinite(days) ? days : 1));
+    }
+
+    function normaliseDayNumber(item, value) {
+      const dayNumber = Math.round(Number(value || 1));
+      return Math.min(getTripDays(item), Math.max(1, Number.isFinite(dayNumber) ? dayNumber : 1));
+    }
+
+    function addDaysToDate(dateText, daysToAdd) {
+      if (!dateText) return '';
+      const date = new Date(`${dateText}T00:00:00`);
+      if (Number.isNaN(date.getTime())) return '';
+      date.setDate(date.getDate() + daysToAdd);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function formatTripDateRange(item) {
+      const days = getTripDays(item);
+      const startDate = item.travel_date || item.date || '';
+      const endDate = addDaysToDate(startDate, days - 1);
+      if (days <= 1) return formatPublicDate(startDate);
+      if (!startDate || !endDate) return `${days} days`;
+      return `${formatPublicDate(startDate)} - ${formatPublicDate(endDate)} (${days} days)`;
+    }
+
+    function getDayStartTimes(item) {
+      const savedTimes = item.day_start_times && typeof item.day_start_times === 'object'
+        ? item.day_start_times
+        : {};
+      const fallbackTime = item.start_time || '09:00';
+      const result = {};
+      for (let dayNumber = 1; dayNumber <= getTripDays(item); dayNumber += 1) {
+        result[String(dayNumber)] = savedTimes[String(dayNumber)] || fallbackTime;
+      }
+      return result;
+    }
+
+    function parseClockMinutes(value) {
+      const text = String(value || '').trim();
+      if (!text) return 9 * 60;
+      const amPmMatch = text.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+      if (amPmMatch) {
+        let hour = Number(amPmMatch[1]);
+        const minute = Number(amPmMatch[2]);
+        const period = amPmMatch[3].toUpperCase();
+        if (period === 'PM' && hour !== 12) hour += 12;
+        if (period === 'AM' && hour === 12) hour = 0;
+        return hour * 60 + minute;
+      }
+      const timeMatch = text.match(/^(\d{1,2}):(\d{2})$/);
+      if (timeMatch) return Number(timeMatch[1]) * 60 + Number(timeMatch[2]);
+      return 9 * 60;
+    }
+
+    function formatClockMinutes(value) {
+      const total = ((Math.round(Number(value || 0)) % 1440) + 1440) % 1440;
+      const hour24 = Math.floor(total / 60);
+      const minute = total % 60;
+      const period = hour24 >= 12 ? 'PM' : 'AM';
+      const hour12 = hour24 % 12 || 12;
+      return `${hour12}:${String(minute).padStart(2, '0')} ${period}`;
+    }
+
+    function getPublicMeta(item) {
+      return escapeHtml(
+        formatPublishedAgo(
+          item.published_at ||
+          item.updated_at ||
+          item.created_at
+        )
+      );
+    }
+
+    function getStopPoint(stop) {
+      const rawLatitude = stop.latitude ?? stop.lat;
+      const rawLongitude = stop.longitude ?? stop.lng ?? stop.lon;
+      if (rawLatitude === null || rawLatitude === undefined || rawLatitude === '' ||
+          rawLongitude === null || rawLongitude === undefined || rawLongitude === '') return null;
+      const latitude = Number(rawLatitude);
+      const longitude = Number(rawLongitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { latitude, longitude };
+    }
+
+    function getItineraryPoint(item, prefix) {
+      const rawLatitude = item?.[`${prefix}_latitude`];
+      const rawLongitude = item?.[`${prefix}_longitude`];
+      if (rawLatitude === null || rawLatitude === undefined || rawLatitude === '' ||
+          rawLongitude === null || rawLongitude === undefined || rawLongitude === '') return null;
+      const latitude = Number(rawLatitude);
+      const longitude = Number(rawLongitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+      return { latitude, longitude };
+    }
+
+    function isCurrentLocationName(value) {
+      return String(value || '').trim().toLowerCase() === 'current location';
+    }
+
+    function buildCoordinateText(point) {
+      if (!point) return '';
+      const latitude = Number(point.latitude);
+      const longitude = Number(point.longitude);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return '';
+      return `${latitude.toFixed(7)},${longitude.toFixed(7)}`;
+    }
+
+    function buildGoogleMapsRouteUrl(originPoint, destinationPoint, waypointPoints = [], useLiveCurrentLocation = false) {
+      const destinationText = buildCoordinateText(destinationPoint);
+      if (!destinationText) return '';
+
+      const params = new URLSearchParams();
+      params.set('api', '1');
+
+      if (!useLiveCurrentLocation) {
+        const originText = buildCoordinateText(originPoint);
+        if (!originText) return '';
+        params.set('origin', originText);
+      }
+
+      params.set('destination', destinationText);
+      params.set('travelmode', 'driving');
+
+      const waypointTexts = waypointPoints.map(buildCoordinateText).filter(Boolean);
+      if (waypointTexts.length) params.set('waypoints', waypointTexts.join('|'));
+      if (useLiveCurrentLocation) params.set('dir_action', 'navigate');
+
+      return `https://www.google.com/maps/dir/?${params.toString()}`;
+    }
+
+    function getPublicDayRoute(item, dayNumber, stops) {
+      const numberedStops = stops.map((stop, index) => ({
+        stop,
+        marker: String(index + 1),
+        dayNumber: normaliseDayNumber(item, stop.day_number || stop.day || 1),
+        point: getStopPoint(stop)
+      }));
+      const dayStops = numberedStops.filter(stop => {
+        return stop.dayNumber === dayNumber && stop.point;
+      });
+
+      if (!dayStops.length) return null;
+
+      const previousStop = [...numberedStops].reverse().find(stop => {
+        return stop.dayNumber < dayNumber && stop.point;
+      });
+      const startPoint = getItineraryPoint(item, 'start');
+      const endPoint = getItineraryPoint(item, 'end');
+      const isFirstDay = dayNumber === 1;
+      const isFinalDay = dayNumber === getTripDays(item);
+      const useLiveCurrentLocation = isFirstDay && isCurrentLocationName(item.start_location_name);
+      const originPoint = isFirstDay
+        ? startPoint
+        : previousStop?.point || startPoint;
+      const originMarker = isFirstDay || !previousStop ? 'S' : previousStop.marker;
+      const destinationPoint = isFinalDay && endPoint
+        ? endPoint
+        : dayStops[dayStops.length - 1].point;
+      const waypointPoints = isFinalDay && endPoint
+        ? dayStops.map(stop => stop.point)
+        : dayStops.slice(0, -1).map(stop => stop.point);
+      const destinationMarker = isFinalDay && endPoint ? 'E' : '';
+      const markerPath = [
+        originMarker,
+        ...dayStops.map(stop => stop.marker),
+        destinationMarker
+      ].filter(Boolean);
+      const url = buildGoogleMapsRouteUrl(
+        originPoint,
+        destinationPoint,
+        waypointPoints,
+        useLiveCurrentLocation
+      );
+
+      return url
+        ? { url, label: `Google Maps ${markerPath.join(' -> ')}` }
+        : null;
+    }
+
+    function renderPublicDayDivider(item, stops, dayNumber) {
+      const route = getPublicDayRoute(item, dayNumber, stops);
+      return `
+        <div class="timeline-day-divider">
+          <span>Day ${dayNumber}</span>
+          ${route
+            ? `<a href="${escapeHtml(route.url)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm day-route-link">${escapeHtml(route.label)}</a>`
+            : ''}
+        </div>
+      `;
+    }
+
+    function distanceKm(pointA, pointB) {
+      if (!pointA || !pointB) return 0;
+      const lat1 = Number(pointA.latitude) * Math.PI / 180;
+      const lat2 = Number(pointB.latitude) * Math.PI / 180;
+      const deltaLat = (Number(pointB.latitude) - Number(pointA.latitude)) * Math.PI / 180;
+      const deltaLng = (Number(pointB.longitude) - Number(pointA.longitude)) * Math.PI / 180;
+      const a = Math.sin(deltaLat / 2) ** 2
+        + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) ** 2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function estimateTravelMinutes(pointA, pointB) {
+      const km = distanceKm(pointA, pointB);
+      return km ? Math.max(5, Math.round((km / 35) * 60)) : 0;
+    }
+
+    function getPublicFinalTravelMinutes(item) {
+      const stops = item.stopList || [];
+      const savedTravelMinutes = Number(item.travel_duration_minutes || 0);
+      const stopTravelMinutes = stops.reduce((total, stop) => {
+        return total + Number(stop.travel_minutes_from_previous || 0);
+      }, 0);
+      if (savedTravelMinutes > stopTravelMinutes) return savedTravelMinutes - stopTravelMinutes;
+      const lastStop = stops.length ? stops[stops.length - 1] : null;
+      const endPoint = {
+        latitude: Number(item.end_latitude),
+        longitude: Number(item.end_longitude)
+      };
+      return estimateTravelMinutes(getStopPoint(lastStop), endPoint);
+    }
+
+    function renderPublicTimeline(item) {
+      const stops = [...(item.stopList || [])].sort((a, b) => {
+        const dayDifference = Number(a.day_number || 1) - Number(b.day_number || 1);
+        if (dayDifference) return dayDifference;
+        return Number(a.stop_order || 0) - Number(b.stop_order || 0);
+      });
+      let lastDayNumber = 0;
+      const rows = [];
+      const startName = item.start_location_name || 'Start Location';
+      const endName = item.end_location_name || item.destination || 'End Location';
+      const startTime = item.start_time
+        ? formatClockMinutes(parseClockMinutes(item.start_time))
+        : '';
+
+      if (startName || stops.length || endName) {
+        rows.push(renderPublicDayDivider(item, stops, 1));
+        lastDayNumber = 1;
+      }
+
+      if (startName) {
+        rows.push(`
+          <div class="timeline-item timeline-route-marker">
+            <div class="timeline-time">${escapeHtml(startTime)}</div>
+            <div class="timeline-card">
+              <strong>${escapeHtml(startName)}</strong>
+              <small>Starting location</small>
+            </div>
+          </div>
+        `);
+      }
+
+      stops.forEach((stop) => {
+        const dayNumber = normaliseDayNumber(item, stop.day_number || stop.day || 1);
+        const divider = dayNumber !== lastDayNumber
+          ? renderPublicDayDivider(item, stops, dayNumber)
+          : '';
+        lastDayNumber = dayNumber;
+        rows.push(`
+          ${divider}
+          <div class="timeline-item">
+            <div class="timeline-time">
+              ${escapeHtml(stop.time || stop.arrival_time || '')}
+            </div>
+            <div class="timeline-card">
+              <strong>${escapeHtml(stop.place || stop.stop_name || 'Unknown Stop')}</strong>
+              <small>${escapeHtml(stop.note || stop.category || '')}</small>
+            </div>
+          </div>
+        `);
+      });
+
+      if (endName) {
+        const lastStop = stops.length ? stops[stops.length - 1] : null;
+        const finalMinutes = getPublicFinalTravelMinutes(item);
+        const lastStopEnd = lastStop
+          ? parseClockMinutes(lastStop.departure_time || lastStop.time || lastStop.arrival_time || '')
+          : 0;
+        const endTime = lastStop
+          ? formatClockMinutes(lastStopEnd + finalMinutes)
+          : '';
+        rows.push(`
+          <div class="timeline-item timeline-route-marker">
+            <div class="timeline-time">${escapeHtml(endTime)}</div>
+            <div class="timeline-card">
+              <strong>${escapeHtml(endName)}</strong>
+              <small>Ending location</small>
+            </div>
+          </div>
+        `);
+      }
+
+      return rows.join('') || '<div class="empty-state">No stops available.</div>';
+    }
+
+    // Render Popular Picks and Community List
+    function renderBrowse(list) {
+      const popular = list.slice(0, 3);
+      const community = list.slice(3);
+      const sectionHeading = state.sort === 'newest'
+        ? 'Newest itineraries'
+        : state.sort === 'likes'
+          ? 'Most liked itineraries'
+          : 'Popular picks';
+      const sectionDescription = state.sort === 'newest'
+        ? 'Recently published routes from the community.'
+        : state.sort === 'likes'
+          ? 'Community routes ranked by their total likes.'
+          : 'The community itineraries with the highest view counts.';
+      return `
+        <section class="card" style="padding: 18px;">
+          <div class="results-bar">
+            <div>
+              <div class="card-title">${sectionHeading}</div>
+              <div class="meta-line">${sectionDescription}</div>
+            </div>
+            <div class="mode-tabs">
+              <button class="tab-btn ${state.sort === 'popular' ? 'active' : ''}" data-sort="popular">Popular</button>
+              <button class="tab-btn ${state.sort === 'newest' ? 'active' : ''}" data-sort="newest">Newest</button>
+              <button class="tab-btn ${state.sort === 'likes' ? 'active' : ''}" data-sort="likes">Most Liked</button>
+            </div>
+          </div>
+          <div class="popular-grid" style="margin-top: 14px;">
+            ${popular.map((item, index) => `
+              <article class="popular-card card">
+                <div class="medal">${index === 0 ? '🥇' : index === 1 ? '🥈' : '🥉'}</div>
+                <div class="community-photo-carousel popular-photo-carousel" data-carousel="${item.id}">
+                  <div class="community-photo-placeholder">
+                    <div class="photo-loading-content">
+                      <div class="photo-loading-spinner"></div>
+                      <span>Loading photo...</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="card-content">
+                  <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${getPublicMeta(item)}</div>
+                  <div class="meta-line">${escapeHtml(item.interest || 'General')} • ${escapeHtml(item.duration)} • ${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}</div>
+                  <div class="pill-stack">
+                    <span class="tag" data-view-count="${item.id}">${item.views.toLocaleString()} views</span>
+                    <span class="tag">${item.likes} likes</span>
+                  </div>
+                  <div class="card-actions">
+                    <button class="small-btn" type="button" data-open="${item.id}">Open</button>
+                    <span class="tag">by ${escapeHtml(item.author)}</span>
+                  </div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+
+        <section style="margin-top: 18px;">
+          <div class="results-bar">
+            <div>
+              <div class="card-title">Community list</div>
+              <div class="meta-line">Drop-in itineraries with stop previews for quick scanning.</div>
+            </div>
+          </div>
+          <div class="community-list">
+            ${community.map((item) => `
+              <article class="list-card card">
+                <div class="list-card-content">
+                  <div class="card-title">${escapeHtml(item.title)}</div>
+                  <div class="meta-line">${getPublicMeta(item)}</div>
+                  <div class="meta-line">
+                    ${escapeHtml(item.interest || 'General')} •
+                    ${escapeHtml(item.duration)} •
+                    ${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}
+                  </div>
+
+                  <div class="community-stats">
+                    <span class="tag" data-view-count="${item.id}">${item.views.toLocaleString()} views</span>
+                    <span class="tag">${item.likes} likes</span>
+                  </div>
+
+                  <div class="card-actions">
+                    <button class="small-btn" type="button" data-open="${item.id}">
+                      Open
+                    </button>
+                    <span class="meta-line">
+                      by ${escapeHtml(item.author)}
+                    </span>
+                  </div>
+                </div>
+
+                <div
+                  class="community-photo-carousel"
+                  data-carousel="${item.id}"
+                >
+                  <div class="community-photo-placeholder">
+                    <div class="photo-loading-content">
+                      <div class="photo-loading-spinner"></div>
+                      <span>Loading photo...</span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            `).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    // Rendering Search and Filter Results
+    function renderResults(list) {
+      if (!list.length) {
+        return `<div class="empty-state">No itineraries match that search. Try a broader keyword or clear a filter.</div>`;
+      }
+      return `
+        <div class="community-list">
+          ${list.map((item) => `
+          <article class="list-card card">
+            <div class="list-card-content">
+              <div class="card-title">${escapeHtml(item.title)}</div>
+              <div class="meta-line">${getPublicMeta(item)}</div>
+              <div class="meta-line">
+                ${escapeHtml(item.interest || 'General')} •
+                ${escapeHtml(item.duration)} •
+                ${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}
+              </div>
+              <div class="community-stats">
+                <span class="tag" data-view-count="${item.id}">${item.views.toLocaleString()} views</span>
+                <span class="tag">${item.likes} likes</span>
+              </div>
+              <div class="card-actions">
+                <button
+                  class="small-btn"
+                  type="button"
+                  data-open="${item.id}">
+                  Open
+                </button>
+                <span class="meta-line">
+                  by ${escapeHtml(item.author)}
+                </span>
+              </div>
+            </div>
+            <div class="community-photo-carousel" data-carousel="${item.id}">
+              <div class="community-photo-placeholder">
+                Loading photo...
+              </div>
+            </div>
+          </article>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    // Attaching for Dynamic Rendering Itinerary Cards
+    function bindCards() {
+      document.querySelectorAll('[data-open]').forEach((button) => {
+        button.addEventListener('click', () => openDetail(button.dataset.open));
+      });
+
+      document.querySelectorAll('.tab-btn[data-sort]').forEach((button) => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn[data-sort]').forEach((btn) => btn.classList.remove('active'));
+          button.classList.add('active');
+          state.sort = button.dataset.sort;
+          render();
+        });
+      });
+    }
+
+    // Open Itinerary Detail Drawer + Record 1 View
+    async function openDetail(id) {
+      const item = itineraries.find((entry) => entry.id === id);
+      if (!item){
+        return;
+      } 
+        
+      try {
+        await window.addPublicItineraryView(item.id);
+        item.views += 1;
+        document
+          .querySelectorAll(`[data-view-count="${item.id}"]`)
+          .forEach((element) => {
+            element.textContent = `${item.views.toLocaleString()} views`;
+          });
+      } catch (error) {
+        console.error("View update failed:", error);
+      }
+
+      state.selectedId = id;
+      detailDrawer.innerHTML = `
+        <div
+          class="detail-photo-carousel"
+          data-detail-carousel="${item.id}"
+        >
+          <div class="community-photo-placeholder">
+            <div class="photo-loading-content">
+              <div class="photo-loading-spinner"></div>
+              <span>Loading photo...</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-body">
+          <h3 class="detail-title">${escapeHtml(item.title)}</h3>
+          <div class="meta-line">${getPublicMeta(item)}</div>
+          <div class="meta-strip">
+            <span class="tag">${escapeHtml(item.interest || 'General')}</span>
+            <span class="tag">${escapeHtml(item.duration)}</span>
+            <span class="tag">${item.stops} ${item.stops === 1 ? 'stop' : 'stops'}</span>
+            <span class="tag">by ${escapeHtml(item.author)}</span>
+          </div>
+          <div class="stats-row">
+            <div class="stat-box"><strong data-like-count>${item.likes}</strong><span>likes</span></div>
+            <div class="stat-box"><strong data-save-count>${item.saves}</strong><span>saves</span></div>
+            <div class="stat-box"><strong>${item.views.toLocaleString()}</strong><span>views</span></div>
+          </div>
+          <p style="margin: 14px 0 0; color: var(--fg-2); line-height: 1.7;">${escapeHtml(item.description)}</p>
+          <div class="timeline">
+            ${renderPublicTimeline(item)}
+          </div>
+
+          <div class="public-route-map-section">
+            <div class="public-route-map-title">
+              Route Map
+            </div>
+
+            <div
+              id="publicDetailRouteMap"
+              class="public-detail-route-map"
+            ></div>
+          </div>
+        </div>
+        <div class="detail-footer">
+          <button
+            class="btn btn-ghost ${state.likedIds.has(item.id) ? 'active' : ''}"
+            type="button"
+            data-like="${item.id}"
+            aria-pressed="${state.likedIds.has(item.id)}">
+            ${state.likedIds.has(item.id) ? 'Unlike' : 'Like'}
+          </button>
+          ${item.user_id !== window.currentPublicUserId ? `
+            <button
+              class="btn btn-primary ${state.savedIds.has(item.id) ? 'active' : ''}"
+              type="button"
+              data-save="${item.id}"
+              aria-pressed="${state.savedIds.has(item.id)}">
+              ${state.savedIds.has(item.id) ? 'Unsave' : 'Save'}
+            </button>
+          ` : ''}
+          <button
+            class="btn btn-ghost"
+            type="button"
+            data-close="close">
+            Close
+          </button>
+        </div>
+      `;
+      detailOverlay.classList.add('active');
+      detailDrawer.classList.add('active');
+
+      if (window.loadDetailPhotoCarousel) {
+        window.loadDetailPhotoCarousel(item);
+      }
+
+      if (window.renderPublicRouteMap) {
+        window.renderPublicRouteMap(item);
+      }
+
+      detailDrawer.querySelector('[data-like]').addEventListener('click', async (event) => {
+        const button = event.currentTarget;
+        const isLiked = state.likedIds.has(item.id);
+
+        try {
+          const liked = await window.likePublicItinerary(item.id, isLiked);
+
+          if (liked) {
+            state.likedIds.add(item.id);
+            item.likes += 1;
+          } else {
+            state.likedIds.delete(item.id);
+            item.likes = Math.max(0, item.likes - 1);
+          }
+
+          button.textContent = liked ? 'Unlike' : 'Like';
+          button.classList.toggle('active', liked);
+          button.setAttribute('aria-pressed', String(liked));
+
+          detailDrawer.querySelector('[data-like-count]').textContent = item.likes;
+
+        } catch (error) {
+          console.error('Like update failed:', error);
+        }
+      });
+
+      const saveButton = detailDrawer.querySelector('[data-save]');
+
+      if (saveButton) {
+        saveButton.addEventListener('click', async (event) => {
+          const button = event.currentTarget;
+
+          if (button.disabled) return;
+          button.disabled = true;
+
+          try {
+
+            // Unsave
+            if (state.savedIds.has(item.id)) {
+              const removed = await window.unsavePublicItinerary(item.id);
+
+              if (removed) {
+                state.savedIds.delete(item.id);
+                item.saves = Math.max(0, item.saves - 1);
+
+                button.textContent = 'Save';
+                button.classList.remove('active');
+                button.setAttribute('aria-pressed', 'false');
+
+                detailDrawer
+                  .querySelector('[data-save-count]')
+                  .textContent = item.saves;
+              }
+
+              return;
+            }
+
+            // Save
+            await window.savePublicItineraryCopy(item);
+
+            state.savedIds.add(item.id);
+            item.saves += 1;
+
+            button.textContent = 'Unsave';
+            button.classList.add('active');
+            button.setAttribute('aria-pressed', 'true');
+
+            detailDrawer
+              .querySelector('[data-save-count]')
+              .textContent = item.saves;
+
+          } catch (error) {
+            console.error('Save / Unsave update failed:', error);
+          } finally {
+            button.disabled = false;
+          }
+        });
+      }
+
+      const unpublishButton = detailDrawer.querySelector('[data-unpublish]');
+      if (unpublishButton) {
+        unpublishButton.addEventListener('click', () => {
+          const itemIndex = itineraries.findIndex((entry) => entry.id === item.id);
+          if (itemIndex >= 0) itineraries.splice(itemIndex, 1);
+          state.likedIds.delete(item.id);
+          state.savedIds.delete(item.id);
+          showToast('Itinerary unpublished and removed from the public list');
+          closeDetail();
+        });
+      }
+
+      detailDrawer.querySelector('[data-close]').addEventListener('click', closeDetail);
+    }
+
+    // Display a Temporary Feedback Message
+    function showToast(message) {
+      copyToast.textContent = message;
+      copyToast.classList.add('show');
+      clearTimeout(showToast.timeoutId);
+      showToast.timeoutId = setTimeout(() => copyToast.classList.remove('show'), 3500);
+    }
+
+    // Close + Clear Itinerary Detail Drawer
+    function closeDetail() {
+      detailOverlay.classList.remove('active');
+      detailDrawer.classList.remove('active');
+      detailDrawer.innerHTML = '';
+      state.selectedId = null;
+      render();
+    }
+
+    // Escaping Dynamic Text before Insert into HTML
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    // Highlight Matching Search Terms in Result
+    function highlightText(text, query) {
+      if (!query) return escapeHtml(text);
+      const safeText = escapeHtml(text);
+      const reg = new RegExp(`(${escapeRegExp(query)})`, 'ig');
+      return safeText.replace(reg, '<span class="highlight">$1</span>');
+    }
+
+    function escapeRegExp(text) {
+      return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    init();
+  </script>
+
+{% endblock %} 
