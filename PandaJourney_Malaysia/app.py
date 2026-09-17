@@ -354,12 +354,12 @@ def _verify_firebase_id_token(id_token: str) -> dict:
 @app.errorhandler(404)
 def page_not_found(error):
     flash("Page not found. Redirected to Attractions.", "warning")
-    return redirect(url_for("attraction"))
+    return redirect(url_for("attractions"))
 
 @app.errorhandler(500)
 def internal_server_error(error):
     flash("Something went wrong. Please try again.", "danger")
-    return redirect(url_for("attraction"))
+    return redirect(url_for("attractions"))
 
 @app.route("/session-login", methods=["POST"])
 def session_login():
